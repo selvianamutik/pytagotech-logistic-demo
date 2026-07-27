@@ -147,12 +147,12 @@ export default function SupplierDetailPage() {
   const [savingPrice, setSavingPrice] = useState(false);
   const [form, setForm] = useState<SupplierFormState>(createDefaultForm());
   const [priceForm, setPriceForm] = useState<SupplierItemPriceFormState>(createDefaultSupplierItemPriceForm());
-  const canManage = user ? hasPermission(user.role, 'suppliers', 'create') || hasPermission(user.role, 'suppliers', 'update') : false;
-  const canCreateSupplierPrice = user ? hasPermission(user.role, 'suppliers', 'create') : false;
-  const canUpdateSupplierPrice = user ? hasPermission(user.role, 'suppliers', 'update') : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-  const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenBankAccounts = user ? hasPageAccess(user.role, 'bankAccounts') : false;
+  const canManage = user ? hasPermission(user, 'suppliers', 'create') || hasPermission(user, 'suppliers', 'update') : false;
+  const canCreateSupplierPrice = user ? hasPermission(user, 'suppliers', 'create') : false;
+  const canUpdateSupplierPrice = user ? hasPermission(user, 'suppliers', 'update') : false;
+  const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+  const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
   const today = getBusinessDateValue();
 
   const loadSupplierDetail = useCallback(async () => {

@@ -72,9 +72,9 @@ export default function DriverVoucherDetailPage() {
     const [settlementBankRef, setSettlementBankRef] = useState('');
     const [issueBankRepairRef, setIssueBankRepairRef] = useState('');
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenDriverPage = user ? hasPageAccess(user.role, 'drivers') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canManageVoucherItems = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canTopUpVoucher = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canSettleVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';

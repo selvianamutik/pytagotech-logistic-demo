@@ -84,9 +84,9 @@ export default function TireDetailPage() {
         accumulatedKm: 0,
         notes: '',
     });
-    const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-    const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-    const canManageTires = user ? hasPermission(user.role, 'tires', 'update') : false;
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
 
     const reloadHistory = async () => {
         const historyFilter = encodeURIComponent(JSON.stringify({ tireEventRef: tireId }));

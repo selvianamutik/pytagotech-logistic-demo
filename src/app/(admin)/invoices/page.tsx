@@ -151,12 +151,12 @@ export default function NotaListPage() {
     const [refundAmount, setRefundAmount] = useState(0);
     const [refundBankRef, setRefundBankRef] = useState('');
     const [refundNote, setRefundNote] = useState('');
-    const canCreateInvoice = user ? hasPermission(user.role, 'invoices', 'create') : false;
-    const canCreateReceipt = user ? hasPermission(user.role, 'invoices', 'update') : false;
-    const canExportInvoices = user ? hasPermission(user.role, 'invoices', 'export') : false;
-    const canPrintInvoices = user ? hasPermission(user.role, 'invoices', 'print') : false;
+    const canCreateInvoice = user ? hasPermission(user, 'invoices', 'create') : false;
+    const canCreateReceipt = user ? hasPermission(user, 'invoices', 'update') : false;
+    const canExportInvoices = user ? hasPermission(user, 'invoices', 'export') : false;
+    const canPrintInvoices = user ? hasPermission(user, 'invoices', 'print') : false;
     const canManageOverpayments = canCreateReceipt;
-    const canOpenCustomers = user ? hasPageAccess(user.role, 'customers') : false;
+    const canOpenCustomers = user ? hasPageAccess(user, 'customers') : false;
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]

@@ -6,6 +6,9 @@
 import type { VolumeInputUnit, WeightInputUnit } from './measurement';
 
 export type UserRole = 'OWNER' | 'OPERASIONAL' | 'FINANCE' | 'ARMADA' | 'DRIVER' | 'ADMIN';
+export type ModuleAction = 'view' | 'create' | 'update' | 'delete' | 'export' | 'print';
+export type ModulePermissions = Record<ModuleAction, boolean>;
+export type PerUserModulePermissions = Partial<Record<string, boolean>>;
 export type TireAxleLayoutMode = 'NONE' | 'SINGLE' | 'DUAL';
 
 export interface TireLayoutConfig {
@@ -25,6 +28,7 @@ export interface User {
   active: boolean;
   createdAt: string;
   lastLoginAt?: string;
+  modulePermissions?: PerUserModulePermissions;
 }
 
 export interface SessionUser {
@@ -34,6 +38,7 @@ export interface SessionUser {
   role: UserRole;
   driverRef?: string;
   driverName?: string;
+  modulePermissions?: PerUserModulePermissions;
 }
 
 export interface Employee {

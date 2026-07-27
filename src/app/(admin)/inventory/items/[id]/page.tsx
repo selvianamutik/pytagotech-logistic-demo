@@ -138,12 +138,12 @@ export default function WarehouseItemDetailPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ItemFormState>(createItemForm());
 
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-  const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-  const canOpenMaintenance = user ? hasPageAccess(user.role, 'maintenance') : false;
-  const canOpenTires = user ? hasPageAccess(user.role, 'tires') : false;
-  const canManage = user ? hasPermission(user.role, 'warehouseItems', 'create') || hasPermission(user.role, 'warehouseItems', 'update') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+  const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+  const canOpenMaintenance = user ? hasPageAccess(user, 'maintenance') : false;
+  const canOpenTires = user ? hasPageAccess(user, 'tires') : false;
+  const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplierItem) => supplierItem.active !== false), [suppliers]);
 
   const loadItemDetail = useCallback(async () => {

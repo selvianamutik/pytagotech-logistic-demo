@@ -13,6 +13,7 @@ import {
 } from '@/lib/expense-category-scope';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { ExpenseCategory } from '@/lib/types';
+import { hasPermission } from '@/lib/rbac';
 
 import { useApp, useToast } from '../layout';
 
@@ -33,7 +34,7 @@ export default function ExpenseCategoriesPage() {
     const [scope, setScope] = useState<ExpenseCategoryScope>('GENERAL');
     const [allowManual, setAllowManual] = useState(true);
     const [active, setActive] = useState(true);
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'expenseCategories', 'update') : false;
     const activeCount = totalItems - inactiveCount;
 
     const loadCategories = useCallback(async () => {

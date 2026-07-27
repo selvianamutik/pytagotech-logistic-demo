@@ -148,12 +148,12 @@ export default function NotaDetailPage() {
         paidPercent,
     } = buildInvoiceDetailSummary({ nota, payments, adjustments });
     const accountMap = buildBankAccountMap(bankAccounts);
-    const canManageInvoice = user ? hasPermission(user.role, 'invoices', 'update') : false;
-    const canDeleteInvoice = user ? hasPermission(user.role, 'invoices', 'delete') : false;
-    const canExportInvoice = user ? hasPermission(user.role, 'invoices', 'export') : false;
-    const canPrintInvoice = user ? hasPermission(user.role, 'invoices', 'print') : false;
+    const canManageInvoice = user ? hasPermission(user, 'invoices', 'update') : false;
+    const canDeleteInvoice = user ? hasPermission(user, 'invoices', 'delete') : false;
+    const canExportInvoice = user ? hasPermission(user, 'invoices', 'export') : false;
+    const canPrintInvoice = user ? hasPermission(user, 'invoices', 'print') : false;
     const canManageOverpaymentRefund = canManageInvoice;
-    const canOpenBankAccounts = user ? hasPageAccess(user.role, 'bankAccounts') : false;
+    const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
     const isVoidedInvoice = nota?.status === 'VOID';
     const canEditPph23 = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0;
     const canReviseInvoice = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0 && totalAdjustmentAmount <= 0;

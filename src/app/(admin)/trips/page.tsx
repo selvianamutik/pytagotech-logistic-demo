@@ -127,8 +127,8 @@ export default function TripsPage() {
     const [page, setPage] = useState(1);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const [voucherByDeliveryOrderRef, setVoucherByDeliveryOrderRef] = useState<Record<string, DriverVoucher>>({});
-    const canOpenSourceOrderPage = user ? hasPageAccess(user.role, 'orders') : false;
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
+    const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
 
     const loadTrips = useCallback(async () => {
         setLoading(true);

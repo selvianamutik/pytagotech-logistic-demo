@@ -74,11 +74,11 @@ export default function MaintenancePage() {
         oldTireUsagePercent: null as number | null,
         oldTireDestination: 'WAREHOUSE' as 'WAREHOUSE' | 'SCRAPPED',
     });
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
-    const canUpdateMaintenance = user ? hasPermission(user.role, 'maintenance', 'update') : false;
-    const canViewMaintenanceCost = user?.role === 'OWNER';
-    const canOpenWarehouseItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-    const canViewBankAccounts = user ? hasPermission(user.role, 'bankAccounts', 'view') : false;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
+    const canUpdateMaintenance = user ? hasPermission(user, 'maintenance', 'update') : false;
+    const canViewMaintenanceCost = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canViewBankAccounts = user ? hasPermission(user, 'bankAccounts', 'view') : false;
 
     useEffect(() => {
         setPage(1);

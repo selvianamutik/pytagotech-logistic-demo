@@ -54,9 +54,9 @@ export default function TripRouteRatesPage() {
         active: true,
     });
 
-    const canCreateTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'create') : false;
-    const canUpdateTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'update') : false;
-    const canDeleteTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'delete') : false;
+    const canCreateTripRate = user ? hasPermission(user, 'tripRouteRates', 'create') : false;
+    const canUpdateTripRate = user ? hasPermission(user, 'tripRouteRates', 'update') : false;
+    const canDeleteTripRate = user ? hasPermission(user, 'tripRouteRates', 'delete') : false;
 
     const loadReferenceData = useCallback(async () => {
         try {

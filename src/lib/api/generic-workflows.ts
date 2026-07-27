@@ -2033,16 +2033,23 @@ export async function handleGenericUpdate(
         }
     }
 
-    const normalizedUpdates =
-        entity === 'users'
-            ? await normalizeUserUpdates(session, id, updates, data.currentPassword)
-            : entity === 'services'
-                ? await normalizeServicePayload(updates, { partial: true, excludeId: id })
-                : entity === 'expense-categories'
-                    ? await normalizeExpenseCategoryPayload(updates, { partial: true, excludeId: id })
-                    : entity === 'vehicles'
-                            ? await normalizeVehiclePayload(session, updates, { partial: true, excludeId: id })
-                            : sanitizedEntityUpdates ?? updates;
+    // For user updates, normalizeUserUpdates returns { updates, extra_data }.
+    // Destructure it early so normalizedUpdates is always Record<string, unknown>.
+    let normalizedUpdates: Record<string, unknown>;
+    let userExtraData: Record<string, unknown> | undefined;
+    if (entity === 'users') {
+        const result = await normalizeUserUpdates(session, id, updates, data.currentPassword);
+        normalizedUpdates = result.updates;
+        userExtraData = result.extra_data;
+    } else if (entity === 'services') {
+        normalizedUpdates = await normalizeServicePayload(updates, { partial: true, excludeId: id });
+    } else if (entity === 'expense-categories') {
+        normalizedUpdates = await normalizeExpenseCategoryPayload(updates, { partial: true, excludeId: id });
+    } else if (entity === 'vehicles') {
+        normalizedUpdates = await normalizeVehiclePayload(session, updates, { partial: true, excludeId: id });
+    } else {
+        normalizedUpdates = sanitizedEntityUpdates ?? updates;
+    }
     const userDriverRevision =
         entity === 'users' &&
         typeof normalizedUpdates.driverRef === 'string' &&
@@ -2168,6 +2175,14 @@ export async function handleGenericUpdate(
     }
 
     if (entity === 'users' && id === session._id) {
+        // Apply fresh extra_data to the returned document so createSession picks up
+        // the updated modulePermissions. Both the top-level field and extra_data must
+        // be updated since createSession reads user.modulePermissions directly.
+        if (userExtraData) {
+            const doc = updated as Record<string, unknown>;
+            doc.extra_data = userExtraData;
+            doc.modulePermissions = userExtraData.modulePermissions;
+        }
         const nextSessionToken = await createSession(updated as unknown as User);
         await setSessionCookie(nextSessionToken);
     }
@@ -2984,6 +2999,10 @@ export async function handleGenericCreate(
         newDoc.createdAt = normalizedUser.createdAt;
         userDriverRevision = typeof normalizedUser.driverRevision === 'string' ? normalizedUser.driverRevision : undefined;
         delete newDoc.password;
+        // Forward modulePermissions from form so it gets stored in extra_data
+        if (typeof data.modulePermissions === 'object' && data.modulePermissions !== null && !Array.isArray(data.modulePermissions)) {
+            newDoc.modulePermissions = data.modulePermissions;
+        }
     }
 
     if (entity === 'employees') {

@@ -52,9 +52,9 @@ export default function EmployeesPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [form, setForm] = useState<EmployeeFormState>(createDefaultForm());
 
-    const canCreateEmployees = user ? hasPermission(user.role, 'employees', 'create') : false;
-    const canUpdateEmployees = user ? hasPermission(user.role, 'employees', 'update') : false;
-    const canDeleteEmployees = user ? hasPermission(user.role, 'employees', 'delete') : false;
+    const canCreateEmployees = user ? hasPermission(user, 'employees', 'create') : false;
+    const canUpdateEmployees = user ? hasPermission(user, 'employees', 'update') : false;
+    const canDeleteEmployees = user ? hasPermission(user, 'employees', 'delete') : false;
     const canManageEmployees = canCreateEmployees || canUpdateEmployees || canDeleteEmployees;
     const activeEmployees = totalEmployees - inactiveEmployees;
 

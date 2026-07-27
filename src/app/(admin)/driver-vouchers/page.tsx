@@ -67,7 +67,7 @@ export default function DriverVouchersPage() {
     const [totalItems, setTotalItems] = useState(0);
     const [queueCounts, setQueueCounts] = useState({ issued: 0, draft: 0, settled: 0 });
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
-    const canCreateVoucher = user ? hasPermission(user.role, 'driverVouchers', 'create') : false;
+    const canCreateVoucher = user ? hasPermission(user, 'driverVouchers', 'create') : false;
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]

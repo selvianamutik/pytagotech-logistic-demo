@@ -58,7 +58,7 @@ export default function SuppliersPage() {
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const [form, setForm] = useState<SupplierFormState>(createDefaultForm());
 
-    const canManage = user ? hasPermission(user.role, 'suppliers', 'create') || hasPermission(user.role, 'suppliers', 'update') : false;
+    const canManage = user ? hasPermission(user, 'suppliers', 'create') || hasPermission(user, 'suppliers', 'update') : false;
     const activeSuppliers = totalSuppliers - inactiveSuppliers;
     const today = getBusinessDateValue();
     const currentMonthPrefix = getMonthPrefix(today);

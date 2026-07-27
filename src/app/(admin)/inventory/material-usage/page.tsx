@@ -45,9 +45,9 @@ export default function InventoryMaterialUsagePage() {
   const [category, setCategory] = useState('');
   const [itemRef, setItemRef] = useState(searchParams.get('itemRef') || '');
 
-  const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-  const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canViewPage = user ? hasPageAccess(user.role, 'maintenance') : false;
+  const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+  const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canViewPage = user ? hasPageAccess(user, 'maintenance') : false;
 
   useEffect(() => {
     setItemRef(searchParams.get('itemRef') || '');

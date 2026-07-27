@@ -74,10 +74,10 @@ export default function PurchasesPage() {
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const canCreatePurchase = user ? hasPermission(user.role, 'purchases', 'create') : false;
-  const canExportPurchases = user ? hasPermission(user.role, 'purchases', 'export') : false;
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenStockReport = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+  const canCreatePurchase = user ? hasPermission(user, 'purchases', 'create') : false;
+  const canExportPurchases = user ? hasPermission(user, 'purchases', 'export') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenStockReport = user ? hasPageAccess(user, 'warehouseItems') : false;
   const today = getBusinessDateValue();
   const dateRange = useMemo(
     () => getInventoryReportDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),

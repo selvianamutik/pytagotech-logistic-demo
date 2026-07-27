@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getSupabaseClient } from '@/lib/supabase';
+import { clearRelationalReadCache } from '@/lib/supabase-relational';
 
 import { getBusinessDateValue } from '@/lib/business-date';
 import { hashPassword, verifyPassword } from '@/lib/auth';
@@ -141,15 +143,20 @@ export async function normalizeUserCreatePayload(data: Record<string, unknown>) 
     };
 }
 
+export type NormalizeUserUpdatesResult = {
+    updates: Record<string, unknown>;
+    extra_data?: Record<string, unknown>;
+};
+
 export async function normalizeUserUpdates(
     session: ApiSession,
     targetUserId: string,
     updates: Record<string, unknown>,
     currentPassword: unknown
-) {
-    const allowedOwnerFields = new Set(['name', 'email', 'role', 'active', 'driverRef', 'password']);
+): Promise<NormalizeUserUpdatesResult> {
+    const allowedOwnerFields = new Set(['name', 'email', 'role', 'active', 'driverRef', 'password', 'modulePermissions']);
     const allowedSelfFields = new Set(['name', 'password']);
-    const existingUser = await getDocumentById<{ _id: string; email: string; role: string; active: boolean; passwordHash: string; driverRef?: string }>(
+    const existingUser = await getDocumentById<{ _id: string; email: string; role: string; active: boolean; passwordHash: string; driverRef?: string; extra_data?: Record<string, unknown> }>(
         targetUserId,
         'user'
     );
@@ -158,13 +165,10 @@ export async function normalizeUserUpdates(
     }
 
     const isSelfUpdate = session._id === targetUserId;
-    if (session.role !== 'OWNER' && !isSelfUpdate) {
-        throw new Error('Forbidden');
-    }
 
-    const allowedFields = session.role === 'OWNER' ? allowedOwnerFields : allowedSelfFields;
+    const allowedFields = isSelfUpdate ? allowedSelfFields : allowedOwnerFields;
     if (Object.keys(updates).some(key => !allowedFields.has(key))) {
-        throw new Error(session.role === 'OWNER' ? 'Field user tidak valid' : 'Perubahan profil ini tidak diizinkan');
+        throw new Error(isSelfUpdate ? 'Perubahan profil ini tidak diizinkan' : 'Field user tidak valid');
     }
 
     const nextUpdates: Record<string, unknown> = {};
@@ -205,6 +209,66 @@ export async function normalizeUserUpdates(
 
     if ('active' in nextUpdates && typeof nextUpdates.active !== 'boolean') {
         throw new Error('Status user tidak valid');
+    }
+
+    // Pre-read current extra_data for modulePermissions normalization.
+    // We need to do a read-then-update because Supabase JSONB PATCH merges
+    // (adds to the object) — we can't delete keys via merge.
+    let currentExtraData: Record<string, unknown> = {};
+    if (Object.prototype.hasOwnProperty.call(updates, 'modulePermissions')) {
+        const supabase = getSupabaseClient();
+        const params = new URLSearchParams();
+        params.set('select', 'source_document_id,extra_data');
+        params.set('source_document_id', `eq.${targetUserId}`);
+        params.set('limit', '1');
+        const response = await supabase.fetch(`app_users?${params.toString()}`);
+        const rows = (await response.json() as unknown) as Array<{ source_document_id: string; extra_data: Record<string, unknown> | null }> | undefined;
+        const row = rows?.[0];
+        if (row && row.extra_data && typeof row.extra_data === 'object') {
+            currentExtraData = { ...row.extra_data };
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextUpdates, 'modulePermissions')) {
+        if (nextUpdates.modulePermissions === null || nextUpdates.modulePermissions === '__reset__') {
+            // Reset: delete modulePermissions from extra_data and write back
+            delete currentExtraData.modulePermissions;
+            const supabase = getSupabaseClient();
+            await supabase.fetch(`app_users?source_document_id=eq.${encodeURIComponent(targetUserId)}`, {
+                method: 'PATCH',
+                headers: { Prefer: 'return=representation' },
+                body: JSON.stringify({ extra_data: currentExtraData }),
+            });
+            clearRelationalReadCache();
+            delete nextUpdates.modulePermissions;
+        } else if (typeof nextUpdates.modulePermissions !== 'object' || Array.isArray(nextUpdates.modulePermissions)) {
+            delete nextUpdates.modulePermissions;
+        } else {
+            // Compute the final desired extra_data: true = explicitly assigned,
+            // false = explicitly denied, absent = role default.
+            const desired: Record<string, unknown> = { ...currentExtraData };
+            const raw = nextUpdates.modulePermissions as Record<string, unknown>;
+            const entries = Object.entries(raw)
+                .filter(([mod, val]) => mod !== '__reset__' && (val === true || val === false));
+            if (entries.length === 0) {
+                delete desired.modulePermissions;
+            } else {
+                desired.modulePermissions = Object.fromEntries(entries);
+            }
+            // Write the complete final extra_data to DB — avoids JSONB merge pitfalls
+            const supabase = getSupabaseClient();
+            await supabase.fetch(`app_users?source_document_id=eq.${encodeURIComponent(targetUserId)}`, {
+                method: 'PATCH',
+                headers: { Prefer: 'return=representation' },
+                body: JSON.stringify({ extra_data: desired }),
+            });
+            clearRelationalReadCache();
+            // Sync the updated extra_data so subsequent permission checks
+            // and the return value reflect the new state
+            existingUser.extra_data = desired;
+            currentExtraData = desired;
+            delete nextUpdates.modulePermissions;
+        }
     }
 
     const nextRole =
@@ -267,7 +331,13 @@ export async function normalizeUserUpdates(
     }
 
     delete nextUpdates.password;
-    return nextUpdates;
+    // Return the computed extra_data so the caller can sync it into the returned document
+    // (updateDocument does not know about modulePermissions changes done via direct DB write)
+    const hasExtraDataUpdate = Object.prototype.hasOwnProperty.call(updates, 'modulePermissions');
+    return {
+        updates: nextUpdates,
+        ...(hasExtraDataUpdate ? { extra_data: currentExtraData } : {}),
+    };
 }
 
 export async function handleInvoiceCreate(

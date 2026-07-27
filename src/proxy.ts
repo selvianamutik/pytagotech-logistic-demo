@@ -208,8 +208,8 @@ export async function proxy(request: NextRequest) {
             : [];
         const hasAccess = targetModules.length > 0
             ? targetModules.some(module => (requiredAction === 'view'
-                ? hasPageAccess(user.role, module)
-                : hasPermission(user.role, module, requiredAction)))
+                ? hasPageAccess(user, module)
+                : hasPermission(user, module, requiredAction)))
             : true;
 
         if (targetAccess && !hasAccess) {

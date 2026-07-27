@@ -137,16 +137,17 @@ export default function VehicleDetailPage() {
     const [slotHistoryCode, setSlotHistoryCode] = useState<string | null>(null);
     const [slotHistoryRows, setSlotHistoryRows] = useState<TireHistoryLog[]>([]);
     const [loadingSlotHistory, setLoadingSlotHistory] = useState(false);
-    const isOwner = user?.role === 'OWNER';
-    const canManageVehicle = user ? hasPermission(user.role, 'vehicles', 'update') : false;
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
-    const canCreateIncident = user ? hasPermission(user.role, 'incidents', 'create') : false;
-    const canManageTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canViewVehicleExpenses = user ? hasPermission(user.role, 'expenses', 'view') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenWarehouseItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-    const vehicleTabs = getVehicleTabs(isOwner);
+    const canUpdateVehicle = user ? hasPermission(user, 'vehicles', 'update') : false;
+    const canViewExpenses = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canManageVehicle = canUpdateVehicle;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
+    const canCreateIncident = user ? hasPermission(user, 'incidents', 'create') : false;
+    const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canViewVehicleExpenses = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const vehicleTabs = getVehicleTabs(canViewExpenses);
 
     const loadVehicleDetail = useCallback(async () => {
         setLoading(true);
@@ -904,7 +905,7 @@ export default function VehicleDetailPage() {
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Kapasitas Vol (m3)</div><div className="detail-value">{vehicle.capacityVolume || '-'}</div></div><div className="detail-item"><div className="detail-label">Tanggal Masuk Unit</div><div className="detail-value">{formatDate(vehicle.registeredDate)}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Kepemilikan</div><div className="detail-value">{VEHICLE_OWNERSHIP_LABELS[vehicle.ownershipType || 'COMPANY'] || '-'}</div></div><div className="detail-item"><div className="detail-label">Pemilik Mitra</div><div className="detail-value">{vehicle.ownershipType === 'PARTNER' ? vehicle.partnerOwnerName || '-' : '-'}</div></div></div>
                                 {vehicle.ownershipType === 'PARTNER' && <div className="detail-row"><div className="detail-item"><div className="detail-label">Kontak Pemilik</div><div className="detail-value">{vehicle.partnerOwnerPhone || '-'}</div></div><div className="detail-item"><div className="detail-label">Catatan Kepemilikan</div><div className="detail-value">{vehicle.partnerNotes || '-'}</div></div></div>}
-                                {isOwner && <div className="detail-row"><div className="detail-item"><div className="detail-label">No. Rangka</div><div className="detail-value font-mono">{vehicle.chassisNumber || '-'}</div></div><div className="detail-item"><div className="detail-label">No. Mesin</div><div className="detail-value font-mono">{vehicle.engineNumber || '-'}</div></div></div>}
+                                {canUpdateVehicle && <div className="detail-row"><div className="detail-item"><div className="detail-label">No. Rangka</div><div className="detail-value font-mono">{vehicle.chassisNumber || '-'}</div></div><div className="detail-item"><div className="detail-label">No. Mesin</div><div className="detail-value font-mono">{vehicle.engineNumber || '-'}</div></div></div>}
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Odometer Terakhir</div><div className="detail-value">{vehicle.lastOdometer ? `${formatQuantity(vehicle.lastOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Jarak Trip Terakhir</div><div className="detail-value">{typeof vehicle.lastTripOdometerDeltaKm === 'number' ? `${formatQuantity(vehicle.lastTripOdometerDeltaKm, 0)} km` : '-'}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Servis Oli Berikutnya</div><div className="detail-value">{vehicle.oilNextServiceOdometer ? `${formatQuantity(vehicle.oilNextServiceOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Sisa Servis Oli</div><div className="detail-value">{typeof vehicle.oilServiceRemainingKm === 'number' ? `${formatQuantity(vehicle.oilServiceRemainingKm, 0)} km` : '-'}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Servis Oli Terakhir</div><div className="detail-value">{vehicle.oilLastServiceOdometer ? `${formatQuantity(vehicle.oilLastServiceOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Catatan</div><div className="detail-value">{vehicle.notes || '-'}</div></div></div>
@@ -933,7 +934,7 @@ export default function VehicleDetailPage() {
                                     <div className="kpi-card"><div className="kpi-icon warning"><Wrench size={20} /></div><div className="kpi-content"><div className="kpi-label">Maintenance</div><div className="kpi-value">{maints.length}</div></div></div>
                                     <div className="kpi-card"><div className="kpi-icon danger"><AlertTriangle size={20} /></div><div className="kpi-content"><div className="kpi-label">Insiden</div><div className="kpi-value">{incidents.length}</div></div></div>
                                     <div className="kpi-card"><div className="kpi-icon success"><Disc3 size={20} /></div><div className="kpi-content"><div className="kpi-label">Slot Ban Terisi</div><div className="kpi-value">{filledSlotCount}/{layout.allSlots.length}</div></div></div>
-                                    {isOwner && <div className="kpi-card"><div className="kpi-icon primary"><Car size={20} /></div><div className="kpi-content"><div className="kpi-label">Biaya Maintenance</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{formatCurrency(totalMaintenanceExpense)}</div></div></div>}
+                                    {canViewExpenses && <div className="kpi-card"><div className="kpi-icon primary"><Car size={20} /></div><div className="kpi-content"><div className="kpi-label">Biaya Maintenance</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{formatCurrency(totalMaintenanceExpense)}</div></div></div>}
                                 </div>
                             </div>
                         </div>
@@ -1070,10 +1071,10 @@ export default function VehicleDetailPage() {
                         </div>
                         <div className="card-body">
                             <div className="table-wrapper table-desktop-only"><table>
-                                <thead><tr><th>Tipe</th><th>Jadwal</th><th>Status</th><th>Material Gudang</th><th>Odometer</th><th>Vendor</th>{isOwner && <th>Biaya Internal</th>}</tr></thead>
-                                <tbody>{maints.length === 0 ? <tr><td colSpan={isOwner ? 7 : 6} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada maintenance</td></tr> : maints.map(m => {
+                                <thead><tr><th>Tipe</th><th>Jadwal</th><th>Status</th><th>Material Gudang</th><th>Odometer</th><th>Vendor</th>{canViewExpenses && <th>Biaya Internal</th>}</tr></thead>
+                                <tbody>{maints.length === 0 ? <tr><td colSpan={canViewExpenses ? 7 : 6} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada maintenance</td></tr> : maints.map(m => {
                                     return (
-                                    <tr key={m._id}><td>{m.type}</td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{isOwner && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
+                                    <tr key={m._id}><td>{m.type}</td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{canViewExpenses && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
                                     );
                                 })}</tbody>
                             </table></div>
@@ -1104,7 +1105,7 @@ export default function VehicleDetailPage() {
                                                 <span className="mobile-record-label">Material Gudang</span>
                                                 <div className="mobile-record-value">{renderMaintenanceMaterialUsage(m)}</div>
                                             </div>
-                                            {isOwner && m.status === 'DONE' && (
+                                            {canViewExpenses && m.status === 'DONE' && (
                                                 <div className="mobile-record-kv">
                                                     <span className="mobile-record-label">Biaya Internal</span>
                                                     <span className="mobile-record-value">{formatCurrency(getMaintenanceRecordedCost(m))}</span>
@@ -1276,7 +1277,7 @@ export default function VehicleDetailPage() {
                 </div>
             )}
 
-            {tab === 'biaya' && isOwner && (
+            {tab === 'biaya' && canViewExpenses && (
                 <div className="card">
                     <div className="card-header">
                         <div>

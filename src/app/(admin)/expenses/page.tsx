@@ -217,14 +217,14 @@ export default function ExpensesPage() {
     const [dateTo, setDateTo] = useState(getBusinessDateValue());
     const [form, setForm] = useState(DEFAULT_EXPENSE_FORM);
 
-    const isOwner = user?.role === 'OWNER';
-    const canCreateExpenses = user ? hasPermission(user.role, 'expenses', 'create') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
-    const canOpenBankAccountPage = user ? hasPageAccess(user.role, 'bankAccounts') : false;
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
-    const canOpenDriverBoronganPage = user ? hasPageAccess(user.role, 'driverBorongans') : false;
-    const canOpenIncidentPage = user ? hasPageAccess(user.role, 'incidents') : false;
-    const canOpenMaintenancePage = user ? hasPageAccess(user.role, 'maintenance') : false;
+    const isOwner = user ? hasPermission(user, 'expenses', 'update') : false;
+    const canCreateExpenses = user ? hasPermission(user, 'expenses', 'create') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenDriverBoronganPage = user ? hasPageAccess(user, 'driverBorongans') : false;
+    const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
+    const canOpenMaintenancePage = user ? hasPageAccess(user, 'maintenance') : false;
     const vehicleMap = useMemo(() => new Map(vehicles.map(vehicle => [vehicle._id, vehicle])), [vehicles]);
     const accountMap = useMemo(() => new Map(bankAccounts.map(account => [account._id, account])), [bankAccounts]);
     const voucherMap = useMemo(() => mapById(driverVouchers), [driverVouchers]);
@@ -362,9 +362,9 @@ export default function ExpensesPage() {
                 }>(`/api/data?${buildExpensesSummaryQuery()}`, 'Gagal memuat ringkasan pengeluaran'),
                 fetchOptionalCollection<ExpenseCategory[]>('/api/data?entity=expense-categories', []),
                 fetchOptionalCollection<BankAccount[]>('/api/data?entity=bank-accounts', []),
-                user.role === 'FINANCE'
-                    ? Promise.resolve([] as Vehicle[])
-                    : fetchOptionalCollection<Vehicle[]>('/api/data?entity=vehicles', []),
+                hasPermission(user, 'vehicles', 'view')
+                    ? fetchOptionalCollection<Vehicle[]>('/api/data?entity=vehicles', [])
+                    : Promise.resolve([] as Vehicle[]),
             ]);
 
             const listItems = (listPayload.data || []) as Expense[];

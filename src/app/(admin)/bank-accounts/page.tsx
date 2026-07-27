@@ -59,11 +59,11 @@ export default function BankAccountsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState(createDefaultBankAccountForm());
   const [transferForm, setTransferForm] = useState(createDefaultBankTransferForm());
-  const canCreateBankAccounts = user ? hasPermission(user.role, "bankAccounts", "create") : false;
-  const canManageBankAccounts = user ? hasPermission(user.role, "bankAccounts", "update") : false;
-  const canDeleteBankAccounts = user ? hasPermission(user.role, "bankAccounts", "delete") : false;
-  const canExportBankAccounts = user ? hasPermission(user.role, "bankAccounts", "export") : false;
-  const canPrintBankAccounts = user ? hasPermission(user.role, "bankAccounts", "print") : false;
+  const canCreateBankAccounts = user ? hasPermission(user, "bankAccounts", "create") : false;
+  const canManageBankAccounts = user ? hasPermission(user, "bankAccounts", "update") : false;
+  const canDeleteBankAccounts = user ? hasPermission(user, "bankAccounts", "delete") : false;
+  const canExportBankAccounts = user ? hasPermission(user, "bankAccounts", "export") : false;
+  const canPrintBankAccounts = user ? hasPermission(user, "bankAccounts", "print") : false;
   const invoiceBankAccountRefs = Array.isArray(company?.invoiceSettings?.invoiceBankAccountRefs)
     ? company.invoiceSettings.invoiceBankAccountRefs.filter(
         (value): value is string => typeof value === "string" && value.trim().length > 0,

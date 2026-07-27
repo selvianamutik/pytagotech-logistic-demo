@@ -112,11 +112,11 @@ export default function PurchaseDetailPage() {
   const normalizedRole = user ? normalizeUserRole(user.role) : null;
   const canReceive = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
   const canPay = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
-  const canPrint = user ? hasPermission(user.role, 'purchases', 'print') : false;
-  const canOpenBankAccounts = user ? hasPageAccess(user.role, 'bankAccounts') : false;
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenTires = user ? hasPageAccess(user.role, 'tires') : false;
+  const canPrint = user ? hasPermission(user, 'purchases', 'print') : false;
+  const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenTires = user ? hasPageAccess(user, 'tires') : false;
 
   const summary = useMemo(() => purchase ? computePurchaseSummary({ purchase, items, payments }) : null, [items, payments, purchase]);
   const receiptStatus = useMemo(() => (purchase ? getDerivedPurchaseReceiptStatus(purchase) : null), [purchase]);

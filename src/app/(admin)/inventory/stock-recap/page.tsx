@@ -52,10 +52,10 @@ export default function InventoryStockRecapPage() {
   const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const canViewPage = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenItemDetail = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canExport = user ? hasPermission(user.role, 'warehouseItems', 'export') : false;
-  const canPrint = user ? hasPermission(user.role, 'warehouseItems', 'print') : false;
+  const canViewPage = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenItemDetail = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canExport = user ? hasPermission(user, 'warehouseItems', 'export') : false;
+  const canPrint = user ? hasPermission(user, 'warehouseItems', 'print') : false;
 
   useEffect(() => {
     async function loadData() {

@@ -21,6 +21,7 @@ import {
 } from '@/lib/fleet-vehicle-page-support';
 import { buildDefaultTireLayoutConfig, buildTireSlotCodesFromLayoutConfig, formatTireSlotLabel, normalizeTireLayoutConfig } from '@/lib/tire-slots';
 import { useApp, useToast } from '../../../layout';
+import { hasPermission } from '@/lib/rbac';
 import type { Service } from '@/lib/types';
 
 export default function VehicleNewPage() {
@@ -30,7 +31,7 @@ export default function VehicleNewPage() {
     const [saving, setSaving] = useState(false);
     const [services, setServices] = useState<Service[]>([]);
     const [form, setForm] = useState<VehicleForm>(EMPTY_VEHICLE_FORM);
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'vehicles', 'update') : false;
     const selectedService = services.find(service => service._id === form.serviceRef) || null;
     const selectedServiceLayout = selectedService
         ? buildTireSlotCodesFromLayoutConfig(normalizeTireLayoutConfig(selectedService.tireLayoutConfig, buildDefaultTireLayoutConfig(form.vehicleType, selectedService.name)))

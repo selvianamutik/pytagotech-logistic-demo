@@ -1840,11 +1840,11 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
     }
 
     const canViewOrders = hasPageAccess(session.role, 'orders');
-    const canViewDeliveryOrders = hasPermission(session.role, 'deliveryOrders', 'view');
-    const canViewInvoices = hasPermission(session.role, 'invoices', 'view');
-    const canViewTripCash = hasPermission(session.role, 'driverVouchers', 'view');
-    const canViewFleet = hasPermission(session.role, 'incidents', 'view') || hasPermission(session.role, 'maintenance', 'view');
-    const canSeeBorongan = hasPermission(session.role, 'driverBorongans', 'view');
+    const canViewDeliveryOrders = hasPermission(session, 'deliveryOrders', 'view');
+    const canViewInvoices = hasPermission(session, 'invoices', 'view');
+    const canViewTripCash = hasPermission(session, 'driverVouchers', 'view');
+    const canViewFleet = hasPermission(session, 'incidents', 'view') || hasPermission(session, 'maintenance', 'view');
+    const canSeeBorongan = hasPermission(session, 'driverBorongans', 'view');
     const [
         orderStats,
         doStats,
@@ -1997,7 +1997,7 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
         (sum, voucher) => sum + getDriverVoucherIssuedAmount(voucher),
         0
     );
-    const canSeeFinancialTotals = session.role === 'OWNER' || session.role === 'FINANCE';
+    const canSeeFinancialTotals = hasPermission(session, 'reports', 'view');
 
     const summary = {
         orderStats,

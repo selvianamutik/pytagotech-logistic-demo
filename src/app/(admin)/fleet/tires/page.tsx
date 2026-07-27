@@ -107,10 +107,10 @@ export default function TiresPage() {
     const [openedEditParam, setOpenedEditParam] = useState('');
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const [vehicleCategoryFilter, setVehicleCategoryFilter] = useState('');
-    const canCreateTires = user ? hasPermission(user.role, 'tires', 'create') : false;
-    const canManageTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-    const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+    const canCreateTires = user ? hasPermission(user, 'tires', 'create') : false;
+    const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+    const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
     const linkedWarehouseItemLocked = Boolean(editTarget?.linkedWarehouseItemRef || editTarget?.sourcePurchaseRef);
 
     useEffect(() => {

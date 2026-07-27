@@ -163,11 +163,11 @@ export default function OrderDetailPage() {
     const loadedReferenceSignatureRef = useRef<string>('');
     const loadedVehicleOptionsRef = useRef(false);
     const loadedTripPlanSupportRef = useRef(false);
-    const canCreateInvoice = user ? hasPermission(user.role, 'invoices', 'create') : false;
-    const canViewFreightNotas = user ? hasPermission(user.role, 'invoices', 'view') : false;
-    const canManageOrderTrips = user ? hasPermission(user.role, 'orders', 'update') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
+    const canCreateInvoice = user ? hasPermission(user, 'invoices', 'create') : false;
+    const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
+    const canManageOrderTrips = user ? hasPermission(user, 'orders', 'update') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const hasOpenModal = showDOModal || showAddTripModal || showTripPlanActionModal || showCancelTripModal || showCancelOrderModal || showHoldModal;
     const currentPath = pathname || `/orders/${orderId}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;

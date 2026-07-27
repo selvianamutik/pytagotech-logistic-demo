@@ -48,7 +48,7 @@ export default function PurchaseNewPage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<PurchaseLineForm[]>([createLine()]);
 
-  const canCreatePurchase = user ? hasPermission(user.role, 'purchases', 'create') : false;
+  const canCreatePurchase = user ? hasPermission(user, 'purchases', 'create') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active !== false), [suppliers]);
   const activeItems = useMemo(() => items.filter((item) => item.active !== false), [items]);
   const selectedSupplier = useMemo(() => activeSuppliers.find((supplier) => supplier._id === supplierRef) || null, [activeSuppliers, supplierRef]);
