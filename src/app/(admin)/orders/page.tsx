@@ -156,7 +156,7 @@ export default function OrdersPage() {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
 
     const buildOrdersQuery = useCallback((targetPage = page, targetPageSize = DEFAULT_PAGE_SIZE) => {
         const params = new URLSearchParams({

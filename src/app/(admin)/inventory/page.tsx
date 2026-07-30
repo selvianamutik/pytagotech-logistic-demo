@@ -108,10 +108,10 @@ export default function InventoryOverviewPage() {
     () => MODULES.filter((module) => (user ? canOpenModule(user.role, module.href) : false)),
     [user],
   );
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-  const canOpenMaintenance = user ? hasPageAccess(user.role, 'maintenance') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+  const canOpenMaintenance = user ? hasPageAccess(user, 'maintenance') : false;
 
   useEffect(() => {
     async function loadOverview() {

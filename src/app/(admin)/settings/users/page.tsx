@@ -8,6 +8,8 @@ import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import type { User } from '@/lib/types';
 import { INTERNAL_USER_ROLE_OPTIONS, type InternalUserRole } from '@/lib/rbac';
+import type { AppModule } from '@/lib/rbac';
+import ModulePermissionsEditor from '@/app/(admin)/_components/ModulePermissionsEditor';
 
 type InternalUser = User & { role: InternalUserRole };
 
@@ -41,7 +43,7 @@ export default function UsersPage() {
     const [editUser, setEditUser] = useState<InternalUser | null>(null);
     const [saving, setSaving] = useState(false);
     const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
-    const [form, setForm] = useState({ name: '', email: '', role: 'OPERASIONAL' as InternalUserRole, password: '' });
+    const [form, setForm] = useState({ name: '', email: '', role: 'OPERASIONAL' as InternalUserRole, password: '', overrides: {} as Partial<Record<AppModule, boolean>>, permissionsReset: false });
     const activeUsers = totalUsers - inactiveUsers;
 
     const internalRoleFilter = JSON.stringify({ role: INTERNAL_USER_ROLE_OPTIONS });
@@ -79,8 +81,19 @@ export default function UsersPage() {
         void loadUsers();
     }, [loadUsers]);
 
-    const openNew = () => { setEditUser(null); setForm({ name: '', email: '', role: 'OPERASIONAL', password: '' }); setShowModal(true); };
-    const openEdit = (u: InternalUser) => { setEditUser(u); setForm({ name: u.name, email: u.email, role: u.role, password: '' }); setShowModal(true); };
+    const openNew = () => { setEditUser(null); setForm({ name: '', email: '', role: 'OPERASIONAL', password: '', overrides: {}, permissionsReset: false }); setShowModal(true); };
+    const openEdit = (u: InternalUser) => {
+        const stored = u.modulePermissions ?? {};
+        const overrides: Partial<Record<AppModule, boolean>> = {};
+        for (const [mod, val] of Object.entries(stored)) {
+            if (typeof val === 'boolean' && mod !== 'profile') {
+                overrides[mod as AppModule] = val;
+            }
+        }
+        setEditUser(u);
+        setForm({ name: u.name, email: u.email, role: u.role, password: '', overrides, permissionsReset: false });
+        setShowModal(true);
+    };
 
     const handleSave = async () => {
         if (!form.name || !form.email) { addToast('error', 'Nama dan email wajib'); return; }
@@ -91,6 +104,15 @@ export default function UsersPage() {
             if (editUser) {
                 const updates: Record<string, unknown> = { name: form.name, email: form.email, role: form.role };
                 if (form.password) updates.password = form.password;
+
+                if (form.permissionsReset || Object.keys(form.overrides).length === 0) {
+                    // Reset: clear all explicit module assignments — send empty object,
+                    // server will delete modulePermissions from extra_data entirely
+                    updates.modulePermissions = {};
+                } else {
+                    // Send the full overrides — server stores true/false as-is
+                    updates.modulePermissions = { ...form.overrides };
+                }
                 const res = await fetch('/api/data', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -255,6 +277,12 @@ export default function UsersPage() {
                                 </select>
                             </div>
                             <div className="form-group"><label className="form-label">{editUser ? 'Reset Password (kosongkan jika tidak diubah)' : 'Password *'}</label><input className="form-input" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} autoComplete="new-password" /><div className="form-hint">Minimal 8 karakter</div></div>
+                            <ModulePermissionsEditor
+                                role={form.role}
+                                overrides={form.overrides}
+                                onChange={overrides => setForm(f => ({ ...f, overrides, permissionsReset: false }))}
+                                onReset={() => setForm(f => ({ ...f, overrides: {}, permissionsReset: true }))}
+                            />
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
                     </div>

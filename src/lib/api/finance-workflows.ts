@@ -100,6 +100,7 @@ import {
     buildIncidentSettlementActionRequiredMessage,
     scheduleOperationalAdminWhatsApp,
 } from './operational-admin-notifications';
+import { hasPermission } from '@/lib/rbac';
 
 type AuditLogFn = (
     session: Pick<ApiSession, '_id' | 'name'>,
@@ -2273,7 +2274,7 @@ export async function handleExpenseCreate(
         rawPrivacyLevel === 'ownerOnly'
             ? 'ownerOnly'
             : 'internal';
-    if (requestedPrivacyLevel === 'ownerOnly' && session.role !== 'OWNER') {
+    if (requestedPrivacyLevel === 'ownerOnly' && !hasPermission(session, 'expenses', 'update')) {
         return NextResponse.json({ error: 'Hanya OWNER yang boleh membuat pengeluaran owner-only' }, { status: 403 });
     }
     const privacyLevel = requestedPrivacyLevel;

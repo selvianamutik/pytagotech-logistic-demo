@@ -7,6 +7,7 @@ import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { Service, TireAxleLayoutMode, TireLayoutConfig } from '@/lib/types';
+import { hasPermission } from '@/lib/rbac';
 import {
     buildDefaultTireLayoutConfig,
     buildTireSlotCodesFromLayoutConfig,
@@ -72,7 +73,7 @@ export default function ServicesPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [pendingAxleDeleteIndex, setPendingAxleDeleteIndex] = useState<number | null>(null);
     const [form, setForm] = useState<ServiceFormState>(createDefaultServiceForm());
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'services', 'update') : false;
     const activeCount = totalItems - inactiveCount;
     const layoutPreview = useMemo(
         () => buildTireSlotCodesFromLayoutConfig(form.tireLayoutConfig),

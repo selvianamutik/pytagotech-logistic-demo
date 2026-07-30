@@ -2286,10 +2286,16 @@ export async function relationalPatchDocument<T = Record<string, unknown>>(
                 ? { ...existingRow.extra_data }
                 : {};
             for (const [field, value] of Object.entries(extraUpdates)) {
-                if (value === undefined) {
+                if (value === undefined || value === null) {
                     delete nextExtraData[field];
                 } else {
                     nextExtraData[field] = value;
+                }
+            }
+            // Remove any keys that have null values (explicit deletion)
+            for (const field of Object.keys(nextExtraData)) {
+                if (nextExtraData[field] === null) {
+                    delete nextExtraData[field];
                 }
             }
             patch.extra_data = nextExtraData;

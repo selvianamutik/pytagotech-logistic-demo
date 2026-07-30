@@ -43,8 +43,8 @@ export default function BoronganDetailPage() {
     const [paying, setPaying] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenDriverPage = user ? hasPageAccess(user.role, 'drivers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const parseWholeMoneyLike = (value: unknown) =>
         parseFormattedNumberish(value ?? 0, { maxFractionDigits: 0 });
 

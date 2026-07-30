@@ -3,7 +3,7 @@
    Role-based access control with record/field-level privacy
    ============================================================ */
 
-import type { Expense, UserRole, Vehicle } from './types';
+import type { Expense, PerUserModulePermissions, UserRole, Vehicle } from './types';
 
 export interface ModulePermissions {
     view: boolean;
@@ -16,6 +16,16 @@ export interface ModulePermissions {
 
 export type EffectiveUserRole = Exclude<UserRole, 'ADMIN'>;
 export type InternalUserRole = Exclude<EffectiveUserRole, 'DRIVER'>;
+export type PermissionSubject = UserRole | { role: UserRole; modulePermissions?: PerUserModulePermissions };
+
+function toRole(subject: PermissionSubject): UserRole {
+    return typeof subject === 'string' ? subject : subject.role;
+}
+
+function toModulePermissions(subject: PermissionSubject): PerUserModulePermissions | undefined {
+    const mp = typeof subject === 'string' ? undefined : subject.modulePermissions;
+    return mp && Object.keys(mp).length > 0 ? mp : undefined;
+}
 export type AppModule =
     | 'dashboard'
     | 'employees'
@@ -66,12 +76,6 @@ const OWNER_FULL: ModulePermissions = {
     print: true,
 };
 
-const INVOICE_PERMISSIONS: Partial<Record<EffectiveUserRole, ModulePermissions>> = {
-    OWNER: OWNER_FULL,
-    FINANCE: OWNER_FULL,
-    OPERASIONAL: { ...DENY_ALL, view: true, print: true },
-};
-
 export const INTERNAL_USER_ROLE_OPTIONS: InternalUserRole[] = [
     'OWNER',
     'OPERASIONAL',
@@ -81,10 +85,6 @@ export const INTERNAL_USER_ROLE_OPTIONS: InternalUserRole[] = [
 
 export function normalizeUserRole(role: UserRole): EffectiveUserRole {
     return role === 'ADMIN' ? 'OPERASIONAL' : role;
-}
-
-function normalizeAppModule(module: AppModule): AppModule {
-    return module === 'freightNotas' ? 'invoices' : module;
 }
 
 const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, ModulePermissions>>> = {
@@ -97,87 +97,100 @@ const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, Modu
     employees: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true },
     },
     attendance: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, export: true },
     },
     suppliers: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, export: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     warehouseItems: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, export: true, print: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     purchases: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, update: true, export: true, print: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     orders: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true },
-        ARMADA: { ...DENY_ALL, view: true },
     },
     deliveryOrders: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, print: true },
-        ARMADA: { ...DENY_ALL, view: true, print: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
-    invoices: INVOICE_PERMISSIONS,
+    invoices: {
+        OWNER: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+    },
     customers: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     tripRouteRates: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
-        ARMADA: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     services: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
-        ARMADA: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     expenseCategories: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
-        FINANCE: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     expenses: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true, create: true },
+        OPERASIONAL: OWNER_FULL,
         FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     reports: {
-        OWNER: { ...DENY_ALL, view: true, create: true, update: true, export: true, print: true },
+        OWNER: { ...DENY_ALL, view: true, export: true },
         FINANCE: { ...DENY_ALL, view: true, create: true, update: true, export: true, print: true },
     },
     vehicles: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true, print: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
     maintenance: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
     incidents: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true, create: true, update: true, export: true, print: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
     companySettings: {
-        OWNER: { ...DENY_ALL, view: true, update: true },
+        OWNER: { ...DENY_ALL, view: true, create: true, update: true },
+        OPERASIONAL: { ...DENY_ALL, view: true, create: true, update: true },
+        FINANCE: { ...DENY_ALL, view: true, create: true, update: true },
+        ARMADA: { ...DENY_ALL, view: true, create: true, update: true },
     },
     userManagement: {
         OWNER: OWNER_FULL,
@@ -186,8 +199,10 @@ const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, Modu
         OWNER: { ...DENY_ALL, view: true, export: true },
     },
     dataImports: {
-        OWNER: { ...DENY_ALL, view: true, create: true, update: true },
-        OPERASIONAL: { ...DENY_ALL, view: true, create: true, update: true },
+        OWNER: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     profile: {
         OWNER: { ...DENY_ALL, view: true, update: true },
@@ -197,59 +212,69 @@ const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, Modu
     },
     tires: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
     drivers: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
     bankAccounts: {
         OWNER: OWNER_FULL,
-        OPERASIONAL: { ...DENY_ALL, view: true },
-        FINANCE: { ...DENY_ALL, view: true, create: true, update: true, export: true },
+        FINANCE: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
     driverVouchers: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
-        FINANCE: { ...DENY_ALL, view: true, export: true, print: true },
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
     },
-    freightNotas: INVOICE_PERMISSIONS,
+    freightNotas: {
+        OWNER: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+    },
     driverBorongans: {
         OWNER: OWNER_FULL,
+        FINANCE: OWNER_FULL,
     },
     driverScores: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
         ARMADA: OWNER_FULL,
     },
 };
 
-export function hasPermission(role: UserRole, module: AppModule, action: keyof ModulePermissions): boolean {
+export function hasPermission(subject: PermissionSubject, module: AppModule, action: keyof ModulePermissions): boolean {
+    const role = toRole(subject);
+    if (role === 'OWNER') return true;
+    const assigned = toModulePermissions(subject);
+    const override = assigned?.[module];
+    if (override === true) return true;
+    if (override === false) return false;
     const normalizedRole = normalizeUserRole(role);
-    const modulePerms = permissionMatrix[normalizeAppModule(module)];
-    if (!modulePerms) return false;
-    const rolePerms = modulePerms[normalizedRole];
-    if (!rolePerms) return false;
-    return rolePerms[action];
+    return permissionMatrix[module]?.[normalizedRole]?.[action] ?? false;
 }
 
-export function getModulePermissions(role: UserRole, module: AppModule): ModulePermissions {
+export function getModulePermissions(subject: PermissionSubject, module: AppModule): ModulePermissions {
+    const role = toRole(subject);
+    if (role === 'OWNER') return { view: true, create: true, update: true, delete: true, export: true, print: true };
+    const assigned = toModulePermissions(subject);
+    const override = assigned?.[module];
+    if (override === true) return OWNER_FULL;
+    if (override === false) return DENY_ALL;
     const normalizedRole = normalizeUserRole(role);
-    return permissionMatrix[normalizeAppModule(module)]?.[normalizedRole] || DENY_ALL;
+    return permissionMatrix[module]?.[normalizedRole] ?? DENY_ALL;
 }
 
-export function hasPageAccess(role: UserRole, module: AppModule): boolean {
-    const normalizedRole = normalizeUserRole(role);
-    const normalizedModule = normalizeAppModule(module);
-    if (normalizedModule === 'orders' && (normalizedRole === 'FINANCE' || normalizedRole === 'ARMADA')) {
-        return false;
-    }
-    if (normalizedModule === 'driverBorongans' && normalizedRole !== 'OWNER') {
-        return false;
-    }
-    return hasPermission(role, normalizedModule, 'view');
+export function hasPageAccess(subject: PermissionSubject, module: AppModule): boolean {
+    return hasPermission(subject, module, 'view');
 }
 
 export function filterExpensesByRole(expenses: Expense[], role: UserRole): Expense[] {
@@ -279,8 +304,8 @@ export interface SidebarMenuGroup {
     items: SidebarMenuItem[];
 }
 
-export function getSidebarMenu(role: UserRole): SidebarMenuGroup[] {
-    const normalizedRole = normalizeUserRole(role);
+export function getSidebarMenu(subject: PermissionSubject): SidebarMenuGroup[] {
+    const normalizedRole = normalizeUserRole(toRole(subject));
     if (normalizedRole === 'DRIVER') {
         return [];
     }
@@ -362,7 +387,7 @@ export function getSidebarMenu(role: UserRole): SidebarMenuGroup[] {
     return groups
         .map(group => ({
             ...group,
-            items: group.items.filter(item => hasPageAccess(normalizedRole, item.module)),
+            items: group.items.filter(item => hasPageAccess(subject, item.module)),
         }))
         .filter(group => group.items.length > 0);
 }

@@ -561,7 +561,7 @@ function resolveRequiredPermission(mode: MasterDataImportMode) {
 }
 
 function hasImportPermission(session: ApiSession, module: AppModule, mode: MasterDataImportMode) {
-  return resolveRequiredPermission(mode).every((permission) => hasPermission(session.role, module, permission));
+  return resolveRequiredPermission(mode).every((permission) => hasPermission(session, module, permission));
 }
 
 async function addAuditLog(

@@ -265,7 +265,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         );
     }
 
-    const menuGroups = getSidebarMenu(user.role);
+    const menuGroups = getSidebarMenu(user);
     const sidebarToggleLabel = isMobile
         ? (mobileOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi')
         : (sidebarCollapsed ? 'Buka menu samping' : 'Ciutkan menu samping');

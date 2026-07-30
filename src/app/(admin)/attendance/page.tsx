@@ -214,8 +214,8 @@ export default function AttendancePage() {
     const [form, setForm] = useState<AttendanceFormState>(createDefaultAttendanceForm(getBusinessDateValue()));
     const businessToday = getBusinessDateValue();
 
-    const canManageAttendance = user ? hasPermission(user.role, 'attendance', 'create') || hasPermission(user.role, 'attendance', 'update') : false;
-    const canExportAttendance = user ? hasPermission(user.role, 'attendance', 'export') : false;
+    const canManageAttendance = user ? hasPermission(user, 'attendance', 'create') || hasPermission(user, 'attendance', 'update') : false;
+    const canExportAttendance = user ? hasPermission(user, 'attendance', 'export') : false;
     const toggleInputSort = useCallback((field: DailyAttendanceSortField, defaultDirection: SortDirection = 'asc') => {
         setInputSort(current => toggleSortState(current, field, defaultDirection));
     }, []);

@@ -83,7 +83,7 @@ export default function ImportDataPage() {
   const availableTargets = useMemo(
     () => MASTER_DATA_IMPORT_TARGETS.filter((target) => (
       user &&
-      (hasPermission(user.role, target.module, 'create') || hasPermission(user.role, target.module, 'update'))
+      (hasPermission(user, target.module, 'create') || hasPermission(user, target.module, 'update'))
     )),
     [user],
   );

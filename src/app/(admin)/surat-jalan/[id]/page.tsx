@@ -186,12 +186,12 @@ export default function SuratJalanDetailPage() {
     const [editNewItems, setEditNewItems] = useState<DeliveryOrderCargoDraftItem[]>([]);
     const [actualEditItems, setActualEditItems] = useState<ActualCargoDraft[]>([]);
     const [selectedActualEditItemRef, setSelectedActualEditItemRef] = useState('');
-    const canOpenTripPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenOrderPage = user ? hasPageAccess(user.role, 'orders') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenInvoicePage = user ? hasPageAccess(user.role, 'invoices') : false;
-    const canViewFreightNotas = user ? hasPermission(user.role, 'invoices', 'view') : false;
-    const canManageDeliveryStatus = user ? hasPermission(user.role, 'deliveryOrders', 'update') : false;
+    const canOpenTripPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenInvoicePage = user ? hasPageAccess(user, 'invoices') : false;
+    const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
+    const canManageDeliveryStatus = user ? hasPermission(user, 'deliveryOrders', 'update') : false;
     const canEditSuratJalan = canManageDeliveryStatus;
     const currentPath = pathname || `/surat-jalan/${encodeURIComponent(id)}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;

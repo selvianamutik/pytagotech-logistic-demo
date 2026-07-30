@@ -365,7 +365,7 @@ export default function AccountingStatementsPage() {
   );
   const isPeriodReady = isFinancePeriodRangeReady(periodMode, period.startDate, period.endDate);
   const periodKey = useMemo(() => buildAccountingPeriodKey(periodMode, month, year), [month, periodMode, year]);
-  const canManagePeriod = user ? hasPermission(user.role, "reports", "update") : false;
+  const canManagePeriod = user ? hasPermission(user, "reports", "update") : false;
   const periodLabel = useMemo(
     () => buildFinancePeriodLabel({ mode: periodMode, monthIndex: month, year, startDate: period.startDate, endDate: period.endDate }),
     [month, period.endDate, period.startDate, periodMode, year],

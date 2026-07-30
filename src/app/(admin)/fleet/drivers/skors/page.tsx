@@ -39,9 +39,9 @@ export default function DriverSkorsPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [form, setForm] = useState(createDefaultDriverScoreForm(initialDriverRef));
 
-    const canCreateScores = user ? hasPermission(user.role, 'driverScores', 'create') : false;
-    const canManageScores = user ? hasPermission(user.role, 'driverScores', 'update') : false;
-    const canDeleteScores = user ? hasPermission(user.role, 'driverScores', 'delete') : false;
+    const canCreateScores = user ? hasPermission(user, 'driverScores', 'create') : false;
+    const canManageScores = user ? hasPermission(user, 'driverScores', 'update') : false;
+    const canDeleteScores = user ? hasPermission(user, 'driverScores', 'delete') : false;
 
     const loadData = useCallback(async () => {
         setLoading(true);

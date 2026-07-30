@@ -23,6 +23,7 @@ import {
     type VehicleForm,
 } from '@/lib/fleet-vehicle-page-support';
 import { buildDefaultTireLayoutConfig, buildTireSlotCodesFromLayoutConfig, formatTireSlotLabel, normalizeTireLayoutConfig } from '@/lib/tire-slots';
+import { hasPermission } from '@/lib/rbac';
 import { useApp, useToast } from '../../../../layout';
 import { VEHICLE_STATUS_MAP } from '@/lib/utils';
 import type { Service, Vehicle, VehicleStatus } from '@/lib/types';
@@ -36,7 +37,7 @@ export default function VehicleEditPage() {
     const [saving, setSaving] = useState(false);
     const [services, setServices] = useState<Service[]>([]);
     const [form, setForm] = useState<VehicleForm>(EMPTY_VEHICLE_FORM);
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'vehicles', 'update') : false;
     const vehicleId = params.id as string;
     const vehicleSections = getVehicleSections(vehicleId, isOwner);
     const selectedService = services.find(service => service._id === form.serviceRef) || null;

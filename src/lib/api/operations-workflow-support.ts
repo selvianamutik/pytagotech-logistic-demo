@@ -783,9 +783,6 @@ export async function normalizeVehiclePayload(
     }
 
     if (!partial || hasOwnKey(data, 'chassisNumber')) {
-        if (session.role !== 'OWNER') {
-            throw new Error('No. rangka hanya boleh diubah OWNER');
-        }
         const chassisNumber = normalizeOptionalText(data.chassisNumber)?.toUpperCase();
         if (chassisNumber) {
             const duplicate = await findDuplicateLowerTextDoc('vehicle', 'chassisNumber', chassisNumber, options?.excludeId);
@@ -797,9 +794,6 @@ export async function normalizeVehiclePayload(
     }
 
     if (!partial || hasOwnKey(data, 'engineNumber')) {
-        if (session.role !== 'OWNER') {
-            throw new Error('No. mesin hanya boleh diubah OWNER');
-        }
         const engineNumber = normalizeOptionalText(data.engineNumber)?.toUpperCase();
         if (engineNumber) {
             const duplicate = await findDuplicateLowerTextDoc('vehicle', 'engineNumber', engineNumber, options?.excludeId);

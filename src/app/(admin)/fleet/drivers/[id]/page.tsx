@@ -37,13 +37,13 @@ export default function DriverDetailPage() {
     const [loading, setLoading] = useState(true);
     const [loadNotice, setLoadNotice] = useState<AdminLoadNotice | null>(null);
 
-    const canViewDriverAccounts = user ? (user.role === 'OWNER' || user.role === 'ARMADA') : false;
-    const canViewDriverScores = user ? hasPermission(user.role, 'driverScores', 'view') : false;
-    const canViewDriverVouchers = user ? hasPermission(user.role, 'driverVouchers', 'view') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
+    const canViewDriverAccounts = user ? hasPermission(user, 'drivers', 'view') : false;
+    const canViewDriverScores = user ? hasPermission(user, 'driverScores', 'view') : false;
+    const canViewDriverVouchers = user ? hasPermission(user, 'driverVouchers', 'view') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
 
     const loadDriverDetail = useCallback(async () => {
         setLoading(true);

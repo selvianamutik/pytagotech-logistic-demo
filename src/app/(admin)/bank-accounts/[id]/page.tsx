@@ -128,15 +128,15 @@ export default function BankAccountDetailPage() {
     const [loading, setLoading] = useState(true);
     const [loadNotice, setLoadNotice] = useState<AdminLoadNotice | null>(null);
     const [transactionsLoading, setTransactionsLoading] = useState(true);
-    const canExportBankAccount = user ? hasPermission(user.role, 'bankAccounts', 'export') : false;
-    const canPrintBankAccount = user ? hasPermission(user.role, 'bankAccounts', 'print') : false;
-    const canOpenInvoices = user ? hasPageAccess(user.role, 'invoices') : false;
-    const canOpenDriverVouchers = user ? hasPageAccess(user.role, 'driverVouchers') : false;
-    const canOpenDriverBorongans = user ? hasPageAccess(user.role, 'driverBorongans') : false;
-    const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-    const canOpenIncidents = user ? hasPageAccess(user.role, 'incidents') : false;
-    const canOpenMaintenance = user ? hasPageAccess(user.role, 'maintenance') : false;
-    const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
+    const canExportBankAccount = user ? hasPermission(user, 'bankAccounts', 'export') : false;
+    const canPrintBankAccount = user ? hasPermission(user, 'bankAccounts', 'print') : false;
+    const canOpenInvoices = user ? hasPageAccess(user, 'invoices') : false;
+    const canOpenDriverVouchers = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenDriverBorongans = user ? hasPageAccess(user, 'driverBorongans') : false;
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenIncidents = user ? hasPageAccess(user, 'incidents') : false;
+    const canOpenMaintenance = user ? hasPageAccess(user, 'maintenance') : false;
+    const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]

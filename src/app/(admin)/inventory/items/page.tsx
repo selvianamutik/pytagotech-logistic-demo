@@ -100,9 +100,9 @@ export default function WarehouseItemsPage() {
   const [form, setForm] = useState<ItemFormState>(createItemForm());
   const [movementForm, setMovementForm] = useState<MovementFormState>(createMovementForm());
 
-  const canManage = user ? hasPermission(user.role, 'warehouseItems', 'create') || hasPermission(user.role, 'warehouseItems', 'update') : false;
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenItemDetail = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+  const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenItemDetail = user ? hasPageAccess(user, 'warehouseItems') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active !== false), [suppliers]);
   const activeItemCount = allItems.filter((item) => item.active !== false).length;
   const lowStockCount = allItems.filter((item) => {

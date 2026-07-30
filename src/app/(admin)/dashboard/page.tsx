@@ -126,13 +126,13 @@ export default function DashboardPage() {
             </div>
         );
     }
-    const canSeeFinancialTotals = user ? (user.role === 'OWNER' || user.role === 'FINANCE') : false;
-    const canViewOrders = user ? hasPageAccess(user.role, 'orders') : false;
-    const canViewDeliveryOrders = user ? hasPermission(user.role, 'deliveryOrders', 'view') : false;
-    const canViewInvoices = user ? hasPermission(user.role, 'invoices', 'view') : false;
-    const canViewIncidents = user ? hasPermission(user.role, 'incidents', 'view') : false;
-    const canViewMaintenance = user ? hasPermission(user.role, 'maintenance', 'view') : false;
-    const canViewTripCash = user ? hasPermission(user.role, 'driverVouchers', 'view') : false;
+    const canSeeFinancialTotals = user ? hasPermission(user, 'reports', 'view') : false;
+    const canViewOrders = user ? hasPageAccess(user, 'orders') : false;
+    const canViewDeliveryOrders = user ? hasPermission(user, 'deliveryOrders', 'view') : false;
+    const canViewInvoices = user ? hasPermission(user, 'invoices', 'view') : false;
+    const canViewIncidents = user ? hasPermission(user, 'incidents', 'view') : false;
+    const canViewMaintenance = user ? hasPermission(user, 'maintenance', 'view') : false;
+    const canViewTripCash = user ? hasPermission(user, 'driverVouchers', 'view') : false;
 
     return (
         <div>

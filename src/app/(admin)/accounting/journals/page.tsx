@@ -93,8 +93,8 @@ export default function JournalEntriesPage() {
     lines: [createDraftLine(), createDraftLine()],
   });
 
-  const canCreateManualJournal = user ? hasPermission(user.role, "reports", "create") : false;
-  const canVoidManualJournal = user ? hasPermission(user.role, "reports", "update") : false;
+  const canCreateManualJournal = user ? hasPermission(user, "reports", "create") : false;
+  const canVoidManualJournal = user ? hasPermission(user, "reports", "update") : false;
   const dateRange = useMemo(
     () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
     [dateFrom, dateTo, monthIndex, periodMode, year],

@@ -130,7 +130,7 @@ export default function AuditTrailCard({
     const entityRefsKey = buildValuesKey(entityRefs);
     const entityTypesKey = buildValuesKey(entityTypes);
     const queryKey = `${entityRefsKey}|${entityTypesKey}|${limit}`;
-    const canViewAuditLogs = user ? hasPermission(user.role, 'auditLogs', 'view') : false;
+    const canViewAuditLogs = user ? hasPermission(user, 'auditLogs', 'view') : false;
     const auditTrailUrl = shouldLoad && canViewAuditLogs && entityRefsKey
         ? buildAuditTrailQuery(
             entityRefsKey.split(',').filter(Boolean),

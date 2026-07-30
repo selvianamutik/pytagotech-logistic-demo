@@ -153,8 +153,8 @@ export default function CustomerDetailPage() {
     const [billingRateForm, setBillingRateForm] = useState<CustomerBillingRateForm>(DEFAULT_BILLING_RATE_FORM);
     const [recipientForm, setRecipientForm] = useState<CustomerRecipientForm>(DEFAULT_RECIPIENT_FORM);
     const [pickupForm, setPickupForm] = useState<CustomerPickupForm>(DEFAULT_PICKUP_FORM);
-    const canOpenCustomerOrderHistory = user ? hasPageAccess(user.role, 'orders') : false;
-    const canManageCustomer = user ? hasPermission(user.role, 'customers', 'update') : false;
+    const canOpenCustomerOrderHistory = user ? hasPageAccess(user, 'orders') : false;
+    const canManageCustomer = user ? hasPermission(user, 'customers', 'update') : false;
 
     useEffect(() => {
         const loadCustomerDetail = async () => {

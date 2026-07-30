@@ -82,13 +82,13 @@ export default function ReportsPage() {
   );
   const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const canOpenBankAccounts = user ? hasPageAccess(user.role, "bankAccounts") : false;
-  const canOpenInvoices = user ? hasPageAccess(user.role, "invoices") : false;
-  const canOpenDriverVouchers = user ? hasPageAccess(user.role, "driverVouchers") : false;
-  const canOpenDriverBorongans = user ? hasPageAccess(user.role, "driverBorongans") : false;
-  const canOpenVehicles = user ? hasPageAccess(user.role, "vehicles") : false;
-  const canOpenIncidents = user ? hasPageAccess(user.role, "incidents") : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, "purchases") : false;
+  const canOpenBankAccounts = user ? hasPageAccess(user, "bankAccounts") : false;
+  const canOpenInvoices = user ? hasPageAccess(user, "invoices") : false;
+  const canOpenDriverVouchers = user ? hasPageAccess(user, "driverVouchers") : false;
+  const canOpenDriverBorongans = user ? hasPageAccess(user, "driverBorongans") : false;
+  const canOpenVehicles = user ? hasPageAccess(user, "vehicles") : false;
+  const canOpenIncidents = user ? hasPageAccess(user, "incidents") : false;
+  const canOpenPurchases = user ? hasPageAccess(user, "purchases") : false;
 
   const businessToday = getBusinessCalendarDateParts() || {
     year: String(new Date().getFullYear()),

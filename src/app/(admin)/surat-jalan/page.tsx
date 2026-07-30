@@ -63,8 +63,8 @@ export default function SuratJalanPage() {
     const [conditionFilter, setConditionFilter] = useState<SuratJalanConditionFilter>('');
     const [page, setPage] = useState(1);
     const [dateSortDir, setDateSortDir] = useState<SortDirection>('desc');
-    const canOpenTripPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenSourceOrderPage = user ? hasPageAccess(user.role, 'orders') : false;
+    const canOpenTripPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
 
     const loadSuratJalan = useCallback(async () => {
         setLoading(true);

@@ -173,9 +173,8 @@ import type { BankAccount, BankTransaction, CompanyProfile, CustomerOverpaymentR
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const OWNER_ONLY_READ_ENTITIES = new Set(['audit-logs', 'driver-borongans', 'driver-borongan-items']);
-const OWNER_ONLY_MUTATION_ENTITIES = new Set(['company', 'audit-logs', 'services', 'expense-categories', 'driver-borongans', 'driver-borongan-items']);
+// Role-based entity gating is replaced by module permission system.
+// All entities are gated via ENTITY_MODULE_MAP + forbidModuleAccess.
 const LEGACY_READ_ONLY_ENTITIES = new Set(['invoices', 'invoice-items']);
 const PROJECTED_READ_ENTITIES = new Set(['trips', 'surat-jalan', 'surat-jalan-items', 'trip-tracking', 'trip-detail', 'surat-jalan-detail', 'trip-detail-references']);
 type ReceiptResponseShape = Record<string, unknown> & {
@@ -243,17 +242,12 @@ const ENTITY_MODULE_MAP: Partial<Record<keyof typeof DOCUMENT_TYPE_MAP, AppModul
     'driver-scores': 'driverScores',
     users: 'userManagement',
     'audit-logs': 'auditLogs',
+    company: 'companySettings',
+    incomes: 'expenses',
 };
 
 function validateEntity(entity: string | null): entity is keyof typeof DOCUMENT_TYPE_MAP {
     return Boolean(entity && DOCUMENT_TYPE_MAP[entity]);
-}
-
-function forbidOwnerOnlyEntity(session: Session, entity: string) {
-    if (OWNER_ONLY_MUTATION_ENTITIES.has(entity) && session.role !== 'OWNER') {
-        return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    }
-    return null;
 }
 
 function getEntityModule(entity: string | null): AppModule | null {
@@ -312,74 +306,73 @@ function getMutationPermissionAction(action?: string): keyof ModulePermissions {
 }
 
 function hasSpecialMutationPermission(session: Session, entity: string, action?: string): boolean | null {
-    const role = normalizeUserRole(session.role);
 
     if (entity === 'delivery-orders' && action === 'assign-trip-resources') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'ARMADA';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'append-cargo-items') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'ARMADA';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'update-cargo-item') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'ARMADA';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'remove-cargo-item') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'ARMADA';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'update-shipper-reference') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'FINANCE';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'update-surat-jalan-actual-cargo') {
-        return role === 'OWNER' || role === 'OPERASIONAL' || role === 'ARMADA';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'set-trip-closure') {
-        return role === 'OWNER' || role === 'OPERASIONAL';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'delivery-orders' && action === 'continue-held-cargo') {
-        return role === 'OWNER' || role === 'OPERASIONAL';
+        return hasPermission(session, 'deliveryOrders', 'update');
     }
 
     if (entity === 'driver-vouchers' && action === 'settle') {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'driverVouchers', 'update');
     }
 
     if (entity === 'driver-vouchers' && action === 'top-up') {
-        return role === 'OWNER' || role === 'OPERASIONAL';
+        return hasPermission(session, 'driverVouchers', 'create');
     }
 
     if (entity === 'driver-vouchers' && action === 'repair-issue-ledger') {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'driverVouchers', 'update');
     }
 
     if (entity === 'purchases' && action === 'receive') {
-        return role === 'OWNER' || role === 'OPERASIONAL';
+        return hasPermission(session, 'purchases', 'update');
     }
 
     if (entity === 'purchase-payments' && action === 'record-payment') {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'purchases', 'create');
     }
 
     if (entity === 'stock-movements') {
-        return role === 'OWNER' || role === 'OPERASIONAL';
+        return hasPermission(session, 'purchases', 'create');
     }
 
     if (entity === 'journal-entries' && action === 'create-manual') {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'reports', 'create');
     }
 
     if (entity === 'journal-entries' && action === 'void-manual') {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'reports', 'update');
     }
 
     if (entity === 'accounting-periods' && (action === 'close-period' || action === 'open-period')) {
-        return role === 'OWNER' || role === 'FINANCE';
+        return hasPermission(session, 'reports', 'update');
     }
 
     return null;
@@ -388,7 +381,7 @@ function hasSpecialMutationPermission(session: Session, entity: string, action?:
 function forbidModuleAccess(session: Session, entity: string, action: keyof ModulePermissions) {
     const targetModule = getEntityModule(entity);
     if (!targetModule) return null;
-    if (!hasPermission(session.role, targetModule, action)) {
+    if (!hasPermission(session, targetModule, action)) {
         return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
     return null;
@@ -724,7 +717,7 @@ export async function GET(request: Request) {
     const auditEntityTypes = parseCommaSeparatedParam(searchParams.get('entityTypes'));
 
     if (entity === 'dashboard-summary') {
-        if (!hasPermission(session.role, 'dashboard', 'view')) {
+        if (!hasPermission(session, 'dashboard', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -737,7 +730,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'customers-summary') {
-        if (!hasPermission(session.role, 'customers', 'view')) {
+        if (!hasPermission(session, 'customers', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -754,7 +747,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'vehicles-summary') {
-        if (!hasPermission(session.role, 'vehicles', 'view')) {
+        if (!hasPermission(session, 'vehicles', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -771,7 +764,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'expenses-summary') {
-        if (!hasPermission(session.role, 'expenses', 'view')) {
+        if (!hasPermission(session, 'expenses', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         let expenseFilterObj: Record<string, unknown> | undefined;
@@ -802,7 +795,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'bank-accounts-summary') {
-        if (!hasPermission(session.role, 'bankAccounts', 'view')) {
+        if (!hasPermission(session, 'bankAccounts', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -815,7 +808,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'bank-transactions-summary') {
-        if (!hasPermission(session.role, 'bankAccounts', 'view')) {
+        if (!hasPermission(session, 'bankAccounts', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
 
@@ -860,7 +853,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'audit-logs-summary') {
-        if (!hasPermission(session.role, 'auditLogs', 'view')) {
+        if (!hasPermission(session, 'auditLogs', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -884,7 +877,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'users-summary') {
-        if (session.role !== 'OWNER') {
+        if (!hasPermission(session, 'userManagement', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -897,7 +890,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'employee-attendance-summary') {
-        if (!hasPermission(session.role, 'attendance', 'view')) {
+        if (!hasPermission(session, 'attendance', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -920,7 +913,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'employee-attendance-records' && !id) {
-        if (!hasPermission(session.role, 'attendance', 'view')) {
+        if (!hasPermission(session, 'attendance', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -957,7 +950,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'driver-borongan-do-refs') {
-        if (!hasPermission(session.role, 'driverVouchers', 'create')) {
+        if (!hasPermission(session, 'driverVouchers', 'create')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -970,7 +963,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'delivery-order-trip-cash-link') {
-        if (!hasPermission(session.role, 'deliveryOrders', 'view')) {
+        if (!hasPermission(session, 'deliveryOrders', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         const deliveryOrderRef = searchParams.get('deliveryOrderRef')?.trim();
@@ -987,7 +980,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'customer-overpayments') {
-        if (!hasPermission(session.role, 'invoices', 'view')) {
+        if (!hasPermission(session, 'invoices', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -1091,7 +1084,7 @@ export async function GET(request: Request) {
     }
 
     if (entity === 'maintenance-material-options') {
-        if (!hasPermission(session.role, 'maintenance', 'update')) {
+        if (!hasPermission(session, 'maintenance', 'update')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
         try {
@@ -1104,7 +1097,7 @@ export async function GET(request: Request) {
     }
 
     if (PROJECTED_READ_ENTITIES.has(entity || '')) {
-        if (!hasPermission(session.role, 'deliveryOrders', 'view')) {
+        if (!hasPermission(session, 'deliveryOrders', 'view')) {
             return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
         }
 
@@ -1115,11 +1108,11 @@ export async function GET(request: Request) {
                 ? searchFieldsParam.split(',').map(field => field.trim()).filter(Boolean)
                 : [];
             const projectedPermissions = {
-                canViewCustomerDetails: hasPermission(session.role, 'customers', 'view'),
-                canManageTripFee: hasPermission(session.role, 'deliveryOrders', 'update'),
-                canEditShipperReference: hasPermission(session.role, 'deliveryOrders', 'update'),
-                canEditDeliveryCargo: hasPermission(session.role, 'deliveryOrders', 'update'),
-                canEditDeliveryTarget: hasPermission(session.role, 'deliveryOrders', 'update'),
+                canViewCustomerDetails: hasPermission(session, 'customers', 'view'),
+                canManageTripFee: hasPermission(session, 'deliveryOrders', 'update'),
+                canEditShipperReference: hasPermission(session, 'deliveryOrders', 'update'),
+                canEditDeliveryCargo: hasPermission(session, 'deliveryOrders', 'update'),
+                canEditDeliveryTarget: hasPermission(session, 'deliveryOrders', 'update'),
             };
             const result = await getProjectedDocumentRead({
                 entity: entity as 'trips' | 'surat-jalan' | 'surat-jalan-items' | 'trip-tracking' | 'trip-detail' | 'surat-jalan-detail' | 'trip-detail-references',
@@ -1154,19 +1147,20 @@ export async function GET(request: Request) {
         return jsonNoStore({ error: 'Invalid entity type' }, { status: 400 });
     }
 
-    if (entity !== 'users' && entity !== 'company') {
+    // Module-based read gate for ALL entities including users and company.
+    // Privacy filtering (e.g. sanitizeCompanyProfileForRole) is applied later.
+    if (entity !== 'users') {
         const forbiddenModuleRead = forbidModuleAccess(session, entity, 'view');
         if (forbiddenModuleRead) {
             return forbiddenModuleRead;
         }
     }
 
-    if (entity === 'users' && session.role !== 'OWNER' && id !== session._id) {
-        return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (OWNER_ONLY_READ_ENTITIES.has(entity) && session.role !== 'OWNER') {
-        return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
+    if (entity === 'users' && id !== session._id) {
+        const forbiddenModuleRead = forbidModuleAccess(session, entity, 'view');
+        if (forbiddenModuleRead) {
+            return forbiddenModuleRead;
+        }
     }
 
     const docType = DOCUMENT_TYPE_MAP[entity];
@@ -1723,8 +1717,13 @@ export async function POST(request: Request) {
                 return jsonNoStore({ error: 'User tidak boleh dihapus permanen' }, { status: 409 });
             }
 
-            if (session.role !== 'OWNER' && action !== 'update') {
-                return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
+            // Self-update always allowed for name/password changes.
+            // Other user management actions require userManagement module permission.
+            const targetId = typeof data.id === 'string' ? data.id : undefined;
+            if (action !== 'update' || targetId !== session._id) {
+                const mutationAction = getMutationPermissionAction(action);
+                const forbidden = forbidModuleAccess(session, entity, mutationAction);
+                if (forbidden) return forbidden;
             }
         } else {
             const specialMutationPermission = hasSpecialMutationPermission(session, entity, action);
@@ -1738,9 +1737,6 @@ export async function POST(request: Request) {
             }
         }
     }
-
-        const forbidden = forbidOwnerOnlyEntity(session, entity);
-        if (forbidden) return forbidden;
 
         if (LEGACY_READ_ONLY_ENTITIES.has(entity)) {
             return jsonNoStore(

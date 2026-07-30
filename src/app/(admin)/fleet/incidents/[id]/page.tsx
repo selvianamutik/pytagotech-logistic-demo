@@ -260,11 +260,11 @@ export default function IncidentDetailPage() {
     const { user } = useApp();
     const { addToast } = useToast();
     const incidentId = params.id as string;
-    const canManageIncident = user ? hasPermission(user.role, 'incidents', 'update') : false;
-    const canCreateExpense = user ? hasPermission(user.role, 'expenses', 'create') : false;
-    const canCreateTires = user ? hasPermission(user.role, 'tires', 'create') : false;
-    const canInstallTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
+    const canManageIncident = user ? hasPermission(user, 'incidents', 'update') : false;
+    const canCreateExpense = user ? hasPermission(user, 'expenses', 'create') : false;
+    const canCreateTires = user ? hasPermission(user, 'tires', 'create') : false;
+    const canInstallTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
 
     const [incident, setIncident] = useState<Incident | null>(null);
     const [logs, setLogs] = useState<IncidentActionLog[]>([]);

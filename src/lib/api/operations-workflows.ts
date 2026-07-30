@@ -1020,7 +1020,7 @@ export async function handleIncidentMaintenanceHandlingCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'maintenance', 'create')) {
+    if (!hasPermission(session, 'maintenance', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses mencatat penanganan maintenance insiden' }, { status: 403 });
     }
 
@@ -1455,7 +1455,7 @@ export async function handleIncidentSettlementLineTireFollowUpCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'tires', 'create')) {
+    if (!hasPermission(session, 'tires', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses mencatat aset ban' }, { status: 403 });
     }
 
@@ -1555,7 +1555,7 @@ export async function handleIncidentSettlementLineMaintenanceFollowUpCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'maintenance', 'create')) {
+    if (!hasPermission(session, 'maintenance', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses menjadwalkan maintenance' }, { status: 403 });
     }
 
@@ -1724,7 +1724,7 @@ export async function handleDriverDelete(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (session.role !== 'OWNER') {
+    if (!hasPermission(session, 'drivers', 'delete')) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
