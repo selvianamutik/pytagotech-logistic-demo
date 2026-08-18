@@ -719,6 +719,14 @@ async function evaluateImportRows(params: {
         ? normalizeNameKey(mapped[runtime.keyField])
         : normalizeCodeKey(mapped[runtime.keyField]);
       displayName = normalizeTextInput(mapped[runtime.nameField] || mapped[runtime.keyField]) || keyValue || '-';
+      if (params.target === 'suppliers') {
+        const termRaw = normalizeTextInput(mapped.defaultTermDays);
+        const isKontan = /^\s*kontan\s*$/i.test(termRaw) || termRaw === '0';
+        const termDisplay = isKontan ? 'Kontan' : termRaw ? `${termRaw} hari` : '';
+        if (termDisplay) {
+          displayName = `${displayName} (${termDisplay})`;
+        }
+      }
     }
 
     if (!keyValue && params.target !== 'customer-products' && params.target !== 'trip-route-rates') {

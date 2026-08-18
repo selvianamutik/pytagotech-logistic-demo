@@ -255,3 +255,8 @@ export const MASTER_DATA_IMPORT_TARGETS: MasterDataImportTargetConfig[] = [
 export function getMasterDataImportTargetConfig(target: string | null | undefined) {
   return MASTER_DATA_IMPORT_TARGETS.find((item) => item.target === target) || null;
 }
+
+export function getMasterDataImportExportColumns(target: MasterDataImportTarget): Array<{ header: string; key: string }> {
+  const config = getMasterDataImportTargetConfig(target);
+  return config ? config.fields.map((field) => ({ header: field.label, key: field.key })) : [];
+}

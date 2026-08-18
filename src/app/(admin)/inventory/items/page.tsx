@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownCircle, ArrowUpCircle, Edit, Package, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Edit, FileDown, Package, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import {
   formatInventoryQuantity,
   INVENTORY_UNIT_OPTIONS,
@@ -101,6 +103,7 @@ export default function WarehouseItemsPage() {
   const [movementForm, setMovementForm] = useState<MovementFormState>(createMovementForm());
 
   const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
+  const canExportItems = user ? hasPermission(user, 'warehouseItems', 'export') : false;
   const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
   const canOpenItemDetail = user ? hasPageAccess(user, 'warehouseItems') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active !== false), [suppliers]);
@@ -147,6 +150,52 @@ export default function WarehouseItemsPage() {
     const nextSearch = searchParams.get('q') || '';
     setSearch((current) => current === nextSearch ? current : nextSearch);
   }, [searchParams]);
+
+  const handleExport = async () => {
+    if (!canExportItems) return;
+    try {
+      const rows = await fetchAllAdminCollectionData<WarehouseItem>(
+        `/api/data?${buildQuery(1, 500)}`,
+        'Gagal memuat barang gudang untuk export',
+        500,
+      );
+      const supplierCodeByRef = new Map((suppliers || []).map((supplier) => [supplier._id, supplier.supplierCode]));
+      await exportToExcel(
+        (rows || []).map((item) => ({
+          itemCode: item.itemCode,
+          name: item.name,
+          category: item.category || '',
+          unit: item.unit,
+          trackingMode: item.trackingMode || 'STANDARD',
+          minStockQty: Number(item.minStockQty || 0),
+          defaultSupplierCode: item.defaultSupplierRef ? supplierCodeByRef.get(item.defaultSupplierRef) || '' : '',
+          defaultSupplierName: item.defaultSupplierName || '',
+          defaultPurchasePrice: Number(item.defaultPurchasePrice || 0),
+          tireTypeDefault: item.tireTypeDefault || '',
+          tireBrandDefault: item.tireBrandDefault || '',
+          tireSizeDefault: item.tireSizeDefault || '',
+          notes: item.notes || '',
+          active: item.active !== false ? 'Aktif' : 'Nonaktif',
+        })),
+        getMasterDataImportExportColumns('warehouse-items').map((column, index) => ({
+          ...column,
+          width: [16, 30, 18, 10, 16, 12, 16, 24, 18, 20, 18, 14, 28, 12][index] || 18,
+          ...(column.key === 'defaultPurchasePrice'
+            ? { formatter: (value: unknown) => Number(value || 0).toLocaleString('id-ID') }
+            : {}),
+        })),
+        `barang-gudang-${new Date().toISOString().slice(0, 10)}`,
+        'Barang Gudang',
+        {
+          title: 'Daftar Barang Gudang',
+          subtitle: search.trim() ? `Hasil pencarian: ${search.trim()}` : 'Semua barang gudang',
+        },
+      );
+      addToast('success', 'Excel barang gudang berhasil di-download');
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel barang gudang');
+    }
+  };
 
   const closeModal = () => { if (!saving) { setShowModal(false); setEditItem(null); setForm(createItemForm()); } };
   const closeMovementModal = () => { if (!savingMovement) { setShowMovementModal(false); setMovementItem(null); setMovementForm(createMovementForm()); } };
@@ -238,6 +287,7 @@ export default function WarehouseItemsPage() {
       <div className="page-header">
         <div className="page-header-left"><h1 className="page-title">Barang Gudang</h1></div>
         <div className="page-actions">
+          {canExportItems && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
           {canManage && <button className="btn btn-primary" onClick={openCreate}><Plus size={18} /> Tambah Barang</button>}
         </div>
       </div>

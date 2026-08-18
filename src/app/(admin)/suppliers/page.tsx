@@ -3,18 +3,20 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building2, Edit, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { Building2, Edit, FileDown, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { getMonthPrefix } from '@/lib/inventory-material-usage';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { hasPermission } from '@/lib/rbac';
 import { buildSupplierOwnerSummaryMap } from '@/lib/supplier-purchase-support';
 import type { Purchase, Supplier } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatSupplierTerm } from '@/lib/utils';
 
 import { useApp, useToast } from '../layout';
 
@@ -59,6 +61,7 @@ export default function SuppliersPage() {
     const [form, setForm] = useState<SupplierFormState>(createDefaultForm());
 
     const canManage = user ? hasPermission(user, 'suppliers', 'create') || hasPermission(user, 'suppliers', 'update') : false;
+    const canExportSuppliers = user ? hasPermission(user, 'suppliers', 'export') : false;
     const activeSuppliers = totalSuppliers - inactiveSuppliers;
     const today = getBusinessDateValue();
     const currentMonthPrefix = getMonthPrefix(today);
@@ -131,6 +134,42 @@ export default function SuppliersPage() {
     useEffect(() => {
         void loadSuppliers();
     }, [loadSuppliers]);
+
+    const handleExport = async () => {
+        if (!canExportSuppliers) return;
+        try {
+            const rows = await fetchAllAdminCollectionData<Supplier>(
+                `/api/data?${buildQuery(1, 500)}`,
+                'Gagal memuat supplier untuk export',
+                500,
+            );
+            await exportToExcel(
+                rows.map((supplier) => ({
+                    supplierCode: supplier.supplierCode,
+                    name: supplier.name,
+                    contactPerson: supplier.contactPerson || '',
+                    phone: supplier.phone || '',
+                    address: supplier.address || '',
+                    defaultTermDays: supplier.defaultTermDays,
+                    notes: supplier.notes || '',
+                    active: supplier.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('suppliers').map((column, index) => ({
+                    ...column,
+                    width: [16, 30, 22, 18, 35, 14, 28, 12][index] || 18,
+                })),
+                `supplier-${new Date().toISOString().slice(0, 10)}`,
+                'Supplier',
+                {
+                    title: 'Daftar Supplier',
+                    subtitle: search.trim() ? `Hasil pencarian: ${search.trim()}` : 'Semua supplier',
+                },
+            );
+            addToast('success', 'Excel supplier berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel supplier');
+        }
+    };
 
     useEffect(() => {
         setPage(1);
@@ -246,6 +285,7 @@ export default function SuppliersPage() {
                     <h1 className="page-title">Supplier</h1>
                 </div>
                 <div className="page-actions">
+                    {canExportSuppliers && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
                     {canManage && (
                         <button className="btn btn-primary" onClick={openCreate}>
                             <Plus size={18} /> Tambah Supplier
@@ -343,7 +383,7 @@ export default function SuppliersPage() {
                                         <div>{supplier.contactPerson || '-'}</div>
                                         <div className="text-muted text-xs">{supplier.phone || 'Tanpa telepon'}</div>
                                     </td>
-                                    <td>{supplier.defaultTermDays || 0} hari</td>
+                                    <td>{formatSupplierTerm(supplier.defaultTermDays)}</td>
                                     <td>
                                         <div>{formatCurrency(summary?.outstandingAmount || 0)}</div>
                                         <div className="text-muted text-xs">
@@ -420,7 +460,7 @@ export default function SuppliersPage() {
                                     </div>
                                     <div className="mobile-record-field">
                                         <span className="mobile-record-label">Termin</span>
-                                        <span className="mobile-record-value">{supplier.defaultTermDays || 0} hari</span>
+                                        <span className="mobile-record-value">{formatSupplierTerm(supplier.defaultTermDays)}</span>
                                     </div>
                                     <div className="mobile-record-field">
                                         <span className="mobile-record-label">Sisa Tagihan</span>
