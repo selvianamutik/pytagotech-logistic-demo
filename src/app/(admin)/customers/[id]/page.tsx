@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useApp, useToast } from '../../layout';
-import { Edit, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
+import { Edit, FileDown, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAdminData, fetchOptionalAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
 import { summarizeCustomerCreditUsage } from '@/lib/customer-credit-limit';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { FREIGHT_NOTA_BILLING_MODE_OPTIONS, getFreightNotaBillingModeLabel } from '@/lib/freight-nota-billing';
 import { buildPph23Label, DEFAULT_PPH23_RATE_PERCENT, PPH23_BASE_MODE_OPTIONS } from '@/lib/pph23';
 import { formatDate, formatCurrency, getReceivableNetAmount } from '@/lib/utils';
@@ -155,6 +157,7 @@ export default function CustomerDetailPage() {
     const [pickupForm, setPickupForm] = useState<CustomerPickupForm>(DEFAULT_PICKUP_FORM);
     const canOpenCustomerOrderHistory = user ? hasPageAccess(user, 'orders') : false;
     const canManageCustomer = user ? hasPermission(user, 'customers', 'update') : false;
+    const canExportCustomerProducts = user ? hasPermission(user, 'customers', 'export') : false;
 
     useEffect(() => {
         const loadCustomerDetail = async () => {
@@ -221,6 +224,40 @@ export default function CustomerDetailPage() {
         setEditProduct(null);
         setProductForm(DEFAULT_PRODUCT_FORM);
         setShowProductModal(true);
+    };
+
+    const handleExportProducts = async () => {
+        if (!canExportCustomerProducts) return;
+        try {
+            await exportToExcel(
+                customerProducts.map((product) => ({
+                    customerName: customer?.name || '',
+                    code: product.code || '',
+                    name: product.name,
+                    description: product.description || '',
+                    defaultQtyKoli: product.defaultQtyKoli || 1,
+                    defaultWeightInputValue: product.defaultWeightInputValue || 0,
+                    defaultWeightInputUnit: product.defaultWeightInputUnit || 'KG',
+                    defaultVolumeInputValue: product.defaultVolumeInputValue || 0,
+                    defaultVolumeInputUnit: product.defaultVolumeInputUnit || 'M3',
+                    notes: product.notes || '',
+                    active: product.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('customer-products').map((column, index) => ({
+                    ...column,
+                    width: [26, 16, 30, 30, 10, 14, 12, 14, 12, 24, 12][index] || 18,
+                })),
+                `master-barang-customer-${new Date().toISOString().slice(0, 10)}`,
+                'Master Barang Customer',
+                {
+                    title: `Master Barang Customer: ${customer?.name || customerId}`,
+                    subtitle: `${customerProducts.length} barang`,
+                },
+            );
+            addToast('success', 'Excel master barang customer berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel master barang customer');
+        }
     };
 
     const openEditProduct = (product: CustomerProduct) => {
@@ -1027,7 +1064,10 @@ export default function CustomerDetailPage() {
                 title={`Master Barang Customer (${customerProducts.length})`}
                 defaultOpen
             >
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    {canExportCustomerProducts && <button className="btn btn-secondary btn-sm" onClick={() => void handleExportProducts()}>
+                        <FileDown size={14} /> Excel
+                    </button>}
                     {canManageCustomer && <button className="btn btn-primary btn-sm" onClick={openNewProduct}>
                         <Plus size={14} /> Tambah Barang
                     </button>}

@@ -10,13 +10,15 @@ import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { addDaysToDateValue, getBusinessDateValue } from '@/lib/business-date';
 import {
   formatInventoryQuantity,
+  INVENTORY_UNIT_OPTIONS,
   isTireTrackedWarehouseItem,
   WAREHOUSE_ITEM_TRACKING_MODE_LABELS,
+  WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS,
 } from '@/lib/inventory';
 import { hasPermission } from '@/lib/rbac';
-import { normalizeTireType } from '@/lib/tire-types';
+import { normalizeTireType, TIRE_TYPE_OPTIONS } from '@/lib/tire-types';
 import type { Supplier, SupplierItemPrice, WarehouseItem } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatSupplierTerm } from '@/lib/utils';
 
 import { useApp, useToast } from '../../../layout';
 
@@ -27,10 +29,35 @@ type PurchaseLineForm = {
   orderedQty: number;
   unitPrice: number;
   notes: string;
+  newItemMode: boolean;
+  newItemName: string;
+  newItemCode: string;
+  newItemCategory: string;
+  newItemUnit: string;
+  newItemTrackingMode: 'STANDARD' | 'TIRE_ASSET';
+  newItemTireType: string;
+  newItemTireBrand: string;
+  newItemTireSize: string;
 };
 
 function createLine(): PurchaseLineForm {
-  return { rowId: crypto.randomUUID(), warehouseItemRef: '', supplierItemPriceRef: '', orderedQty: 0, unitPrice: 0, notes: '' };
+  return {
+    rowId: crypto.randomUUID(),
+    warehouseItemRef: '',
+    supplierItemPriceRef: '',
+    orderedQty: 0,
+    unitPrice: 0,
+    notes: '',
+    newItemMode: false,
+    newItemName: '',
+    newItemCode: '',
+    newItemCategory: '',
+    newItemUnit: 'PCS',
+    newItemTrackingMode: 'STANDARD',
+    newItemTireType: '',
+    newItemTireBrand: '',
+    newItemTireSize: '',
+  };
 }
 
 export default function PurchaseNewPage() {
@@ -49,6 +76,7 @@ export default function PurchaseNewPage() {
   const [lines, setLines] = useState<PurchaseLineForm[]>([createLine()]);
 
   const canCreatePurchase = user ? hasPermission(user, 'purchases', 'create') : false;
+  const canCreateWarehouseItem = user ? hasPermission(user, 'warehouseItems', 'create') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active !== false), [suppliers]);
   const activeItems = useMemo(() => items.filter((item) => item.active !== false), [items]);
   const selectedSupplier = useMemo(() => activeSuppliers.find((supplier) => supplier._id === supplierRef) || null, [activeSuppliers, supplierRef]);
@@ -119,7 +147,7 @@ export default function PurchaseNewPage() {
 
   useEffect(() => {
     if (selectedSupplier) {
-      setDueDate(addDaysToDateValue(orderDate, Number(selectedSupplier.defaultTermDays || 14)));
+      setDueDate(addDaysToDateValue(orderDate, Number(selectedSupplier.defaultTermDays ?? 14)));
     }
   }, [orderDate, selectedSupplier]);
 
@@ -155,11 +183,21 @@ export default function PurchaseNewPage() {
 
   const handleSave = async () => {
     if (!canCreatePurchase) return addToast('error', 'Anda tidak punya hak membuat pembelian');
-    const validLines = lines.filter((line) => line.warehouseItemRef && Number(line.orderedQty || 0) > 0);
+    const validLines = lines.filter((line) =>
+      (line.newItemMode ? Boolean(line.newItemName.trim()) : Boolean(line.warehouseItemRef)) && Number(line.orderedQty || 0) > 0,
+    );
     if (!supplierRef) return addToast('error', 'Supplier wajib dipilih');
     if (validLines.length === 0) return addToast('error', 'Isi minimal satu barang pembelian');
     if (validLines.some((line) => Number(line.unitPrice || 0) <= 0)) {
       return addToast('error', 'Harga per satuan wajib diisi lebih dari 0');
+    }
+    const missingTireDefaults = validLines.find((line) =>
+      line.newItemMode
+      && line.newItemTrackingMode === 'TIRE_ASSET'
+      && (!line.newItemTireType || !line.newItemTireBrand.trim() || !line.newItemTireSize.trim()),
+    );
+    if (missingTireDefaults) {
+      return addToast('error', 'Jenis, merk, dan ukuran ban wajib diisi untuk barang ban tertracking');
     }
     setSaving(true);
     try {
@@ -175,7 +213,24 @@ export default function PurchaseNewPage() {
             dueDate,
             notes: notes || undefined,
             items: validLines.map((line) => ({
-              warehouseItemRef: line.warehouseItemRef,
+              ...(line.newItemMode
+                ? {
+                    newItem: {
+                      name: line.newItemName.trim(),
+                      code: line.newItemCode.trim() || undefined,
+                      category: line.newItemCategory.trim() || undefined,
+                      unit: line.newItemUnit,
+                      trackingMode: line.newItemTrackingMode,
+                      ...(line.newItemTrackingMode === 'TIRE_ASSET'
+                        ? {
+                            tireTypeDefault: line.newItemTireType,
+                            tireBrandDefault: line.newItemTireBrand.trim(),
+                            tireSizeDefault: line.newItemTireSize.trim(),
+                          }
+                        : {}),
+                    },
+                  }
+                : { warehouseItemRef: line.warehouseItemRef }),
               supplierItemPriceRef: line.supplierItemPriceRef || undefined,
               orderedQty: line.orderedQty,
               unitPrice: line.unitPrice,
@@ -215,7 +270,7 @@ export default function PurchaseNewPage() {
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Jatuh Tempo</label><input type="date" className="form-input" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></div>
-              <div className="form-group"><label className="form-label">Termin Supplier</label><input className="form-input" value={selectedSupplier ? `${selectedSupplier.defaultTermDays || 0} hari` : '-'} readOnly /></div>
+              <div className="form-group"><label className="form-label">Termin Supplier</label><input className="form-input" value={selectedSupplier ? formatSupplierTerm(selectedSupplier.defaultTermDays) : '-'} readOnly /></div>
             </div>
             <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Catatan pembelian, nomor penawaran, atau instruksi supplier." /></div>
           </div>
@@ -231,15 +286,20 @@ export default function PurchaseNewPage() {
               const selectedItem = activeItems.find((item) => item._id === line.warehouseItemRef);
               const selectedSupplierPrice = line.supplierItemPriceRef ? supplierItemPrices.find((price) => price._id === line.supplierItemPriceRef) : null;
               const hasSupplierPriceHistory = line.warehouseItemRef ? supplierPriceHistoryByItem.has(line.warehouseItemRef) : false;
-              const isTrackedTireItem = isTireTrackedWarehouseItem(selectedItem);
+              const isNewItemLine = line.newItemMode;
+              const isTrackedTireItem = isNewItemLine
+                ? line.newItemTrackingMode === 'TIRE_ASSET'
+                : isTireTrackedWarehouseItem(selectedItem);
               const lineSubtotal = Number(line.orderedQty || 0) * Number(line.unitPrice || 0);
-              const priceHelpText = selectedSupplierPrice
-                ? `Harga dari supplier ${selectedSupplier?.name || ''}: ${formatCurrency(Number(selectedSupplierPrice.defaultPurchasePrice || 0))}`
-                : hasSupplierPriceHistory
-                  ? 'Belum ada harga supplier yang berlaku di tanggal pembelian ini. Isi harga manual atau ubah masa berlaku harga di Supplier.'
-                  : selectedItem && Number(selectedItem.defaultPurchasePrice || 0) > 0
-                    ? `Belum ada harga supplier. Sementara memakai harga default barang: ${formatCurrency(Number(selectedItem.defaultPurchasePrice || 0))}`
-                    : 'Isi harga manual untuk barang ini.';
+              const priceHelpText = isNewItemLine
+                ? 'Barang baru: harga ini dipakai sebagai Harga Beli Default di Barang Gudang.'
+                : selectedSupplierPrice
+                  ? `Harga dari supplier ${selectedSupplier?.name || ''}: ${formatCurrency(Number(selectedSupplierPrice.defaultPurchasePrice || 0))}`
+                  : hasSupplierPriceHistory
+                    ? 'Belum ada harga supplier yang berlaku di tanggal pembelian ini. Isi harga manual atau ubah masa berlaku harga di Supplier.'
+                    : selectedItem && Number(selectedItem.defaultPurchasePrice || 0) > 0
+                      ? `Belum ada harga supplier. Sementara memakai harga default barang: ${formatCurrency(Number(selectedItem.defaultPurchasePrice || 0))}`
+                      : 'Isi harga manual untuk barang ini.';
               return (
                 <div key={line.rowId} className="card" style={{ border: '1px solid var(--color-border)' }}>
                   <div className="card-body">
@@ -248,15 +308,57 @@ export default function PurchaseNewPage() {
                       {lines.length > 1 && <button className="btn btn-secondary" type="button" onClick={() => removeLine(line.rowId)}><Trash2 size={16} /> Hapus</button>}
                     </div>
                     <div className="form-row">
-                      <div className="form-group"><label className="form-label">Barang</label><select className="form-select" value={line.warehouseItemRef} onChange={(event) => handleItemChange(line.rowId, event.target.value)}><option value="">Pilih barang</option>{activeItems.map((item) => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select></div>
+                      <div className="form-group">
+                        <label className="form-label">{isNewItemLine ? 'Barang Baru' : 'Barang'}</label>
+                        {isNewItemLine ? (
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input type="text" className="form-input" style={{ flex: 1 }} value={line.newItemName} onChange={(event) => updateLine(line.rowId, { newItemName: event.target.value })} placeholder="Ketik nama barang baru" />
+                            <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => updateLine(line.rowId, { newItemMode: false })}>Pilih barang</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                            <select className="form-select" style={{ flex: 1 }} value={line.warehouseItemRef} onChange={(event) => handleItemChange(line.rowId, event.target.value)}><option value="">Pilih barang</option>{activeItems.map((item) => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select>
+                            {canCreateWarehouseItem && (
+                              <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => updateLine(line.rowId, { newItemMode: true })}><Plus size={14} /> Barang Baru</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <div className="form-group"><label className="form-label">Jumlah Dibeli</label><FormattedNumberInput min={0} maxFractionDigits={isTrackedTireItem ? 0 : 3} allowDecimal={!isTrackedTireItem} value={line.orderedQty} onValueChange={(value) => updateLine(line.rowId, { orderedQty: value })} /></div>
                     </div>
+                    {isNewItemLine && (
+                      <>
+                        <div className="form-row">
+                          <div className="form-group"><label className="form-label">Kode Barang <span className="text-muted">(opsional)</span></label><input type="text" className="form-input" value={line.newItemCode} onChange={(event) => updateLine(line.rowId, { newItemCode: event.target.value })} placeholder="Kosongkan untuk otomatis" /></div>
+                          <div className="form-group"><label className="form-label">Kategori</label><input type="text" className="form-input" value={line.newItemCategory} onChange={(event) => updateLine(line.rowId, { newItemCategory: event.target.value })} placeholder="Opsional" /></div>
+                        </div>
+                        <div className="form-row">
+                          <div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={line.newItemUnit} onChange={(event) => updateLine(line.rowId, { newItemUnit: event.target.value })}>{INVENTORY_UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+                          <div className="form-group"><label className="form-label">Mode Barang</label><select className="form-select" value={line.newItemTrackingMode} onChange={(event) => updateLine(line.rowId, { newItemTrackingMode: event.target.value as 'STANDARD' | 'TIRE_ASSET' })}>{WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => <option key={option} value={option}>{WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option]}</option>)}</select></div>
+                        </div>
+                        {line.newItemTrackingMode === 'TIRE_ASSET' && (
+                          <div className="form-row">
+                            <div className="form-group"><label className="form-label">Jenis Ban Default</label><select className="form-select" value={line.newItemTireType} onChange={(event) => updateLine(line.rowId, { newItemTireType: event.target.value })}><option value="">Pilih jenis ban</option>{TIRE_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+                            <div className="form-group"><label className="form-label">Merk Ban Default</label><input type="text" className="form-input" value={line.newItemTireBrand} onChange={(event) => updateLine(line.rowId, { newItemTireBrand: event.target.value })} /></div>
+                            <div className="form-group"><label className="form-label">Ukuran Ban Default</label><input type="text" className="form-input" value={line.newItemTireSize} onChange={(event) => updateLine(line.rowId, { newItemTireSize: event.target.value })} /></div>
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div className="form-row">
                       <div className="form-group"><label className="form-label">Harga per Satuan (Rp)</label><FormattedNumberInput allowDecimal={false} value={line.unitPrice} onValueChange={(value) => updateLine(line.rowId, { unitPrice: value })} placeholder="Ketik harga satuan" /></div>
                       <div className="form-group"><label className="form-label">Subtotal</label><input className="form-input" value={lineSubtotal > 0 ? formatCurrency(lineSubtotal) : '-'} readOnly /></div>
                     </div>
                     <div className="form-group"><label className="form-label">Catatan Barang</label><textarea className="form-textarea" rows={2} value={line.notes} onChange={(event) => updateLine(line.rowId, { notes: event.target.value })} /></div>
-                    {selectedItem && (
+                    {isNewItemLine ? (
+                      <div className="text-muted text-xs" style={{ display: 'grid', gap: '0.2rem' }}>
+                        <div>Barang baru langsung dibuat di Barang Gudang saat pembelian disimpan, mode {WAREHOUSE_ITEM_TRACKING_MODE_LABELS[line.newItemTrackingMode]}, satuan {line.newItemUnit}.</div>
+                        <div>Kode dikosongkan akan dibuat otomatis. Harga satuan ini dipakai sebagai Harga Beli Default, supplier default memakai supplier pembelian.</div>
+                        {line.newItemTrackingMode === 'TIRE_ASSET' && (
+                          <div>Saat barang diterima, sistem otomatis membuat kartu ban per unit dengan {line.newItemTireBrand || '-'} | {line.newItemTireSize || '-'} | {normalizeTireType(line.newItemTireType)}.</div>
+                        )}
+                      </div>
+                    ) : selectedItem && (
                       <div className="text-muted text-xs" style={{ display: 'grid', gap: '0.2rem' }}>
                         <div>Satuan {selectedItem.unit} | Stok saat ini {formatInventoryQuantity(selectedItem.currentStockQty || 0)} {selectedItem.unit}</div>
                         <div>{priceHelpText}</div>

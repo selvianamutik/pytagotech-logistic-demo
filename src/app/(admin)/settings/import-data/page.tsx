@@ -289,7 +289,7 @@ export default function ImportDataPage() {
           </div>
           <div className="table-toolbar-right">
             <button className="btn btn-secondary" onClick={() => void submitImportRequest('preview')} disabled={loadingPreview || importing || rows.length === 0}>
-              <RefreshCw size={16} /> {loadingPreview ? 'Validasi...' : 'Preview'}
+              <RefreshCw size={16} /> {loadingPreview ? 'Validasi...' : 'Validasi'}
             </button>
             <button className="btn btn-primary" onClick={() => void submitImportRequest('commit')} disabled={!canCommit}>
               <Save size={16} /> {importing ? 'Mengimport...' : 'Commit Import'}

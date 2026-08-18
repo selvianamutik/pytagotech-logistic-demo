@@ -25,7 +25,7 @@ import {
   type SupplierRelatedItem,
 } from '@/lib/supplier-purchase-support';
 import type { Purchase, PurchaseItem, PurchasePayment, Supplier, SupplierItemPrice, WarehouseItem } from '@/lib/types';
-import { formatCurrency, formatDate, formatQuantity } from '@/lib/utils';
+import { formatCurrency, formatDate, formatQuantity, formatSupplierTerm } from '@/lib/utils';
 
 import { useApp, useToast } from '../../layout';
 
@@ -510,7 +510,7 @@ export default function SupplierDetailPage() {
             </div>
             <div className="detail-row">
               <span className="detail-label">Termin Default</span>
-              <span className="detail-value">{supplier.defaultTermDays || 0} hari</span>
+              <span className="detail-value">{formatSupplierTerm(supplier.defaultTermDays)}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Status</span>

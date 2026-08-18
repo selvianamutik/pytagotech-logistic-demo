@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useApp, useToast } from '../layout';
-import { Plus, Search, Edit, Trash2, Users, Save, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Users, Save, X, FileDown } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { formatCreditLimitCurrency } from '@/lib/customer-credit-limit';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import type { Customer } from '@/lib/types';
@@ -34,6 +36,7 @@ export default function CustomersPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const canCreateCustomers = user ? hasPermission(user, 'customers', 'create') : false;
     const canManageCustomers = user ? hasPermission(user, 'customers', 'update') : false;
+    const canExportCustomers = user ? hasPermission(user, 'customers', 'export') : false;
 
     const buildCustomersQuery = useCallback((targetPage = page, targetPageSize = DEFAULT_PAGE_SIZE) => {
         const params = new URLSearchParams({
@@ -121,6 +124,41 @@ export default function CustomersPage() {
     useEffect(() => {
         setPage(1);
     }, [search]);
+
+    const handleExport = async () => {
+        if (!canExportCustomers) return;
+        try {
+            const rows = await fetchAllMatchingCustomers();
+            await exportToExcel(
+                rows.map((customer) => ({
+                    name: customer.name,
+                    address: customer.address || '',
+                    contactPerson: customer.contactPerson || '',
+                    phone: customer.phone || '',
+                    email: customer.email || '',
+                    defaultPaymentTerm: customer.defaultPaymentTerm,
+                    creditLimitAmount: customer.creditLimitAmount || 0,
+                    npwp: customer.npwp || '',
+                    deliveryOrderPrefix: customer.deliveryOrderPrefix || 'SJ',
+                    active: customer.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('customers').map((column, index) => ({
+                    ...column,
+                    width: [30, 35, 22, 18, 26, 14, 18, 22, 12, 12][index] || 18,
+                    ...(column.key === 'creditLimitAmount' ? { formatter: (value: unknown) => Number(value || 0).toLocaleString('id-ID') } : {}),
+                })),
+                `customer-${new Date().toISOString().slice(0, 10)}`,
+                'Customer',
+                {
+                    title: 'Daftar Customer',
+                    subtitle: search.trim() ? `Hasil pencarian: ${search.trim()}` : 'Semua customer',
+                },
+            );
+            addToast('success', 'Excel customer berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel customer');
+        }
+    };
 
     const openNew = () => {
         setEditItem(null);
@@ -231,6 +269,7 @@ export default function CustomersPage() {
                     <h1 className="page-title">Customer</h1>
                 </div>
                 <div className="page-actions">
+                    {canExportCustomers && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
                     {canCreateCustomers && <button className="btn btn-primary" onClick={openNew}>
                         <Plus size={18} /> Tambah Customer
                     </button>}

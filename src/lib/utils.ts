@@ -77,6 +77,11 @@ export function formatQuantity(
     }).format(numeric);
 }
 
+export function formatSupplierTerm(days: number | null | undefined): string {
+    if (days === 0) return 'Kontan';
+    return `${days ?? 0} hari`;
+}
+
 export function formatInternalDeliveryOrderNumber(value: {
     customerDoNumber?: string | null;
     doNumber?: string | null;

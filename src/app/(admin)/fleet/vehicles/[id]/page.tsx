@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useApp, useToast } from '../../../layout';
-import { Car, Wrench, AlertTriangle, Truck, Edit, Plus, Disc3, Warehouse, ExternalLink, Save, History } from 'lucide-react';
+import { Car, Wrench, AlertTriangle, Truck, Edit, Plus, Disc3, Warehouse, ExternalLink, Save, History, Printer } from 'lucide-react';
 import {
     VEHICLE_STATUS_MAP,
     MAINTENANCE_STATUS_MAP,
@@ -48,10 +48,58 @@ import {
     getInstalledVehicleComponentRows,
     getMaintenanceMaterialOverflowCount,
     getMaintenanceMaterialPreview,
+    getMaintenanceMaterialSummary,
     getMaintenanceRecordedCost,
     isWarehouseStockMaintenanceMaterialUsage,
 } from '@/lib/maintenance';
 import { getTireHistoryActionColor, getTireHistoryActionLabel } from '@/lib/tire-history';
+import { escapePrintHtml, fetchCompanyProfile, openBrandedPrint, openPrintWindow } from '@/lib/print';
+
+function buildMaintenanceCostDescriptionText(maintenance: Maintenance) {
+    const materialCost = typeof maintenance.materialCostTotal === 'number' ? maintenance.materialCostTotal : 0;
+    const laborCost = typeof maintenance.laborCost === 'number' ? maintenance.laborCost : 0;
+    const parts = [maintenance.type];
+    if (maintenance.materialUsageCount) {
+        parts.push(getMaintenanceMaterialSummary(maintenance));
+    }
+    if (materialCost > 0 || laborCost > 0) {
+        const costParts: string[] = [];
+        if (materialCost > 0) costParts.push(`Material ${formatCurrency(materialCost)}`);
+        if (laborCost > 0) costParts.push(`Jasa ${formatCurrency(laborCost)}`);
+        parts.push(costParts.join(' | '));
+    }
+    return parts.filter(Boolean).join(' | ');
+}
+
+function buildVehicleMaintenanceCostPrintHtml(
+    rows: Array<{ date: string; source: string; description: string; amount: number }>,
+    total: number,
+) {
+    const rowHtml = rows.length === 0
+        ? '<tr><td colspan="4" style="text-align:center;padding:2rem;color:#94a3b8;">Belum ada biaya maintenance</td></tr>'
+        : rows.map(row => `<tr>
+                <td>${escapePrintHtml(formatDate(row.date))}</td>
+                <td class="b">${escapePrintHtml(row.source)}</td>
+                <td>${escapePrintHtml(row.description)}</td>
+                <td class="r b">${escapePrintHtml(formatCurrency(row.amount))}</td>
+            </tr>`).join('');
+    return `
+        <table>
+            <thead>
+                <tr><th>Tanggal</th><th>Sumber</th><th>Deskripsi</th><th class="r">Jumlah</th></tr>
+            </thead>
+            <tbody>
+                ${rowHtml}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" class="r b" style="padding-top:0.75rem;border-top:2px solid #1e293b;">Total Biaya Maintenance</td>
+                    <td class="r b" style="padding-top:0.75rem;border-top:2px solid #1e293b;">${escapePrintHtml(formatCurrency(total))}</td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
 
 function isTripOrDriverExpense(expense: Expense) {
     return Boolean(expense.voucherRef || expense.boronganRef) || expense.categoryScope === 'TRIP' || expense.categoryScope === 'DRIVER_FEE';
@@ -336,6 +384,7 @@ export default function VehicleDetailPage() {
                     id: `maintenance-${maintenance._id}-tire-${index}`,
                     date: maintenance.completedDate || maintenance.plannedDate || '',
                     source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance Ban</Link>,
+                    sourceText: 'Maintenance Ban',
                     description: (
                         <div style={{ display: 'grid', gap: '0.2rem' }}>
                             <div>{usage.itemName || usage.itemCode || maintenance.type}</div>
@@ -343,18 +392,21 @@ export default function VehicleDetailPage() {
                             {usage.note && <div className="text-muted text-sm">{usage.note}</div>}
                         </div>
                     ),
+                    descriptionText: [usage.itemName || usage.itemCode || maintenance.type, maintenance.type, usage.note].filter(Boolean).join(' | '),
                     amount: usage.subtotalCost || 0,
                     })),
                     ...(laborCost > 0 ? [{
                         id: `maintenance-${maintenance._id}-technician`,
                         date: maintenance.completedDate || maintenance.plannedDate || '',
                         source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance Ban</Link>,
+                        sourceText: 'Maintenance Ban',
                         description: (
                             <div style={{ display: 'grid', gap: '0.2rem' }}>
                                 <div>Biaya teknisi ban</div>
                                 <div className="text-muted text-sm">{maintenance.vendor || maintenance.type}</div>
                             </div>
                         ),
+                        descriptionText: ['Biaya teknisi ban', maintenance.vendor || maintenance.type].filter(Boolean).join(' | '),
                         amount: laborCost,
                     }] : []),
                 ];
@@ -364,7 +416,9 @@ export default function VehicleDetailPage() {
                 id: `maintenance-${maintenance._id}`,
                 date: maintenance.completedDate || maintenance.plannedDate || '',
                 source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance</Link>,
+                sourceText: 'Maintenance',
                 description: renderMaintenanceCostDescription(maintenance),
+                descriptionText: buildMaintenanceCostDescriptionText(maintenance),
                 amount: getMaintenanceRecordedCost(maintenance),
             }];
         });
@@ -377,6 +431,7 @@ export default function VehicleDetailPage() {
             id: `tire-usage-${row._id}`,
             date: row.timestamp || '',
             source: <Link href={`/fleet/tires/${row.tireEventRef}`} style={{ color: 'var(--color-primary)' }}>Pemakaian Ban</Link>,
+            sourceText: 'Pemakaian Ban',
             description: (
                 <div style={{ display: 'grid', gap: '0.2rem' }}>
                     <div>{row.tireCode || row.tireEventRef}</div>
@@ -384,6 +439,11 @@ export default function VehicleDetailPage() {
                     <div className="text-muted text-sm">Pemakaian {formatQuantity(row.usagePercent || 0, 2)}% | sisa {formatQuantity(row.remainingPercentAfter || 0, 2)}% ({formatCurrency(row.remainingValueAfter || 0)})</div>
                 </div>
             ),
+            descriptionText: [
+                row.tireCode || row.tireEventRef,
+                row.fromPlacementLabel && row.toPlacementLabel ? `${row.fromPlacementLabel} -> ${row.toPlacementLabel}` : '',
+                `Pemakaian ${formatQuantity(row.usagePercent || 0, 2)}% | sisa ${formatQuantity(row.remainingPercentAfter || 0, 2)}% (${formatCurrency(row.remainingValueAfter || 0)})`,
+            ].filter(Boolean).join(' | '),
             amount: Number(row.usageCost || 0),
         }));
     const renderIncidentCostSummary = (incident: Incident) => {
@@ -479,6 +539,7 @@ export default function VehicleDetailPage() {
                 id: `current-tire-${tire._id}`,
                 date: tire.installDate || '',
                 source: 'Ban Terpasang',
+                sourceText: 'Ban Terpasang',
                 description: (
                     <div style={{ display: 'grid', gap: '0.2rem' }}>
                         <div>{tire.tireCodeLabel} - {slot.slotCode} ({formatTireSlotLabel(slot.slotCode)})</div>
@@ -490,6 +551,11 @@ export default function VehicleDetailPage() {
                         </div>
                     </div>
                 ),
+                descriptionText: [
+                    `${tire.tireCodeLabel} - ${slot.slotCode} (${formatTireSlotLabel(slot.slotCode)})`,
+                    `Original ${formatCurrency(originalCost)} | Terpakai ${formatQuantity(totalUsedPercent, 2)}% | Sisa ${formatQuantity(remainingPercent, 2)}% (${formatCurrency(remainingValue)})`,
+                    'Nilai ban terpasang dihitung dari sisa persentase ban saat ini.',
+                ].filter(Boolean).join(' | '),
                 amount: remainingValue,
             };
         });
@@ -512,12 +578,14 @@ export default function VehicleDetailPage() {
                 id: expense._id,
                 date: expense.date || '',
                 source,
+                sourceText: expense.relatedMaintenanceRef ? 'Maintenance' : (expense.categoryName || 'Maintenance'),
                 description: (
                     <div style={{ display: 'grid', gap: '0.2rem' }}>
                         <div>{expense.note || expense.description || '-'}</div>
                         {documentLink && <div className="text-muted text-sm">{documentLink}</div>}
                     </div>
                 ),
+                descriptionText: expense.note || expense.description || '-',
                 amount: expense.amount,
             };
         }),
@@ -526,6 +594,33 @@ export default function VehicleDetailPage() {
         ...currentVehicleTireCostRows,
     ].sort((left, right) => `${right.date}-${right.id}`.localeCompare(`${left.date}-${left.id}`));
     const totalMaintenanceExpense = vehicleCostRows.reduce((sum, row) => sum + row.amount, 0);
+
+    const handlePrintMaintenanceCosts = async () => {
+        const printWindow = openPrintWindow('Menyiapkan cetak biaya maintenance...');
+        if (!printWindow) return addToast('error', 'Popup browser diblok. Izinkan pop-up lalu coba cetak lagi.');
+        try {
+            const company = await fetchCompanyProfile().catch(() => null);
+            openBrandedPrint({
+                title: 'Biaya Maintenance Unit',
+                subtitle: vehicle ? `${vehicle.plateNumber} - ${vehicle.unitCode}` : undefined,
+                company,
+                targetWindow: printWindow,
+                bodyHtml: buildVehicleMaintenanceCostPrintHtml(
+                    vehicleCostRows.map(row => ({
+                        date: row.date,
+                        source: row.sourceText,
+                        description: row.descriptionText,
+                        amount: row.amount,
+                    })),
+                    totalMaintenanceExpense,
+                ),
+                extraStyles: 'td { vertical-align: top; } td:nth-child(3) { word-break: break-word; }',
+            });
+        } catch {
+            try { printWindow.close(); } catch {}
+            addToast('error', 'Gagal menyiapkan dokumen cetak');
+        }
+    };
     const requiresSourceTireUsagePercent = Boolean(
         selectedRegisteredTire?.holderType === 'INTERNAL_VEHICLE' &&
         selectedRegisteredTire.vehicleRef &&
@@ -1279,10 +1374,13 @@ export default function VehicleDetailPage() {
 
             {tab === 'biaya' && canViewExpenses && (
                 <div className="card">
-                    <div className="card-header">
+                    <div className="card-header" style={{ justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                         <div>
                             <span className="card-header-title">Biaya Maintenance Unit</span>
                         </div>
+                        <button className="btn btn-secondary btn-sm" onClick={() => void handlePrintMaintenanceCosts()}>
+                            <Printer size={14} /> Print
+                        </button>
                     </div>
                     <div className="card-body">
                         <div className="table-wrapper"><table>
