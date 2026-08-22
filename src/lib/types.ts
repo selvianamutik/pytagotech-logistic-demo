@@ -1700,6 +1700,7 @@ export interface BankAccount {
   systemKey?: string;
   initialBalance: number;
   currentBalance: number;
+  transactionCount?: number;
   active: boolean;
   notes?: string;
 }
