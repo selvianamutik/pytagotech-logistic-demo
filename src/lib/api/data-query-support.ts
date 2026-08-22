@@ -981,12 +981,19 @@ export function applyDerivedBankAccountBalances<
         return acc;
     }, {});
 
+    const countsByAccount = transactionRows.reduce<Record<string, number>>((acc, tx) => {
+        if (!tx.bankAccountRef) return acc;
+        acc[tx.bankAccountRef] = (acc[tx.bankAccountRef] || 0) + 1;
+        return acc;
+    }, {});
+
     return accounts.map(account => {
         const initialBalance = parseFormattedNumberish(account.initialBalance ?? 0, { maxFractionDigits: 0 });
         return {
             ...account,
             initialBalance,
             currentBalance: initialBalance + (deltasByAccount[account._id] || 0),
+            transactionCount: countsByAccount[account._id] || 0,
         };
     });
 }

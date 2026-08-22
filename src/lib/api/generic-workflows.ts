@@ -84,7 +84,7 @@ import {
     normalizeEmployeePayload,
 } from './employee-workflows';
 import { handleFreightNotaDelete } from './finance-workflows';
-import { postBankAccountOpeningBalanceJournal } from './accounting-posting';
+import { postBankAccountOpeningBalanceJournal, voidJournalEntryForSource } from './accounting-posting';
 import {
     handleDriverUpdate,
     handleDriverDelete,
@@ -1419,6 +1419,7 @@ export async function handleGenericUpdate(
     const updates: Record<string, unknown> = { ...updatesInput };
     let sanitizedEntityUpdates: Record<string, unknown> | null = null;
     let selectedTripRouteRateRevision: { _id: string; _rev?: string } | null = null;
+    let bankAccountInitialBalanceChanged = false;
 
     if (isProtectedLedgerEntity(entity)) {
         return NextResponse.json({ error: 'Entri keuangan yang sudah terposting tidak boleh diubah lewat API umum' }, { status: 409 });
@@ -1987,8 +1988,17 @@ export async function handleGenericUpdate(
     }
 
     if (entity === 'bank-accounts') {
-        if ('currentBalance' in updates || 'initialBalance' in updates) {
+        if ('currentBalance' in updates) {
             return NextResponse.json({ error: 'Saldo rekening tidak boleh diubah manual lewat API umum' }, { status: 409 });
+        }
+        if ('initialBalance' in updates) {
+            const existingTransactionRows = await listDocumentsByFilter<Pick<BankTransaction, '_id'>>('bankTransaction', {
+                bankAccountRef: id,
+            });
+            if (existingTransactionRows.length > 0) {
+                return NextResponse.json({ error: 'Saldo awal tidak dapat diubah karena rekening / kas ini sudah memiliki transaksi' }, { status: 409 });
+            }
+            bankAccountInitialBalanceChanged = true;
         }
         if ('active' in updates) {
             return NextResponse.json({ error: 'Status rekening hanya boleh diubah lewat aksi nonaktifkan resmi' }, { status: 409 });
@@ -1997,7 +2007,7 @@ export async function handleGenericUpdate(
             return NextResponse.json({ error: 'Tipe dan kunci sistem rekening tidak boleh diubah manual' }, { status: 409 });
         }
 
-        const existingAccount = await getDocumentById<BankAccountSummary>(id, 'bankAccount');
+        const existingAccount = await getDocumentById<BankAccountSummary & { initialBalance?: number }>(id, 'bankAccount');
         if (!existingAccount) {
             return NextResponse.json({ error: 'Rekening tidak ditemukan' }, { status: 404 });
         }
@@ -2009,6 +2019,17 @@ export async function handleGenericUpdate(
 
         try {
             sanitizedEntityUpdates = await normalizeBankAccountPayload(updates, existingAccount as unknown as Record<string, unknown>);
+            if (
+                bankAccountInitialBalanceChanged
+                && sanitizedEntityUpdates
+                && typeof sanitizedEntityUpdates.initialBalance === 'number'
+            ) {
+                if (sanitizedEntityUpdates.initialBalance === existingAccount.initialBalance) {
+                    bankAccountInitialBalanceChanged = false;
+                } else {
+                    sanitizedEntityUpdates.currentBalance = sanitizedEntityUpdates.initialBalance;
+                }
+            }
         } catch (error) {
             return NextResponse.json(
                 { error: error instanceof Error ? error.message : 'Data rekening / kas tidak valid' },
@@ -2144,6 +2165,22 @@ export async function handleGenericUpdate(
     }
     if (!updated) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (entity === 'bank-accounts' && bankAccountInitialBalanceChanged) {
+        await voidJournalEntryForSource(session, 'BANK_ACCOUNT', id, 'OPENING_BALANCE');
+        await postBankAccountOpeningBalanceJournal(
+            session,
+            updated as unknown as {
+                _id: string;
+                bankName: string;
+                accountNumber: string;
+                accountType?: 'BANK' | 'CASH';
+                systemKey?: string;
+                initialBalance: number;
+            },
+            getBusinessDateValue(),
+        );
     }
 
     if (entity === 'customer-recipients' && normalizedUpdates.isDefault === true) {
@@ -3060,7 +3097,7 @@ export async function handleGenericCreate(
             return NextResponse.json({ error: 'Akun sistem tidak boleh dibuat manual' }, { status: 409 });
         }
         try {
-            Object.assign(newDoc, normalizeBankAccountPayload(data));
+            Object.assign(newDoc, await normalizeBankAccountPayload(data));
         } catch (error) {
             return NextResponse.json(
                 { error: error instanceof Error ? error.message : 'Data rekening / kas tidak valid' },

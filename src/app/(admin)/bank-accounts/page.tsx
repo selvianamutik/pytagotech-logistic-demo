@@ -59,6 +59,7 @@ export default function BankAccountsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState(createDefaultBankAccountForm());
   const [transferForm, setTransferForm] = useState(createDefaultBankTransferForm());
+  const editingSystemCash = !!editAccount && isCashAccount(editAccount);
   const canCreateBankAccounts = user ? hasPermission(user, "bankAccounts", "create") : false;
   const canManageBankAccounts = user ? hasPermission(user, "bankAccounts", "update") : false;
   const canDeleteBankAccounts = user ? hasPermission(user, "bankAccounts", "delete") : false;
@@ -226,6 +227,9 @@ export default function BankAccountsPage() {
       return;
     }
 
+    const canEditInitialBalance =
+      !editAccount || (editAccount.transactionCount ?? 0) === 0;
+
     const body = editAccount
       ? {
           entity: "bank-accounts",
@@ -233,10 +237,17 @@ export default function BankAccountsPage() {
           data: {
             id: editAccount._id,
             updates: {
-              bankName: normalizedForm.bankName,
-              accountNumber: normalizedForm.accountNumber,
-              accountHolder: normalizedForm.accountHolder,
+              ...(editingSystemCash
+                ? {}
+                : {
+                    bankName: normalizedForm.bankName,
+                    accountNumber: normalizedForm.accountNumber,
+                    accountHolder: normalizedForm.accountHolder,
+                  }),
               notes: normalizedForm.notes,
+              ...(canEditInitialBalance
+                ? { initialBalance: normalizedForm.initialBalance }
+                : {}),
             },
           },
         }
@@ -668,7 +679,7 @@ export default function BankAccountsPage() {
                       >
                         <Eye size={13} /> Detail
                       </Link>
-                      {canManageBankAccounts && !systemCash && (
+                      {canManageBankAccounts && (
                         <button
                           className="btn btn-sm btn-secondary"
                           onClick={() => openEdit(account)}
@@ -740,7 +751,11 @@ export default function BankAccountsPage() {
           >
             <div className="modal-header">
               <h3 className="modal-title">
-                {editAccount ? "Edit Rekening" : "Tambah Rekening Baru"}
+                {editAccount
+                  ? editingSystemCash
+                    ? "Edit Kas Tunai"
+                    : "Edit Rekening"
+                  : "Tambah Rekening Baru"}
               </h3>
               <button
                 className="modal-close"
@@ -769,6 +784,7 @@ export default function BankAccountsPage() {
                       <button
                         key={key}
                         type="button"
+                        disabled={editingSystemCash}
                         onClick={() =>
                           setForm({ ...form, bankName: preset.label })
                         }
@@ -810,10 +826,16 @@ export default function BankAccountsPage() {
                   className="form-input"
                   placeholder="Atau ketik nama bank manual..."
                   value={form.bankName}
+                  disabled={editingSystemCash}
                   onChange={(event) =>
                     setForm({ ...form, bankName: event.target.value })
                   }
                 />
+                {editingSystemCash && (
+                  <div className="form-hint">
+                    Identitas Kas Tunai sistem tidak dapat diubah.
+                  </div>
+                )}
               </div>
               <div className="form-row">
                 <div className="form-group">
@@ -823,6 +845,7 @@ export default function BankAccountsPage() {
                   <input
                     className="form-input"
                     value={form.accountNumber}
+                    disabled={editingSystemCash}
                     onChange={(event) =>
                       setForm({ ...form, accountNumber: event.target.value })
                     }
@@ -835,6 +858,7 @@ export default function BankAccountsPage() {
                   <input
                     className="form-input"
                     value={form.accountHolder}
+                    disabled={editingSystemCash}
                     onChange={(event) =>
                       setForm({ ...form, accountHolder: event.target.value })
                     }
@@ -842,7 +866,7 @@ export default function BankAccountsPage() {
                   />
                 </div>
               </div>
-              {!editAccount && (
+              {!editAccount || (editAccount.transactionCount ?? 0) === 0 ? (
                 <div className="form-group">
                   <label className="form-label">Saldo Awal (Rp)</label>
                   <FormattedNumberInput allowDecimal={false}
@@ -855,6 +879,19 @@ export default function BankAccountsPage() {
                     }
                     placeholder="Ketik saldo awal"
                   />
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label className="form-label">Saldo Awal (Rp)</label>
+                  <FormattedNumberInput allowDecimal={false}
+                    value={form.initialBalance}
+                    onValueChange={() => {}}
+                    placeholder="Ketik saldo awal"
+                    disabled
+                  />
+                  <div className="form-hint">
+                    Saldo awal tidak dapat diubah karena sudah ada transaksi pada rekening / kas ini.
+                  </div>
                 </div>
               )}
               <div className="form-group">
