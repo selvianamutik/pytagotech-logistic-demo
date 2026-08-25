@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 
 import '../../../app.dart';
 import '../../../shared/branding.dart';
+import '../../auth/presentation/account_settings_page.dart';
 import '../data/driver_access_service.dart';
 import '../data/delivery_order_service.dart';
 import '../data/driver_tracking_service.dart';
@@ -2194,6 +2195,18 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     return null;
   }
 
+  Future<void> _openAccountSettings() async {
+    final nameChanged = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AccountSettingsPage(session: _session),
+      ),
+    );
+    if (nameChanged != true || !mounted) return;
+    await _refreshDriverSession();
+    if (!mounted) return;
+    _showSuccess('Nama akun berhasil diperbarui.');
+  }
+
   Future<void> _confirmLogout() async {
     final lockedTrip = _trips.firstWhereOrNull(
       (trip) =>
@@ -2304,6 +2317,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 _DriverCard(
                   session: _session,
                   tripCount: _trips.length + pendingTripPlans.length,
+                  onTap: _openAccountSettings,
                 ),
                 const SizedBox(height: 12),
                 _DriverSectionSwitcher(
@@ -3226,9 +3240,14 @@ String _formatKm(num value) {
 }
 
 class _DriverCard extends StatelessWidget {
-  const _DriverCard({required this.session, required this.tripCount});
+  const _DriverCard({
+    required this.session,
+    required this.tripCount,
+    this.onTap,
+  });
   final DriverAppSession session;
   final int tripCount;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3236,70 +3255,80 @@ class _DriverCard extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 380;
     final tripLabel = tripCount == 1 ? '1 trip' : '$tripCount trip';
     return Card(
-      child: Padding(
-        padding: EdgeInsets.all(compact ? 14 : 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: compact ? 42 : 46,
-              height: compact ? 42 : 46,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                Icons.person_pin_circle_rounded,
-                color: scheme.primary,
-                size: compact ? 22 : 24,
-              ),
-            ),
-            SizedBox(width: compact ? 12 : 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    session.driverName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: compact ? 14 : 15,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    session.role,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: compact ? 10 : 12,
-                vertical: compact ? 5 : 6,
-              ),
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                tripLabel,
-                style: TextStyle(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 14 : 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: compact ? 42 : 46,
+                height: compact ? 42 : 46,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.person_pin_circle_rounded,
                   color: scheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: compact ? 12 : 13,
+                  size: compact ? 22 : 24,
                 ),
               ),
-            ),
-          ],
+              SizedBox(width: compact ? 12 : 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      session.driverName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: compact ? 14 : 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      session.role,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.5),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 10 : 12,
+                  vertical: compact ? 5 : 6,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  tripLabel,
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 12 : 13,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: scheme.onSurface.withValues(alpha: 0.35),
+              ),
+            ],
+          ),
         ),
       ),
     );
