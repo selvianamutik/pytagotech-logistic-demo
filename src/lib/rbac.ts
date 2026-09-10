@@ -302,6 +302,7 @@ export interface SidebarMenuItem {
 export interface SidebarMenuGroup {
     label: string;
     items: SidebarMenuItem[];
+    expanded?: boolean;
 }
 
 export function getSidebarMenu(subject: PermissionSubject): SidebarMenuGroup[] {

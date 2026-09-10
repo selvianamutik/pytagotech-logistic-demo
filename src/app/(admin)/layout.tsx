@@ -8,7 +8,7 @@ import {
     BarChart3, Car, Wrench, AlertTriangle, User, Lock, Building2, UserCog,
     ScrollText, PanelLeftClose, PanelLeftOpen, Menu, LogOut, X, CheckCircle, XCircle, Info, AlertCircle, Landmark,
     MapPin,
-    UserCircle, Receipt, Upload
+    UserCircle, Receipt, Upload, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { matchesPathSegment } from '@/lib/pathname';
 import { resolveCompanyLogoUrl } from '@/lib/branding';
@@ -104,6 +104,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [loggingOut, setLoggingOut] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [isTablet, setIsTablet] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
     // Fetch session + company profile
     useEffect(() => {
@@ -180,6 +181,46 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         document.title = `${getRoleWorkspaceLabel(user.role)} - ${company.name}`;
     }, [company?.name, pathname, user]);
+
+    // ---- Sidebar accordion persistence ----
+    const SIDEBAR_EXPANSION_KEY = 'sidebar-expanded-groups';
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(SIDEBAR_EXPANSION_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw) as Record<string, boolean>;
+                if (parsed && typeof parsed === 'object') setExpandedGroups(parsed);
+            }
+        } catch { /* ignore */ }
+    }, []);
+
+    const toggleGroup = useCallback((label: string) => {
+        setExpandedGroups(prev => {
+            const next = { ...prev, [label]: !(prev[label] ?? true) };
+            try { localStorage.setItem(SIDEBAR_EXPANSION_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
+
+    const isGroupExpanded = useCallback((label: string) => expandedGroups[label] ?? true, [expandedGroups]);
+
+    // Auto-expand group that contains the active route (so user always sees where they are)
+    useEffect(() => {
+        if (!pathname || !user) return;
+        const groups = getSidebarMenu(user);
+        const activeGroup = groups.find(g =>
+            g.items.some(item => item.href === '/dashboard' ? pathname === item.href : matchesPathSegment(pathname, item.href))
+        );
+        if (!activeGroup) return;
+        setExpandedGroups(prev => {
+            if (prev[activeGroup.label] === false) {
+                const next = { ...prev, [activeGroup.label]: true };
+                try { localStorage.setItem(SIDEBAR_EXPANSION_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+                return next;
+            }
+            return prev;
+        });
+    }, [pathname, user]);
 
     useEffect(() => {
         const reloadKey = `__chunk_reload__:${pathname}`;
@@ -343,30 +384,62 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         </div>
 
                         <nav className="sidebar-nav">
-                            {menuGroups.map(group => (
-                                <div key={group.label} className="sidebar-group">
-                                    <div className="sidebar-group-label">{group.label}</div>
-                                    {group.items.map(item => {
-                                        const isActive = item.href === '/dashboard'
-                                            ? pathname === item.href
-                                            : matchesPathSegment(pathname, item.href);
-                                        return (
-                                            <Link
-                                                key={item.href}
-                                                href={item.href}
-                                                className={`sidebar-item ${isActive ? 'active' : ''}`}
-                                                onClick={() => setMobileOpen(false)}
-                                            >
-                                                <span className="sidebar-item-icon">{ICON_MAP[item.icon]}</span>
-                                                <span className="sidebar-item-label">{item.label}</span>
-                                                {item.badge && item.badge > 0 && (
-                                                    <span className="sidebar-item-badge">{item.badge}</span>
-                                                )}
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
-                            ))}
+                            {menuGroups.map(group => {
+                                const groupId = `sidebar-group-${group.label.replace(/\s+/g, '-')}`;
+                                const expanded = sidebarCollapsed ? true : isGroupExpanded(group.label);
+                                const hasActiveItem = group.items.some(item =>
+                                    item.href === '/dashboard'
+                                        ? pathname === item.href
+                                        : matchesPathSegment(pathname, item.href)
+                                );
+                                return (
+                                    <div
+                                        key={group.label}
+                                        className={`sidebar-group ${expanded ? 'sidebar-group--expanded' : 'sidebar-group--collapsed'} ${hasActiveItem ? 'sidebar-group--active' : ''}`}
+                                    >
+                                        <button
+                                            type="button"
+                                            className={`sidebar-group-header ${hasActiveItem ? 'sidebar-group-header--active' : ''}`}
+                                            aria-expanded={expanded}
+                                            aria-controls={groupId}
+                                            onClick={() => {
+                                                if (sidebarCollapsed) return;
+                                                toggleGroup(group.label);
+                                            }}
+                                            tabIndex={sidebarCollapsed ? -1 : 0}
+                                        >
+                                            <span className="sidebar-group-label">{group.label}</span>
+                                            <span className="sidebar-group-chevron" aria-hidden="true">
+                                                {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                            </span>
+                                        </button>
+                                        <div
+                                            id={groupId}
+                                            className="sidebar-group-items"
+                                        >
+                                            {group.items.map(item => {
+                                                const isActive = item.href === '/dashboard'
+                                                    ? pathname === item.href
+                                                    : matchesPathSegment(pathname, item.href);
+                                                return (
+                                                    <Link
+                                                        key={item.href}
+                                                        href={item.href}
+                                                        className={`sidebar-item ${isActive ? 'active' : ''}`}
+                                                        onClick={() => setMobileOpen(false)}
+                                                    >
+                                                        <span className="sidebar-item-icon">{ICON_MAP[item.icon]}</span>
+                                                        <span className="sidebar-item-label">{item.label}</span>
+                                                        {item.badge && item.badge > 0 && (
+                                                            <span className="sidebar-item-badge">{item.badge}</span>
+                                                        )}
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </nav>
 
                         <div className="sidebar-footer">
