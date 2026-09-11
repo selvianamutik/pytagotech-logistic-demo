@@ -58,13 +58,13 @@
     "reset:supabase:workflow-transactions": "node scripts/reset-supabase-workflow-transactions.mjs",
     "seed:supabase": "node scripts/seed-supabase.mjs",
     "ensure:supabase:trip-rates": "node scripts/ensure-supabase-trip-rates.mjs",
-    "seed:supabase:safe-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=user,service,tripRouteRate --skip-doc-ids=cust-004,sup-003,expcat-008 --skip-workflow-transactions --enforce-inventory-linked-tires",
-    "seed:supabase:clean-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=user,service,tripRouteRate --enforce-inventory-linked-tires",
+    "seed:supabase:safe-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=service,tripRouteRate --skip-doc-ids=cust-004,sup-003,expcat-008 --skip-workflow-transactions --enforce-inventory-linked-tires",
+    "seed:supabase:clean-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=service,tripRouteRate --enforce-inventory-linked-tires",
     "seed:supabase:trip-surat-jalan": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --enforce-inventory-linked-tires",
-    "reseed:supabase": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
+    "reseed:supabase": "npm run reset:supabase -- --all-managed-data --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
     "repair:supabase:bank-ledgers": "node scripts/repair-supabase-bank-ledgers.mjs",
-    "reseed:supabase:safe-workflow": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:safe-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
-    "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting"
+    "reseed:supabase:safe-workflow": "npm run reset:supabase -- --all-managed-data --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:safe-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
+    "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
