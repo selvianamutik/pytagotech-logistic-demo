@@ -26,6 +26,8 @@ import { ensureSameOriginRequest, jsonNoStore, parseJsonBody } from '@/lib/api/r
 import {
     handleAccountingPeriodClose,
     handleAccountingPeriodOpen,
+    handleChartOfAccountCreate,
+    handleChartOfAccountUpdate,
     handleManualJournalCreate,
     handleManualJournalVoid,
 } from '@/lib/api/accounting-workflows';
@@ -51,6 +53,7 @@ import {
     handleCustomerOverpaymentRefund,
     handleCustomerReceiptCreate,
     handleExpenseCreate,
+    handleExpenseDelete,
     handleFreightNotaCreate,
     handleFreightNotaDelete,
     handleFreightNotaPph23Update,
@@ -715,6 +718,7 @@ export async function GET(request: Request) {
     const auditEntityRefs = parseCommaSeparatedParam(searchParams.get('entityRefs'));
     const auditEntityType = searchParams.get('entityType');
     const auditEntityTypes = parseCommaSeparatedParam(searchParams.get('entityTypes'));
+    const auditActorUserName = searchParams.get('actorUserName');
 
     if (entity === 'dashboard-summary') {
         if (!hasPermission(session, 'dashboard', 'view')) {
@@ -868,6 +872,7 @@ export async function GET(request: Request) {
                 entityRefs: auditEntityRefs,
                 entityType: auditEntityType,
                 entityTypes: auditEntityTypes,
+                actorUserName: auditActorUserName,
             });
             return jsonNoStore({ data: summary });
         } catch (err) {
@@ -1355,6 +1360,7 @@ export async function GET(request: Request) {
                     entityRefs: auditEntityRefs,
                     entityType: auditEntityType,
                     entityTypes: auditEntityTypes,
+                    actorUserName: auditActorUserName,
                     countOnly,
                 });
                 items = result.items as unknown as Record<string, unknown>[];
@@ -2032,6 +2038,14 @@ export async function POST(request: Request) {
             return await handleDriverScoreEndEarly(session, data, addAuditLog);
         }
 
+        if (entity === 'expenses' && action === 'delete') {
+            return await handleExpenseDelete(session, data, addAuditLog);
+        }
+
+        if (entity === 'chart-of-accounts' && action === 'update') {
+            return await handleChartOfAccountUpdate(session, data, addAuditLog);
+        }
+
         if (action === 'update') {
             return await handleGenericUpdate(session, entity, data, addAuditLog);
         }
@@ -2062,6 +2076,10 @@ export async function POST(request: Request) {
 
         if (entity === 'incident-settlement-lines') {
             return await handleIncidentSettlementLineCreate(session, data, addAuditLog);
+        }
+
+        if (entity === 'chart-of-accounts') {
+            return await handleChartOfAccountCreate(session, data, addAuditLog);
         }
 
         return await handleGenericCreate(session, entity, docType, data, addAuditLog);

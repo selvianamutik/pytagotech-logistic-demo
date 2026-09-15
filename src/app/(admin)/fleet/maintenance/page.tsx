@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Save, Search, Trash2, Wrench, X } from 'lucide-react';
+import { Plus, Save, Search, Trash2, Wrench, X, Eye, Check, SkipForward, Truck } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -663,14 +663,15 @@ export default function MaintenancePage() {
                                                 <td>{renderMaterialUsage(item)}</td>
                                                 {canViewMaintenanceCost && <td>{item.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(item)) : '-'}</td>}
                                                 <td>
-                                                    <div className="table-actions">
+                                                    <div className="table-actions-col">
+                                                        <Link href={`/fleet/maintenance/${item._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link>
                                                         {canUpdateMaintenance && item.status === 'SCHEDULED' && (
                                                             <>
-                                                                <button className="table-action-btn" onClick={() => void openCompleteModal(item)} disabled={updatingId === item._id || savingCompletion}>Selesai</button>
-                                                                <button className="table-action-btn" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : 'Lewati'}</button>
+                                                                <button className="table-action-btn" onClick={() => void openCompleteModal(item)} disabled={updatingId === item._id || savingCompletion}><Check size={14} /> Selesai</button>
+                                                                <button className="table-action-btn" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : (<><SkipForward size={14} /> Lewati</>)}</button>
                                                             </>
                                                         )}
-                                                        {item.status !== 'SCHEDULED' && <Link href={`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`} className="table-action-btn">Lihat Unit</Link>}
+                                                        {item.status !== 'SCHEDULED' && <Link href={`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`} className="table-action-btn"><Truck size={14} /> Lihat Unit</Link>}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -688,7 +689,7 @@ export default function MaintenancePage() {
                             return (
                                 <div key={item._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
-                                        <div><div className="mobile-record-title">{item.vehiclePlate || '-'}</div><div className="mobile-record-subtitle">{item.type}</div></div>
+                                        <div><div className="mobile-record-title">{item.vehicleRef ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</div><div className="mobile-record-subtitle">{item.type}</div></div>
                                         <span className={`badge badge-${MAINTENANCE_STATUS_MAP[item.status]?.color}`}><span className="badge-dot" /> {MAINTENANCE_STATUS_MAP[item.status]?.label}</span>
                                     </div>
                                     <div className="mobile-record-meta">
@@ -699,11 +700,12 @@ export default function MaintenancePage() {
                                         {item.notes && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan Jadwal</span><span className="mobile-record-value">{item.notes}</span></div>}
                                     </div>
                                     <div className="mobile-record-actions">
-                                        <button className="btn btn-secondary" onClick={() => window.location.assign(`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`)}>Lihat Unit</button>
+                                        <Link className="btn btn-secondary" href={`/fleet/maintenance/${item._id}`}><Eye size={14} /> Detail</Link>
+                                        <button className="btn btn-secondary" onClick={() => window.location.assign(`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`)}><Truck size={14} /> Lihat Unit</button>
                                         {canUpdateMaintenance && item.status === 'SCHEDULED' && (
                                             <>
-                                                <button className="btn btn-secondary" onClick={() => void openCompleteModal(item)} disabled={savingCompletion}>Selesai</button>
-                                                <button className="btn btn-secondary" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : 'Lewati'}</button>
+                                                <button className="btn btn-secondary" onClick={() => void openCompleteModal(item)} disabled={savingCompletion}><Check size={14} /> Selesai</button>
+                                                <button className="btn btn-secondary" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : (<><SkipForward size={14} /> Lewati</>)}</button>
                                             </>
                                         )}
                                     </div>

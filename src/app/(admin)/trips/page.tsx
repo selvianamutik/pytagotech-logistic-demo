@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Truck } from 'lucide-react';
+import { Search, Truck, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
@@ -129,6 +129,9 @@ export default function TripsPage() {
     const [voucherByDeliveryOrderRef, setVoucherByDeliveryOrderRef] = useState<Record<string, DriverVoucher>>({});
     const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
 
     const loadTrips = useCallback(async () => {
         setLoading(true);
@@ -287,10 +290,10 @@ export default function TripsPage() {
                                     <tr key={item._id}>
                                         <td><Link className="font-semibold" style={{ color: 'var(--color-primary)' }} href={`/trips/${item._id}`}>{item.tripNumber}</Link></td>
                                         <td>{canOpenSourceOrderPage ? <Link href={`/orders/${item.orderRef}`}>{item.masterResi || '-'}</Link> : (item.masterResi || '-')}</td>
-                                        <td>{item.customerName || '-'}</td>
+                                        <td>{item.customerRef && canOpenCustomerPage ? <Link href={`/customers/${item.customerRef}`}>{item.customerName || '-'}</Link> : (item.customerName || '-')}</td>
                                         <td>{item.tripOriginArea && item.tripDestinationArea ? `${item.tripOriginArea} -> ${item.tripDestinationArea}` : `${item.pickupAddress || '-'} -> ${item.receiverAddress || '-'}`}</td>
-                                        <td>{item.vehiclePlate || '-'}</td>
-                                        <td>{item.driverName || '-'}</td>
+                                        <td>{item.vehicleRef && canOpenVehiclePage ? <Link href={`/fleet/vehicles/${item.vehicleRef}`}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
+                                        <td>{item.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${item.driverRef}`}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</td>
                                         <td>{formatDate(item.date)}</td>
                                         <td>
                                             {renderTripSuratJalanLinks(item)}
@@ -309,7 +312,7 @@ export default function TripsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td><Link className="table-action-btn" href={`/trips/${item._id}`}>Lihat</Link></td>
+                                        <td><Link className="table-action-btn" href={`/trips/${item._id}`}><Eye size={14} /> Detail</Link></td>
                                     </tr>
                                 );
                             })}

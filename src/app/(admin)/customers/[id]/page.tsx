@@ -136,6 +136,10 @@ export default function CustomerDetailPage() {
     const [showPickupModal, setShowPickupModal] = useState(false);
     const [savingPickup, setSavingPickup] = useState(false);
     const [deletingPickupId, setDeletingPickupId] = useState<string | null>(null);
+    const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmBillingRate, setDeleteConfirmBillingRate] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmRecipient, setDeleteConfirmRecipient] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmPickup, setDeleteConfirmPickup] = useState<{ id: string; name: string } | null>(null);
     const [editPickup, setEditPickup] = useState<CustomerPickupLocation | null>(null);
     const [form, setForm] = useState({
         name: '',
@@ -841,9 +845,9 @@ export default function CustomerDetailPage() {
                                         </td>
                                         <td><span className={`badge ${recipient.active !== false ? 'badge-green' : 'badge-gray'}`}>{recipient.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditRecipient(recipient)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteRecipient(recipient._id)} disabled={deletingRecipientId === recipient._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmRecipient({ id: recipient._id, name: recipient.label })} disabled={deletingRecipientId === recipient._id}>
                                                     <Trash2 size={14} /> {deletingRecipientId === recipient._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -890,7 +894,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditRecipient(recipient)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteRecipient(recipient._id)} disabled={deletingRecipientId === recipient._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmRecipient({ id: recipient._id, name: recipient.label })} disabled={deletingRecipientId === recipient._id}>
                                     <Trash2 size={14} /> {deletingRecipientId === recipient._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -929,9 +933,9 @@ export default function CustomerDetailPage() {
                                         </td>
                                         <td><span className={`badge ${pickup.active !== false ? 'badge-green' : 'badge-gray'}`}>{pickup.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditPickup(pickup)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeletePickup(pickup._id)} disabled={deletingPickupId === pickup._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmPickup({ id: pickup._id, name: pickup.label })} disabled={deletingPickupId === pickup._id}>
                                                     <Trash2 size={14} /> {deletingPickupId === pickup._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -978,7 +982,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditPickup(pickup)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeletePickup(pickup._id)} disabled={deletingPickupId === pickup._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmPickup({ id: pickup._id, name: pickup.label })} disabled={deletingPickupId === pickup._id}>
                                     <Trash2 size={14} /> {deletingPickupId === pickup._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -1012,9 +1016,9 @@ export default function CustomerDetailPage() {
                                     <td>{rate.routeFrom || rate.routeTo ? `${rate.routeFrom || '*'} -> ${rate.routeTo || '*'}` : 'Semua rute'}</td>
                                     <td><span className={`badge ${rate.active !== false ? 'badge-green' : 'badge-gray'}`}>{rate.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {canManageCustomer && <button className="table-action-btn" onClick={() => openEditBillingRate(rate)}><Edit size={14} /> Edit</button>}
-                                            {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteBillingRate(rate._id)} disabled={deletingBillingRateId === rate._id}>
+                                            {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmBillingRate({ id: rate._id, name: rate.serviceName || 'Semua jenis armada' })} disabled={deletingBillingRateId === rate._id}>
                                                 <Trash2 size={14} /> {deletingBillingRateId === rate._id ? 'Menghapus...' : 'Hapus'}
                                             </button>}
                                         </div>
@@ -1051,7 +1055,7 @@ export default function CustomerDetailPage() {
                             </div>
                             <div className="mobile-record-actions">
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditBillingRate(rate)}><Edit size={14} /> Edit</button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteBillingRate(rate._id)} disabled={deletingBillingRateId === rate._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmBillingRate({ id: rate._id, name: rate.serviceName || 'Semua jenis armada' })} disabled={deletingBillingRateId === rate._id}>
                                     <Trash2 size={14} /> {deletingBillingRateId === rate._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -1102,9 +1106,9 @@ export default function CustomerDetailPage() {
                                         })}</td>
                                         <td><span className={`badge ${product.active !== false ? 'badge-green' : 'badge-gray'}`}>{product.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditProduct(product)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteProduct(product._id)} disabled={deletingProductId === product._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmProduct({ id: product._id, name: product.name })} disabled={deletingProductId === product._id}>
                                                     <Trash2 size={14} /> {deletingProductId === product._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -1156,7 +1160,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditProduct(product)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteProduct(product._id)} disabled={deletingProductId === product._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmProduct({ id: product._id, name: product.name })} disabled={deletingProductId === product._id}>
                                     <Trash2 size={14} /> {deletingProductId === product._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -1246,7 +1250,7 @@ export default function CustomerDetailPage() {
                         <div key={nota._id} className="mobile-record-card">
                             <div className="mobile-record-header">
                                 <div>
-                                    <div className="mobile-record-title">{nota.notaNumber}</div>
+                                    <div className="mobile-record-title"><Link href={`/invoices/${nota._id}`} style={{ color: 'var(--color-primary)' }}>{nota.notaNumber}</Link></div>
                                     <div className="mobile-record-subtitle">Jatuh tempo {formatDate(nota.dueDate)}</div>
                                 </div>
                                 <span className="badge badge-info">{nota.status}</span>
@@ -1509,6 +1513,66 @@ export default function CustomerDetailPage() {
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowProductModal(false)} disabled={savingProduct}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSaveProduct} disabled={savingProduct}><Save size={16} /> {savingProduct ? 'Menyimpan...' : 'Simpan'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmProduct && (
+                <div className="modal-overlay" onClick={() => { if (deletingProductId !== deleteConfirmProduct.id) setDeleteConfirmProduct(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Barang Customer?</h3></div>
+                        <div className="modal-body"><p>Hapus barang <strong>{deleteConfirmProduct.name}</strong> dari master barang customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmProduct(null)} disabled={deletingProductId === deleteConfirmProduct.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteProduct(deleteConfirmProduct.id)} disabled={deletingProductId === deleteConfirmProduct.id}>
+                                <Trash2 size={16} /> {deletingProductId === deleteConfirmProduct.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmBillingRate && (
+                <div className="modal-overlay" onClick={() => { if (deletingBillingRateId !== deleteConfirmBillingRate.id) setDeleteConfirmBillingRate(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Tarif Billing?</h3></div>
+                        <div className="modal-body"><p>Hapus tarif <strong>{deleteConfirmBillingRate.name}</strong> dari master tarif billing customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmBillingRate(null)} disabled={deletingBillingRateId === deleteConfirmBillingRate.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteBillingRate(deleteConfirmBillingRate.id)} disabled={deletingBillingRateId === deleteConfirmBillingRate.id}>
+                                <Trash2 size={16} /> {deletingBillingRateId === deleteConfirmBillingRate.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmRecipient && (
+                <div className="modal-overlay" onClick={() => { if (deletingRecipientId !== deleteConfirmRecipient.id) setDeleteConfirmRecipient(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Master Penerima?</h3></div>
+                        <div className="modal-body"><p>Hapus penerima <strong>{deleteConfirmRecipient.name}</strong> dari master penerima customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmRecipient(null)} disabled={deletingRecipientId === deleteConfirmRecipient.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteRecipient(deleteConfirmRecipient.id)} disabled={deletingRecipientId === deleteConfirmRecipient.id}>
+                                <Trash2 size={16} /> {deletingRecipientId === deleteConfirmRecipient.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmPickup && (
+                <div className="modal-overlay" onClick={() => { if (deletingPickupId !== deleteConfirmPickup.id) setDeleteConfirmPickup(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Master Pickup?</h3></div>
+                        <div className="modal-body"><p>Hapus lokasi pickup <strong>{deleteConfirmPickup.name}</strong> dari master pickup customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmPickup(null)} disabled={deletingPickupId === deleteConfirmPickup.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeletePickup(deleteConfirmPickup.id)} disabled={deletingPickupId === deleteConfirmPickup.id}>
+                                <Trash2 size={16} /> {deletingPickupId === deleteConfirmPickup.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
                         </div>
                     </div>
                 </div>

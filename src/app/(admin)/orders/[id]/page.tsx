@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '../../layout';
-import { Truck, FileText, Edit, Eye, Plus, Trash2, X } from 'lucide-react';
+import { Truck, FileText, Edit, Eye, Plus, Trash2, X, Pause, Play } from 'lucide-react';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { fetchAdminCollectionData, fetchAdminData, fetchOptionalAdminCollectionData, fetchOptionalAdminData } from '@/lib/api/admin-client';
@@ -168,6 +168,7 @@ export default function OrderDetailPage() {
     const canManageOrderTrips = user ? hasPermission(user, 'orders', 'update') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const hasOpenModal = showDOModal || showAddTripModal || showTripPlanActionModal || showCancelTripModal || showCancelOrderModal || showHoldModal;
     const currentPath = pathname || `/orders/${orderId}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;
@@ -1884,11 +1885,11 @@ export default function OrderDetailPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div>
                                             <div className="detail-label">Kendaraan</div>
-                                            <div className="detail-value">{tripPlan.vehiclePlate || '-'}</div>
+                                            <div className="detail-value">{canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${tripPlan.vehicleRef}`)} style={{ color: 'var(--color-primary)' }}>{tripPlan.vehiclePlate || '-'}</Link> : (tripPlan.vehiclePlate || '-')}</div>
                                         </div>
                                         <div>
                                             <div className="detail-label">Supir</div>
-                                            <div className="detail-value">{tripPlan.driverName || '-'}</div>
+                                            <div className="detail-value">{canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${tripPlan.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{tripPlan.driverName || '-'}</Link> : (tripPlan.driverName || '-')}</div>
                                         </div>
                                         <div>
                                             <div className="detail-label">Upah Trip</div>
@@ -1990,7 +1991,7 @@ export default function OrderDetailPage() {
                                                     {formatInternalDeliveryOrderNumber(deliveryOrder)}
                                                 </Link>
                                                 <div className="text-muted text-sm">
-                                                    {deliveryOrder.driverName || '-'}{deliveryOrder.vehiclePlate ? ` / ${deliveryOrder.vehiclePlate}` : ''}
+                                                    {canOpenDriverPage && deliveryOrder.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${deliveryOrder.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{deliveryOrder.driverName || '-'}</Link> : (deliveryOrder.driverName || '-')}{deliveryOrder.vehiclePlate ? ` / ${deliveryOrder.vehiclePlate}` : ''}
                                                 </div>
                                             </div>
                                             <div className="text-muted text-sm">{shipperManifests.length} SJ pengirim</div>
@@ -2182,14 +2183,14 @@ export default function OrderDetailPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {((usesQtyBasis && progressInfo.pendingQtyKoli > 0) || (!usesQtyBasis && (progressInfo.pendingWeight > 0 || progressInfo.pendingVolume > 0))) && (
                                                 <button className="table-action-btn" onClick={() => openHoldModal(item)}>
-                                                    {activeAssignment ? 'Tahan Sisa' : 'Set Hold'}
+                                                    <Pause size={14} /> {activeAssignment ? 'Tahan Sisa' : 'Set Hold'}
                                                 </button>
                                             )}
                                             {((usesQtyBasis && progressInfo.heldQtyKoli > 0) || (!usesQtyBasis && (progressInfo.heldWeight > 0 || progressInfo.heldVolume > 0))) && (
-                                                <button className="table-action-btn" onClick={() => void releaseHoldQuantity(item)}>Lepas Hold</button>
+                                                <button className="table-action-btn" onClick={() => void releaseHoldQuantity(item)}><Play size={14} /> Lepas Hold</button>
                                             )}
                                             {activeAssignment && (
                                                 <Link href={withReturnTo(`/delivery-orders/${activeAssignment._id}`)} className="table-action-btn" title="Item ini sudah masuk surat jalan aktif">
@@ -2246,7 +2247,7 @@ export default function OrderDetailPage() {
                                             {formatInternalDeliveryOrderNumber(d)}
                                         </Link>
                                         <div className="text-muted text-sm">
-                                            {d.driverName || '-'}{d.vehiclePlate ? ` / ${d.vehiclePlate}` : ''}
+                                            {canOpenDriverPage && d.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${d.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}{d.vehiclePlate ? ` / ${d.vehiclePlate}` : ''}
                                         </div>
                                     </td>
                                     <td>
@@ -2883,11 +2884,11 @@ export default function OrderDetailPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Kendaraan</div>
-                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{selectedOrderTripPlan.vehiclePlate || '-'}</div>
+                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${selectedOrderTripPlan.vehicleRef}`)} style={{ color: 'var(--color-primary)' }}>{selectedOrderTripPlan.vehiclePlate || '-'}</Link> : (selectedOrderTripPlan.vehiclePlate || '-')}</div>
                                         </div>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Supir</div>
-                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{selectedOrderTripPlan.driverName || '-'}</div>
+                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${selectedOrderTripPlan.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{selectedOrderTripPlan.driverName || '-'}</Link> : (selectedOrderTripPlan.driverName || '-')}</div>
                                         </div>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Upah Trip</div>

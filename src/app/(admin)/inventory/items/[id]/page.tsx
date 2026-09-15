@@ -516,7 +516,7 @@ export default function WarehouseItemDetailPage() {
                       <tr key={purchaseItem._id}>
                         <td className="font-mono">{canOpenPurchases && purchase ? <Link href={`/inventory/purchases/${purchase._id}`} style={{ color: 'var(--color-primary)' }}>{purchase.purchaseNumber}</Link> : (purchase?.purchaseNumber || '-')}</td>
                         <td>{purchase?.orderDate ? formatDate(purchase.orderDate) : '-'}</td>
-                        <td>{purchase?.supplierName || '-'}</td>
+                        <td>{purchase?.supplierRef && canOpenSuppliers ? <Link href={`/suppliers/${purchase.supplierRef}`} style={{ color: 'var(--color-primary)' }}>{purchase.supplierName || '-'}</Link> : (purchase?.supplierName || '-')}</td>
                         <td>{formatInventoryQuantity(purchaseItem.orderedQty)} {purchaseItem.itemUnit || item.unit}</td>
                         <td>{formatInventoryQuantity(purchaseItem.receivedQty || 0)} {purchaseItem.itemUnit || item.unit}</td>
                         <td>{formatCurrency(Number(purchaseItem.unitPrice || 0))}</td>

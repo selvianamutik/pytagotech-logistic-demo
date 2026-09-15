@@ -214,9 +214,7 @@ export function resolveBankTransactionSourceLink(params: {
     }
     if (expense?.relatedMaintenanceRef && permissions?.canOpenMaintenance) {
       return {
-        href: expense.relatedVehicleRef
-          ? `/fleet/maintenance?vehicleRef=${expense.relatedVehicleRef}`
-          : "/fleet/maintenance",
+        href: `/fleet/maintenance/${expense.relatedMaintenanceRef}`,
         label: "Buka Maintenance",
       };
     }

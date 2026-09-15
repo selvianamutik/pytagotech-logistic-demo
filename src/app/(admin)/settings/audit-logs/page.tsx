@@ -9,6 +9,7 @@ import { getAuditLogTargetHref } from '@/lib/audit-log-target-links';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { AuditLog, UserRole } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
+import { AUDIT_ENTITY_FILTER_OPTIONS, getAuditEntityLabel } from '@/lib/audit-labels';
 import { useToast } from '../../layout';
 
 function formatAuditDateTime(dateStr: string | undefined) {
@@ -28,7 +29,7 @@ const PERIOD_OPTIONS: Array<{ value: AuditLogPeriod; label: string }> = [
 
 const AUDIT_SEARCH_FIELDS = 'changesSummary,actorUserName,actorUserRole,actorUserEmail,actorUserRef,entityType,entityRef,action';
 
-function buildAuditLogsQuery(page: number, pageSize: number, period: AuditLogPeriod, search: string) {
+function buildAuditLogsQuery(page: number, pageSize: number, period: AuditLogPeriod, search: string, actorUserName: string, entityType: string) {
     const params = new URLSearchParams({
         entity: 'audit-logs',
         page: String(page),
@@ -41,10 +42,16 @@ function buildAuditLogsQuery(page: number, pageSize: number, period: AuditLogPer
         params.set('q', search);
         params.set('searchFields', AUDIT_SEARCH_FIELDS);
     }
+    if (actorUserName) {
+        params.set('actorUserName', actorUserName);
+    }
+    if (entityType) {
+        params.set('entityType', entityType);
+    }
     return params.toString();
 }
 
-function buildAuditSummaryQuery(period: AuditLogPeriod, search: string) {
+function buildAuditSummaryQuery(period: AuditLogPeriod, search: string, actorUserName: string, entityType: string) {
     const params = new URLSearchParams({
         entity: 'audit-logs-summary',
         period,
@@ -52,6 +59,12 @@ function buildAuditSummaryQuery(period: AuditLogPeriod, search: string) {
     if (search) {
         params.set('q', search);
         params.set('searchFields', AUDIT_SEARCH_FIELDS);
+    }
+    if (actorUserName) {
+        params.set('actorUserName', actorUserName);
+    }
+    if (entityType) {
+        params.set('entityType', entityType);
     }
     return params.toString();
 }
@@ -107,7 +120,7 @@ function getActorRoleLabel(log: AuditLog) {
 }
 
 function AuditTargetLink({ log }: { log: AuditLog }) {
-    const target = log.entityRef || '-';
+    const target = log.entityLabel || log.entityRef || '-';
     const href = getAuditLogTargetHref(log);
 
     if (!href || target === '-') {
@@ -117,7 +130,7 @@ function AuditTargetLink({ log }: { log: AuditLog }) {
     return (
         <Link
             href={href}
-            className="font-mono"
+            className={log.entityLabel ? undefined : 'font-mono'}
             style={{ color: 'var(--color-primary)', fontWeight: 600, wordBreak: 'break-all' }}
         >
             {target}
@@ -132,12 +145,15 @@ export default function AuditLogsPage() {
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [period, setPeriod] = useState<AuditLogPeriod>('today');
+    const [userFilter, setUserFilter] = useState('');
+    const [entityFilter, setEntityFilter] = useState('');
     const [page, setPage] = useState(1);
     const [filteredTotalLogs, setFilteredTotalLogs] = useState(0);
     const [totalLogs, setTotalLogs] = useState(0);
     const [loginLogs, setLoginLogs] = useState(0);
     const [mutationLogs, setMutationLogs] = useState(0);
     const [actorCount, setActorCount] = useState(0);
+    const [actorOptions, setActorOptions] = useState<string[]>([]);
 
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
@@ -152,7 +168,7 @@ export default function AuditLogsPage() {
             setLoading(true);
             try {
                 const listPayload = await fetchAdminListPayload<AuditLog>(
-                    `/api/data?${buildAuditLogsQuery(page, DEFAULT_PAGE_SIZE, period, search)}`,
+                    `/api/data?${buildAuditLogsQuery(page, DEFAULT_PAGE_SIZE, period, search, userFilter, entityFilter)}`,
                     'Gagal memuat audit log'
                 );
                 if (cancelled) return;
@@ -171,7 +187,7 @@ export default function AuditLogsPage() {
 
         void loadAuditLogs();
         return () => { cancelled = true; };
-    }, [addToast, page, period, search]);
+    }, [addToast, page, period, search, userFilter, entityFilter]);
 
     useEffect(() => {
         let cancelled = false;
@@ -182,8 +198,9 @@ export default function AuditLogsPage() {
                     loginLogs?: number;
                     mutationLogs?: number;
                     actorCount?: number;
+                    actorNames?: string[];
                 }>(
-                    `/api/data?${buildAuditSummaryQuery(period, search)}`,
+                    `/api/data?${buildAuditSummaryQuery(period, search, userFilter, entityFilter)}`,
                     'Gagal memuat ringkasan audit log'
                 );
                 if (cancelled) return;
@@ -191,6 +208,7 @@ export default function AuditLogsPage() {
                 setLoginLogs(summaryPayload.loginLogs || 0);
                 setMutationLogs(summaryPayload.mutationLogs || 0);
                 setActorCount(summaryPayload.actorCount || 0);
+                setActorOptions(summaryPayload.actorNames || []);
             } catch (error) {
                 if (cancelled) return;
                 addToast('error', error instanceof Error ? error.message : 'Gagal memuat ringkasan audit log');
@@ -199,14 +217,37 @@ export default function AuditLogsPage() {
 
         void loadAuditSummary();
         return () => { cancelled = true; };
-    }, [addToast, period, search]);
+    }, [addToast, period, search, userFilter, entityFilter]);
 
     useEffect(() => {
         setPage(1);
-    }, [search, period]);
+    }, [search, period, userFilter, entityFilter]);
 
     const actionColors: Record<string, string> = { CREATE: 'success', UPDATE: 'warning', DELETE: 'danger', LOGIN: 'info', LOGOUT: 'gray' };
     const selectedPeriodLabel = PERIOD_OPTIONS.find(option => option.value === period)?.label || 'Hari Ini';
+
+    const userOptions = [...new Set([
+        ...actorOptions,
+        ...logs.map(l => l.actorUserName),
+    ].filter((name): name is string => Boolean(name) && name !== 'User tidak diketahui'))].sort();
+    if (userFilter && !userOptions.includes(userFilter)) {
+        userOptions.unshift(userFilter);
+    }
+
+    const entityOptions = (() => {
+        const catalog = new Map(AUDIT_ENTITY_FILTER_OPTIONS.map(option => [option.value, option.label]));
+        for (const entityType of logs.map(l => l.entityType)) {
+            if (entityType && !catalog.has(entityType)) {
+                catalog.set(entityType, getAuditEntityLabel(entityType) ?? entityType);
+            }
+        }
+        if (entityFilter && !catalog.has(entityFilter)) {
+            catalog.set(entityFilter, getAuditEntityLabel(entityFilter) ?? entityFilter);
+        }
+        return Array.from(catalog.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'id'));
+    })();
 
     return (
         <div>
@@ -231,6 +272,36 @@ export default function AuditLogsPage() {
                                 <option key={option.value} value={option.value}>{option.label}</option>
                             ))}
                         </select>
+                        <select
+                            className="filter-select"
+                            value={userFilter}
+                            onChange={e => setUserFilter(e.target.value)}
+                            aria-label="Filter berdasarkan user"
+                        >
+                            <option value="">Semua User</option>
+                            {userOptions.map(name => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
+                        </select>
+                        <select
+                            className="filter-select"
+                            value={entityFilter}
+                            onChange={e => setEntityFilter(e.target.value)}
+                            aria-label="Filter berdasarkan entitas"
+                        >
+                            <option value="">Semua Entitas</option>
+                            {entityOptions.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                        {(userFilter || entityFilter) && (
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => { setUserFilter(''); setEntityFilter(''); }}
+                            >
+                                Reset Filter
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="text-muted text-sm" style={{ marginBottom: '1rem' }}>
@@ -250,7 +321,7 @@ export default function AuditLogsPage() {
                                                 <div className="text-muted text-xs">{getActorRoleLabel(l)}</div>
                                             </td>
                                             <td><span className={`badge badge-${actionColors[l.action] || 'gray'}`}>{l.action}</span></td>
-                                            <td>{l.entityType}</td>
+                                            <td>{getAuditEntityLabel(l.entityType) ?? l.entityType}</td>
                                             <td className="text-muted" style={{ whiteSpace: 'nowrap' }}><AuditTargetLink log={l} /></td>
                                             <td className="text-muted" style={{ minWidth: 320, whiteSpace: 'normal', wordBreak: 'break-word' }}>{l.changesSummary}</td>
                                         </tr>
@@ -276,7 +347,7 @@ export default function AuditLogsPage() {
                                 <div className="mobile-record-meta">
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Entitas</span>
-                                        <span className="mobile-record-value">{l.entityType || '-'}</span>
+                                        <span className="mobile-record-value">{getAuditEntityLabel(l.entityType) ?? (l.entityType || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Target</span>

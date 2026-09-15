@@ -949,7 +949,24 @@ export default function TiresPage() {
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Sumber</span>
                                         <span className="mobile-record-value">
-                                            {event.sourcePurchaseNumber || event.linkedWarehouseItemCode || '-'}
+                                            {event.sourcePurchaseNumber ? (
+                                                <span style={{ display: 'grid', gap: '0.2rem' }}>
+                                                    <span className="text-sm">
+                                                        {canOpenPurchases ? (
+                                                            <Link href={`/inventory/purchases/${event.sourcePurchaseRef}`} style={{ color: 'var(--color-primary)' }}>
+                                                                {event.sourcePurchaseNumber}
+                                                            </Link>
+                                                        ) : event.sourcePurchaseNumber}
+                                                    </span>
+                                                    <span className="text-muted text-sm">
+                                                        {canOpenItems && event.linkedWarehouseItemRef ? (
+                                                            <Link href={`/inventory/items/${event.linkedWarehouseItemRef}`} style={{ color: 'var(--color-primary)' }}>
+                                                                {event.linkedWarehouseItemCode || event.linkedWarehouseItemName || '-'}
+                                                            </Link>
+                                                        ) : (event.linkedWarehouseItemCode || event.linkedWarehouseItemName || '-')}
+                                                    </span>
+                                                </span>
+                                            ) : (event.linkedWarehouseItemCode || '-')}
                                         </span>
                                     </div>
                                     {event.notes && (

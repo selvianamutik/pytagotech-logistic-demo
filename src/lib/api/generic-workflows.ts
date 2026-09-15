@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getBusinessDateValue } from '@/lib/business-date';
 import { createSession, setSessionCookie } from '@/lib/auth';
+import { buildAuditEntityLabel } from '@/lib/audit-labels';
 import { isSupabaseBackendEnabled } from '@/lib/data-backend';
 import { DOCUMENT_TYPE_MAP } from '@/lib/document-types';
 import {
@@ -602,10 +603,15 @@ function buildCreateSummary(newDoc: Record<string, unknown>, fallbackId: string)
         newDoc.notaNumber ||
         newDoc.boronganNumber ||
         newDoc.incidentNumber ||
+        newDoc.suratJalanNumber ||
+        newDoc.entryNumber ||
+        newDoc.receiptNumber ||
+        newDoc.tripNumber ||
         newDoc.itemCode ||
         newDoc.supplierCode ||
         newDoc.label ||
         newDoc.name ||
+        buildAuditEntityLabel(newDoc, typeof newDoc._type === 'string' ? newDoc._type : '') ||
         fallbackId
     );
 }
@@ -629,7 +635,7 @@ function buildCreateAuditSummary(entity: string, newDoc: Record<string, unknown>
     if (entity === 'tire-events') {
         return `Tambah ban ${(newDoc as Record<string, unknown>).tireCode}: ${(newDoc as Record<string, unknown>).posisi} (${(newDoc as Record<string, unknown>).status})`;
     }
-    return `Created ${entity}: ${buildCreateSummary(newDoc, fallbackId)}`;
+    return `Tambah ${entity}: ${buildCreateSummary(newDoc, fallbackId)}`;
 }
 
 async function resolveTrackedTireWarehouseItem(itemRef: string) {
@@ -2242,7 +2248,7 @@ export async function handleGenericUpdate(
                                 persistedNormalizedUpdates,
                                 id
                             )
-                            : `Updated ${entity}: ${JSON.stringify(persistedNormalizedUpdates).slice(0, 200)}`;
+                            : `Perbarui ${entity}: ${buildCreateSummary(updated as Record<string, unknown>, id)}`;
     await addAuditLog(session, 'UPDATE', entity, id, updateSummary);
 
     if (entity === 'order-items' && typeof normalizedUpdates.status === 'string') {
@@ -2368,7 +2374,7 @@ export async function handleGenericDelete(
 
         try {
             await deleteDocument(id, 'supplier');
-            await addAuditLog(session, 'DELETE', entity, id, `Deleted supplier ${supplier.name || id}`);
+            await addAuditLog(session, 'DELETE', entity, id, `Hapus supplier ${supplier.name || id}`);
             return NextResponse.json({ success: true });
         } catch (error) {
             if (isMutationConflictError(error)) {
@@ -2708,7 +2714,7 @@ export async function handleGenericDelete(
             'DELETE',
             entity,
             id,
-            `Nonaktifkan rekening ${existingAccount.bankName || id}`
+            `Nonaktifkan rekening ${existingAccount.bankName || existingAccount.accountNumber || id}`
         );
         return NextResponse.json({ success: true });
     }
@@ -2733,7 +2739,7 @@ export async function handleGenericDelete(
         throw error;
     }
 
-    await addAuditLog(session, 'DELETE', entity, id, `Deleted ${entity} ${id}`);
+    await addAuditLog(session, 'DELETE', entity, id, `Hapus ${entity} ${buildCreateSummary(existing as Record<string, unknown>, id)}`);
     return NextResponse.json({ success: true });
 }
 

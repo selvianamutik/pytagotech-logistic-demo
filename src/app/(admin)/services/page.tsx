@@ -212,7 +212,7 @@ export default function ServicesPage() {
                                     </td>
                                     <td className="text-muted">{s.oilMaintenanceKm ? `${s.oilMaintenanceKm.toLocaleString('id-ID')} km` : '-'}</td>
                                     <td><span className={`badge ${s.active !== false ? 'badge-success' : 'badge-gray'}`}>{s.active !== false ? 'Aktif' : 'Non-Aktif'}</span></td>
-                                    <td>{isOwner ? <div className="table-actions"><button className="table-action-btn" onClick={() => openEdit(s)}><Edit size={14} /> Edit</button><button className="table-action-btn danger" onClick={() => setDeleteId(s._id)}><Trash2 size={14} /> Hapus</button></div> : <span className="text-muted">Lihat saja</span>}</td></tr>
+                                    <td>{isOwner ? <div className="table-actions-col"><button className="table-action-btn" onClick={() => openEdit(s)}><Edit size={14} /> Edit</button><button className="table-action-btn danger" onClick={() => setDeleteId(s._id)}><Trash2 size={14} /> Hapus</button></div> : <span className="text-muted">Lihat saja</span>}</td></tr>
                             ))}
                 </tbody>
             </table></div>

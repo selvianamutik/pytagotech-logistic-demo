@@ -188,7 +188,7 @@ export default function VehiclesPage() {
                                                 <td>{getVehicleNextAction(vehicle, tireSummaryByVehicle)}</td>
                                                 <td>{vehicle.lastOdometer ? `${formatQuantity(vehicle.lastOdometer, 0)} km` : '-'}</td>
                                                 <td>{typeof vehicle.oilServiceRemainingKm === 'number' ? `${formatQuantity(vehicle.oilServiceRemainingKm, 0)} km` : '-'}</td>
-                                                <td><div className="table-actions">
+                                                <td><div className="table-actions-col">
                                                     <button className="table-action-btn" onClick={() => router.push(`/fleet/vehicles/${vehicle._id}`)}><Eye size={14} /> Lihat</button>
                                                     {canManageVehicle && <button className="table-action-btn" onClick={() => router.push(`/fleet/vehicles/${vehicle._id}/edit`)}><Edit size={14} /> Edit</button>}
                                                 </div></td>

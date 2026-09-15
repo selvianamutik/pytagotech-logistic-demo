@@ -1515,6 +1515,16 @@ tbody td {
   flex-wrap: wrap;
 }
 
+.table-actions-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+}
+
+.table-actions-col .table-action-btn {
+  justify-content: flex-start;
+}
+
 .table-action-btn {
   display: inline-flex;
   align-items: center;

@@ -526,7 +526,7 @@ export default function TripRouteRatesPage() {
                                         </td>
                                         <td>
                                             {canUpdateTripRate || canDeleteTripRate ? (
-                                                <div className="table-actions">
+                                                <div className="table-actions-col">
                                                     {canUpdateTripRate && (
                                                         <button className="table-action-btn" onClick={() => openEdit(item)}>
                                                             <Edit size={14} /> Edit

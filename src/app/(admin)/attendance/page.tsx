@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileDown, LogIn, LogOut, Pencil, Plus, Save, ScrollText, Search, X } from 'lucide-react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Eye, FileDown, LogIn, LogOut, Pencil, Plus, Save, ScrollText, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
@@ -187,17 +189,18 @@ function toggleSortState<T extends string>(
 export default function AttendancePage() {
     const { user } = useApp();
     const { addToast } = useToast();
+    const searchParams = useSearchParams();
     const [records, setRecords] = useState<EmployeeAttendanceRecord[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [summary, setSummary] = useState<AttendanceSummary | null>(null);
     const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<AttendanceViewMode>('input');
+    const [viewMode, setViewMode] = useState<AttendanceViewMode>(searchParams.get('view') === 'recap' ? 'recap' : searchParams.get('employee') ? 'input' : 'input');
     const [dailyRecords, setDailyRecords] = useState<EmployeeAttendanceRecord[]>([]);
     const [search, setSearch] = useState('');
     const [period, setPeriod] = useState<EmployeeAttendancePeriod>('today');
     const [selectedDate, setSelectedDate] = useState(getBusinessDateValue());
     const [statusFilter, setStatusFilter] = useState('');
-    const [employeeFilter, setEmployeeFilter] = useState('');
+    const [employeeFilter, setEmployeeFilter] = useState(searchParams.get('employee') || '');
     const [page, setPage] = useState(1);
     const [dailyPage, setDailyPage] = useState(1);
     const [inputSearch, setInputSearch] = useState('');
@@ -1120,18 +1123,19 @@ export default function AttendancePage() {
                                         onToggle={() => toggleRecapSort('lastAttendanceDate', 'desc')}
                                     />
                                 </th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? [1, 2, 3].map(index => (
                                 <tr key={index}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(cell => (
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(cell => (
                                         <td key={cell}><div className="skeleton skeleton-text" /></td>
                                     ))}
                                 </tr>
                             )) : recapRows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11}>
+                                    <td colSpan={12}>
                                         <div className="empty-state">
                                             <ScrollText size={48} className="empty-state-icon" />
                                             <div className="empty-state-title">Belum ada absensi pada periode ini</div>
@@ -1157,6 +1161,13 @@ export default function AttendancePage() {
                                     <td>{row.absentCount}</td>
                                     <td>{row.offCount}</td>
                                     <td className="text-muted">{row.lastAttendanceDate ? formatBusinessDate(row.lastAttendanceDate, 'id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
+                                    <td>
+                                        <div className="table-actions-col">
+                                            <Link className="table-action-btn" href={`/attendance?view=input&employee=${encodeURIComponent(row.employeeRef)}`}>
+                                                <Eye size={14} /> Lihat Absensi
+                                            </Link>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

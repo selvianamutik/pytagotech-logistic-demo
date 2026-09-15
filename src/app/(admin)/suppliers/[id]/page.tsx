@@ -798,7 +798,7 @@ export default function SupplierDetailPage() {
                       <div className="mobile-record-header">
                         <div>
                           <div className="mobile-record-title">{price.supplierItemName || price.itemName || '-'}</div>
-                          <div className="mobile-record-subtitle">{price.itemCode || '-'}{price.supplierSku ? ` | ${price.supplierSku}` : ''}</div>
+                          <div className="mobile-record-subtitle">{price.warehouseItemRef && canOpenItems ? <Link href={`/inventory/items/${price.warehouseItemRef}`} style={{ color: 'var(--color-primary)' }}>{price.itemCode || '-'}</Link> : (price.itemCode || '-')}{price.supplierSku ? ` | ${price.supplierSku}` : ''}</div>
                         </div>
                         <span className={`badge ${SUPPLIER_PRICE_STATUS_BADGES[priceStatus]}`}>
                           {SUPPLIER_PRICE_STATUS_LABELS[priceStatus]}

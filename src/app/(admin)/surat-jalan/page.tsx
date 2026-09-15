@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { FileText, Search } from 'lucide-react';
+import { FileText, Search, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { fetchAdminPageData } from '@/lib/api/admin-client';
@@ -65,6 +65,7 @@ export default function SuratJalanPage() {
     const [dateSortDir, setDateSortDir] = useState<SortDirection>('desc');
     const canOpenTripPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
 
     const loadSuratJalan = useCallback(async () => {
         setLoading(true);
@@ -241,14 +242,14 @@ export default function SuratJalanPage() {
                                         <td>{formatDate(row.tripDate)}</td>
                                         <td>{canOpenTripPage ? <Link href={`/trips/${row.tripRef}`} style={{ color: 'var(--color-primary)' }}>{row.tripNumber}</Link> : row.tripNumber}</td>
                                         <td>{canOpenSourceOrderPage && row.orderRef ? <Link href={`/orders/${row.orderRef}`}>{row.masterResi || '-'}</Link> : (row.masterResi || '-')}</td>
-                                        <td>{row.customerName || '-'}</td>
+                                        <td>{canOpenCustomerPage && row.customerRef ? <Link href={`/customers/${row.customerRef}`} style={{ color: 'var(--color-primary)' }}>{row.customerName || '-'}</Link> : (row.customerName || '-')}</td>
                                         <td>{row.pickupAddress || '-'}</td>
                                         <td>{getSuratJalanDestination(row)}</td>
                                         <td>{row.itemCount} item<div className="text-muted text-sm">{formatCargoSummary(row.cargoSummary)}</div></td>
                                         <td>{formatCargoSummary(row.billableCargo)}</td>
                                         <td>{formatCargoSummary(row.holdCargo)}</td>
                                         <td>{statusMeta ? <span className={`badge badge-${statusMeta.color}`}><span className="badge-dot" /> {statusMeta.label}</span> : '-'}</td>
-                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}>Lihat Dokumen</Link></td>
+                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link></td>
                                     </tr>
                                 );
                             })}
@@ -279,10 +280,10 @@ export default function SuratJalanPage() {
                                         {' | '}
                                         {canOpenSourceOrderPage && row.orderRef ? <Link href={`/orders/${row.orderRef}`}>{row.masterResi || '-'}</Link> : (row.masterResi || '-')}
                                     </div>
-                                    <div>{row.customerName || '-'}</div>
+                                    <div>{canOpenCustomerPage && row.customerRef ? <Link href={`/customers/${row.customerRef}`} style={{ color: 'var(--color-primary)' }}>{row.customerName || '-'}</Link> : (row.customerName || '-')}</div>
                                     <div>Tujuan: {getSuratJalanDestination(row)}</div>
                                     <div>{row.itemCount} item | Masuk tagihan {formatCargoSummary(row.billableCargo)} | Ditahan {formatCargoSummary(row.holdCargo)}</div>
-                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}>Lihat Dokumen</Link>
+                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link>
                                 </div>
                             </div>
                         );

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Plus, FileText, Printer, FileDown, Receipt } from 'lucide-react';
+import { Search, Plus, FileText, Printer, FileDown, Eye, Receipt, RotateCcw, ChevronsRight } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -941,7 +941,7 @@ export default function NotaListPage() {
                                                 </td>
                                                 <td>
                                                     <button className="table-action-btn" onClick={() => openRefundModal(item)}>
-                                                        Konfirmasi Transfer Balik
+                                                        <RotateCcw size={14} /> Konfirmasi Transfer Balik
                                                     </button>
                                                 </td>
                                             </tr>
@@ -995,7 +995,7 @@ export default function NotaListPage() {
                                             </div>
                                             <div className="mobile-record-actions">
                                                 <button className="btn btn-secondary" onClick={() => openRefundModal(item)}>
-                                                    Konfirmasi Transfer Balik
+                                                    <RotateCcw size={14} /> Konfirmasi Transfer Balik
                                                 </button>
                                             </div>
                                         </article>
@@ -1075,17 +1075,16 @@ export default function NotaListPage() {
                                         return (
                                     <tr key={n._id}>
                                         <td>
-                                            <button
-                                                type="button"
+                                            <Link
+                                                href={`/invoices/${n._id}`}
                                                 className="btn btn-ghost btn-sm"
                                                 style={{ padding: 0, textAlign: 'left', color: 'var(--color-primary)' }}
-                                                onClick={() => router.push(`/invoices/${n._id}`)}
                                             >
                                                 <div className="font-semibold">{formatFreightNotaDisplayNumber(n, company)}</div>
                                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{n.notaNumber}</div>
-                                            </button>
+                                            </Link>
                                         </td>
-                                        <td>{n.customerName}</td>
+                                        <td>{n.customerRef && canOpenCustomers ? <Link href={`/customers/${n.customerRef}`} style={{ color: 'var(--color-primary)' }}>{n.customerName}</Link> : n.customerName}</td>
                                         <td className="text-muted">{formatDate(n.issueDate)}</td>
                                     <td>{formatQuantity(n.totalCollie || 0)}</td>
                                         <td>{formatFreightNotaDisplayWeight({ beratKg: n.totalWeightKg || 0, volumeM3: n.totalVolumeM3 || 0, billingMode: normalizeFreightNotaBillingMode(n.billingMode), includeCanonical: false })}</td>
@@ -1097,8 +1096,8 @@ export default function NotaListPage() {
                                         <td><span className={`badge badge-${STATUS_MAP[displayStatus]?.color}`}><span className="badge-dot" /> {STATUS_MAP[displayStatus]?.label}</span></td>
                                         <td><span style={{ fontWeight: 500 }}>{getNextInvoiceAction(displayStatus, n, getNotaRemaining(n))}</span></td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                                                <button className="table-action-btn" onClick={() => router.push(`/invoices/${n._id}`)}>Buka</button>
+                                            <div className="table-actions-col">
+                                                <button className="table-action-btn" onClick={() => router.push(`/invoices/${n._id}`)}><Eye size={14} /> Detail</button>
                                                 {canExportInvoices && <button className="table-action-btn" onClick={() => void handleExportNota(n)}><FileDown size={13} /> Excel</button>}
                                                 {canPrintInvoices && <button className="table-action-btn" onClick={() => void handlePrintNota(n)}><Printer size={13} /> Cetak</button>}
                                             </div>
@@ -1124,8 +1123,8 @@ export default function NotaListPage() {
                             <div key={n._id} className="mobile-record-card">
                                 <div className="mobile-record-header">
                                     <div>
-                                        <div className="mobile-record-title">{formatFreightNotaDisplayNumber(n, company)}</div>
-                                        <div className="mobile-record-subtitle">{n.customerName || '-'} | {formatDate(n.issueDate)}</div>
+                                        <div className="mobile-record-title"><Link href={`/invoices/${n._id}`} style={{ color: 'var(--color-primary)' }}>{formatFreightNotaDisplayNumber(n, company)}</Link></div>
+                                        <div className="mobile-record-subtitle">{n.customerRef && canOpenCustomers ? <Link href={`/customers/${n.customerRef}`} style={{ color: 'var(--color-primary)' }}>{n.customerName || '-'}</Link> : (n.customerName || '-')} | {formatDate(n.issueDate)}</div>
                                     </div>
                                     <span className={`badge badge-${STATUS_MAP[displayStatus]?.color}`}>
                                         <span className="badge-dot" /> {STATUS_MAP[displayStatus]?.label}
@@ -1154,7 +1153,7 @@ export default function NotaListPage() {
                                     </div>
                                 </div>
                                 <div className="mobile-record-actions">
-                                    <button className="btn btn-secondary" onClick={() => router.push(`/invoices/${n._id}`)}>Buka</button>
+                                    <button className="btn btn-secondary" onClick={() => router.push(`/invoices/${n._id}`)}><Eye size={14} /> Detail</button>
                                     {canExportInvoices && <button className="btn btn-secondary" onClick={() => void handleExportNota(n)}><FileDown size={13} /> Excel</button>}
                                     {canPrintInvoices && <button className="btn btn-secondary" onClick={() => void handlePrintNota(n)}><Printer size={13} /> Cetak</button>}
                                 </div>
@@ -1365,7 +1364,7 @@ export default function NotaListPage() {
                                                     <td>{formatCurrency(item.paidAmount)}</td>
                                                     <td>
                                                         <div className="font-semibold">{formatCurrency(item.remainingAmount)}</div>
-                                                        <button className="table-action-btn" type="button" onClick={() => updateReceiptAllocation(item.nota._id, item.remainingAmount)} disabled={receiving}>Isi penuh</button>
+                                                        <button className="table-action-btn" type="button" onClick={() => updateReceiptAllocation(item.nota._id, item.remainingAmount)} disabled={receiving}><ChevronsRight size={14} /> Isi penuh</button>
                                                     </td>
                                                     <td><FormattedNumberInput allowDecimal={false} value={receiptAllocations[item.nota._id] || 0} onValueChange={value => updateReceiptAllocation(item.nota._id, value)} disabled={receiving} placeholder="Alokasi" /></td>
                                                 </tr>

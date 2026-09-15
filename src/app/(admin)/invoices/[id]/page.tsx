@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useApp, useToast } from '../../layout';
-import { Printer, DollarSign, Landmark, Trash2, FileDown, Pencil } from 'lucide-react';
+import { Printer, DollarSign, Landmark, Trash2, FileDown, Pencil, Ban } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import PageBackButton from '@/components/PageBackButton';
@@ -154,6 +154,8 @@ export default function NotaDetailPage() {
     const canPrintInvoice = user ? hasPermission(user, 'invoices', 'print') : false;
     const canManageOverpaymentRefund = canManageInvoice;
     const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
+    const canOpenCustomers = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const isVoidedInvoice = nota?.status === 'VOID';
     const canEditPph23 = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0;
     const canReviseInvoice = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0 && totalAdjustmentAmount <= 0;
@@ -711,7 +713,9 @@ export default function NotaDetailPage() {
                             <div className="detail-item"><div className="detail-label">Tanggal</div><div className="detail-value">{formatDate(nota.issueDate)}</div></div>
                         </div>
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Customer</div><div className="detail-value font-semibold">{nota.customerName}</div></div>
+                            <div className="detail-item"><div className="detail-label">Customer</div><div className="detail-value font-semibold">{nota.customerRef && canOpenCustomers ? (
+                                <Link href={`/customers/${nota.customerRef}`} style={{ color: 'var(--color-primary)', fontWeight: 600 }}>{nota.customerName}</Link>
+                            ) : nota.customerName}</div></div>
                             <div className="detail-item"><div className="detail-label">Jatuh Tempo</div><div className="detail-value">{nota.dueDate ? formatDate(nota.dueDate) : '-'}</div></div>
                         </div>
                         <div className="detail-row">
@@ -856,8 +860,8 @@ export default function NotaDetailPage() {
                                             <div style={{ marginTop: '0.5rem' }}>
                                                 {canManageInvoice && (
                                                     <>
-                                                        <button className="table-action-btn" onClick={() => openEditAdjustmentModal(adjustment)} disabled={Boolean(voidingAdjustmentId)}>Edit</button>
-                                                        <button className="table-action-btn" onClick={() => void handleDeleteAdjustment(adjustment._id)} disabled={voidingAdjustmentId === adjustment._id}>{voidingAdjustmentId === adjustment._id ? 'Memproses...' : 'Batalkan'}</button>
+                                                        <button className="table-action-btn" onClick={() => openEditAdjustmentModal(adjustment)} disabled={Boolean(voidingAdjustmentId)}><Pencil size={13} /> Edit</button>
+                                                        <button className="table-action-btn" onClick={() => void handleDeleteAdjustment(adjustment._id)} disabled={voidingAdjustmentId === adjustment._id}>{voidingAdjustmentId === adjustment._id ? 'Memproses...' : (<><Ban size={13} /> Batalkan</>)}</button>
                                                     </>
                                                 )}
                                             </div>
@@ -912,7 +916,7 @@ export default function NotaDetailPage() {
                                         <tr key={it._id}>
                                             <td className="font-mono">{it.vehiclePlate || '-'}</td>
                                             <td className="text-muted">{formatDate(it.date)}</td>
-                                            <td>{it.noSJ || '-'}</td>
+                                            <td>{it.doRef && canOpenDeliveryOrders ? <Link href={`/delivery-orders/${it.doRef}`} style={{ color: 'var(--color-primary)' }}>{it.noSJ || '-'}</Link> : (it.noSJ || '-')}</td>
                                             <td>{it.dari}</td>
                                             <td>{it.tujuan}</td>
                                             <td>{it.barang || '-'}</td>

@@ -202,7 +202,7 @@ export default function UsersPage() {
                                         <td><span className={`badge ${u.role === 'OWNER' ? 'badge-purple' : 'badge-info'}`}>{ROLE_LABELS[u.role]}</span></td>
                                         <td><span className={`badge ${u.active !== false ? 'badge-success' : 'badge-gray'}`}>{u.active !== false ? 'Aktif' : 'Non-Aktif'}</span></td>
                                         <td>{getUserNextAction(u)}</td>
-                                        <td><div className="table-actions">
+                                        <td><div className="table-actions-col">
                                             <button className="table-action-btn" onClick={() => openEdit(u)} disabled={togglingUserId === u._id}><Edit size={14} /> Edit</button>
                                             <button className="table-action-btn" onClick={() => toggleActive(u)} disabled={togglingUserId === u._id}><RefreshCw size={14} /> {togglingUserId === u._id ? 'Menyimpan...' : (u.active !== false ? 'Nonaktifkan' : 'Aktifkan')}</button>
                                         </div></td>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, Plus, Search, Receipt } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
@@ -23,7 +24,7 @@ import {
     type FinancePeriodMode,
 } from '@/lib/finance-period';
 import type { DriverVoucher } from '@/lib/types';
-import { hasPermission } from '@/lib/rbac';
+import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
@@ -53,6 +54,8 @@ export default function DriverVouchersPage() {
     const router = useRouter();
     const { user } = useApp();
     const { addToast } = useToast();
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const defaultPeriod = useMemo(() => getDefaultFinancePeriod(), []);
     const [items, setItems] = useState<DriverVoucher[]>([]);
     const [loading, setLoading] = useState(true);
@@ -322,21 +325,18 @@ export default function DriverVouchersPage() {
                                     return (
                                         <tr key={v._id}>
                                             <td>
-                                                <button
-                                                    type="button"
+                                                <Link
+                                                    href={`/driver-vouchers/${v._id}`}
                                                     className="btn btn-ghost btn-sm"
                                                     style={{ padding: 0, color: 'var(--color-primary)', fontWeight: 600 }}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        router.push(`/driver-vouchers/${v._id}`);
-                                                    }}
+                                                    onClick={(event) => event.stopPropagation()}
                                                 >
                                                     {v.bonNumber}
-                                                </button>
+                                                </Link>
                                             </td>
-                                            <td className="font-medium">{v.driverName || '-'}</td>
+                                            <td className="font-medium">{v.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${v.driverRef}`} style={{ color: 'var(--color-primary)' }}>{v.driverName || '-'}</Link> : (v.driverName || '-')}</td>
                                             <td className="text-muted">{formatDate(v.issuedDate)}</td>
-                                            <td>{v.doNumber || '-'}</td>
+                                            <td>{v.deliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${v.deliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{v.doNumber || '-'}</Link> : (v.doNumber || '-')}</td>
                                             <td className="text-muted">{routeLabel}</td>
                                             <td className="font-medium">{formatCurrency(totalIssuedAmount)}</td>
                                             <td className="font-medium">{formatCurrency(totalClaimAmount)}</td>
@@ -409,8 +409,8 @@ export default function DriverVouchersPage() {
                                 <div key={v._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
                                         <div>
-                                            <div className="mobile-record-title">{v.bonNumber}</div>
-                                            <div className="mobile-record-subtitle">{v.driverName || '-'} | {formatDate(v.issuedDate)}</div>
+                                            <div className="mobile-record-title"><Link href={`/driver-vouchers/${v._id}`} style={{ color: 'var(--color-primary)' }}>{v.bonNumber}</Link></div>
+                                            <div className="mobile-record-subtitle">{v.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${v.driverRef}`} style={{ color: 'var(--color-primary)' }}>{v.driverName || '-'}</Link> : (v.driverName || '-')} | {formatDate(v.issuedDate)}</div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                             <span className={`badge ${status.cls}`}>{status.label}</span>
@@ -420,7 +420,7 @@ export default function DriverVouchersPage() {
                                     <div className="mobile-record-meta">
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">No. DO Internal</span>
-                                            <span className="mobile-record-value">{v.doNumber || '-'}</span>
+                                            <span className="mobile-record-value">{v.deliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${v.deliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{v.doNumber || '-'}</Link> : (v.doNumber || '-')}</span>
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Rute</span>

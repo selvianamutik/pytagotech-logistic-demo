@@ -65,6 +65,8 @@ export default function DriverVoucherDetailPage() {
     const [editingDisbursementId, setEditingDisbursementId] = useState<string | null>(null);
     const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
     const [deletingDisbursementId, setDeletingDisbursementId] = useState<string | null>(null);
+    const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ id: string; label: string } | null>(null);
+    const [deleteConfirmDisbursement, setDeleteConfirmDisbursement] = useState<{ id: string; label: string } | null>(null);
     const [repairingIssueLedger, setRepairingIssueLedger] = useState(false);
     const [itemForm, setItemForm] = useState(createDefaultDriverVoucherItemForm());
     const [topUpForm, setTopUpForm] = useState(createDefaultDriverVoucherTopUpForm());
@@ -75,6 +77,7 @@ export default function DriverVoucherDetailPage() {
     const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
     const canManageVoucherItems = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canTopUpVoucher = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canSettleVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
@@ -666,7 +669,7 @@ export default function DriverVoucherDetailPage() {
                             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{voucher.bonNumber}</h1>
                             <span className={`badge ${statusConfig.cls}`}>{statusConfig.label}</span>
                         </div>
-                        <p className="page-subtitle" style={{ margin: 0 }}>{voucher.driverName} | {formatDate(voucher.issuedDate)} | No. DO Internal {voucher.doNumber || '-'} | Uang Jalan Trip</p>
+                        <p className="page-subtitle" style={{ margin: 0 }}>{voucher.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${voucher.driverRef}`} style={{ color: 'var(--color-primary)' }}>{voucher.driverName}</Link> : voucher.driverName} | {formatDate(voucher.issuedDate)} | No. DO Internal {voucher.deliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${voucher.deliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{voucher.doNumber || '-'}</Link> : (voucher.doNumber || '-')} | Uang Jalan Trip</p>
                     </div>
                 </div>
                 <div className="page-actions">
@@ -801,13 +804,13 @@ export default function DriverVoucherDetailPage() {
                                         <td>{index + 1}</td>
                                         <td>{formatDate(item.date)}</td>
                                         <td><span className={`badge ${item.kind === 'INITIAL' ? 'badge-blue' : 'badge-warning'}`}>{bonLabel}</span></td>
-                                        <td>{item.bankAccountName || '-'}</td>
+                                        <td>{item.bankAccountRef && canOpenBankAccountPage ? <Link href={`/bank-accounts/${item.bankAccountRef}`} style={{ color: 'var(--color-primary)' }}>{item.bankAccountName || '-'}</Link> : (item.bankAccountName || '-')}</td>
                                         <td>{item.note || '-'}</td>
                                         <td className="font-medium">{formatCurrency(item.amount)}</td>
                                         {!isSettled && canTopUpVoucher && (
                                             <td>
                                                 {item.kind === 'TOP_UP' ? (
-                                                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                                    <div className="table-actions-col">
                                                         <button
                                                             className="btn btn-ghost btn-sm"
                                                             onClick={() => openEditDisbursementModal(item)}
@@ -818,7 +821,7 @@ export default function DriverVoucherDetailPage() {
                                                         </button>
                                                         <button
                                                             className="btn btn-ghost btn-sm"
-                                                            onClick={() => handleDeleteDisbursement(item._id)}
+                                                            onClick={() => setDeleteConfirmDisbursement({ id: item._id, label: bonLabel })}
                                                             disabled={deletingDisbursementId === item._id}
                                                             aria-label={`Hapus ${bonLabel}`}
                                                         >
@@ -848,7 +851,7 @@ export default function DriverVoucherDetailPage() {
                                 <div className="mobile-record-header">
                                     <div>
                                         <div className="mobile-record-title">{bonLabel}</div>
-                                        <div className="mobile-record-subtitle">{formatDate(item.date)} | {item.bankAccountName || '-'}</div>
+                                        <div className="mobile-record-subtitle">{formatDate(item.date)} | {item.bankAccountRef && canOpenBankAccountPage ? <Link href={`/bank-accounts/${item.bankAccountRef}`} style={{ color: 'var(--color-primary)' }}>{item.bankAccountName || '-'}</Link> : (item.bankAccountName || '-')}</div>
                                     </div>
                                     <span className={`badge ${item.kind === 'INITIAL' ? 'badge-blue' : 'badge-warning'}`}>{formatCurrency(item.amount)}</span>
                                 </div>
@@ -863,7 +866,7 @@ export default function DriverVoucherDetailPage() {
                                         <button className="btn btn-secondary" onClick={() => openEditDisbursementModal(item)} disabled={deletingDisbursementId === item._id || toppingUp}>
                                             <Pencil size={14} /> Edit Top Up
                                         </button>
-                                        <button className="btn btn-secondary" onClick={() => handleDeleteDisbursement(item._id)} disabled={deletingDisbursementId === item._id}>
+                                        <button className="btn btn-secondary" onClick={() => setDeleteConfirmDisbursement({ id: item._id, label: bonLabel })} disabled={deletingDisbursementId === item._id}>
                                             <Trash2 size={14} /> Hapus Top Up
                                         </button>
                                     </div>
@@ -897,7 +900,7 @@ export default function DriverVoucherDetailPage() {
                                             <td className="font-medium">{formatCurrency(item.amount)}</td>
                                             {!isSettled && canManageVoucherItems && (
                                                 <td>
-                                                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                                    <div className="table-actions-col">
                                                         <button
                                                             className="btn btn-ghost btn-sm"
                                                             onClick={() => openEditItemModal(item)}
@@ -908,7 +911,7 @@ export default function DriverVoucherDetailPage() {
                                                         </button>
                                                         <button
                                                             className="btn btn-ghost btn-sm"
-                                                            onClick={() => handleDeleteItem(item._id)}
+                                                            onClick={() => setDeleteConfirmItem({ id: item._id, label: item.description || item.category })}
                                                             disabled={deletingItemId === item._id}
                                                             aria-label={`Hapus biaya lain-lain ${item.category}`}
                                                         >
@@ -962,7 +965,7 @@ export default function DriverVoucherDetailPage() {
                                                 </button>
                                                 <button
                                                     className="btn btn-danger btn-sm"
-                                                    onClick={() => handleDeleteItem(item._id)}
+                                                    onClick={() => setDeleteConfirmItem({ id: item._id, label: item.description || item.category })}
                                                     disabled={deletingItemId === item._id}
                                                 >
                                                     <Trash2 size={14} /> Hapus
@@ -1206,6 +1209,36 @@ export default function DriverVoucherDetailPage() {
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowSettleModal(false)} disabled={settling}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSettle} disabled={settling}><CheckCircle size={16} /> {settling ? 'Memproses...' : settlementDisplay.primaryActionLabel}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmItem && (
+                <div className="modal-overlay" onClick={() => { if (deletingItemId !== deleteConfirmItem.id) setDeleteConfirmItem(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Biaya Lain-lain?</h3></div>
+                        <div className="modal-body"><p>Hapus biaya <strong>{deleteConfirmItem.label || 'tanpa deskripsi'}</strong> senilai <strong>{formatCurrency(items.find(item => item._id === deleteConfirmItem.id)?.amount || 0)}</strong> dari uang jalan trip ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmItem(null)} disabled={deletingItemId === deleteConfirmItem.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteItem(deleteConfirmItem.id)} disabled={deletingItemId === deleteConfirmItem.id}>
+                                <Trash2 size={16} /> {deletingItemId === deleteConfirmItem.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmDisbursement && (
+                <div className="modal-overlay" onClick={() => { if (deletingDisbursementId !== deleteConfirmDisbursement.id) setDeleteConfirmDisbursement(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Top Up?</h3></div>
+                        <div className="modal-body"><p>Hapus tambahan bon <strong>{deleteConfirmDisbursement.label}</strong>? Uang kembali ke saldo uang jalan trip.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmDisbursement(null)} disabled={deletingDisbursementId === deleteConfirmDisbursement.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteDisbursement(deleteConfirmDisbursement.id)} disabled={deletingDisbursementId === deleteConfirmDisbursement.id}>
+                                <Trash2 size={16} /> {deletingDisbursementId === deleteConfirmDisbursement.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
                         </div>
                     </div>
                 </div>

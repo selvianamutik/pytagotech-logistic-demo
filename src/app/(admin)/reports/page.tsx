@@ -88,7 +88,9 @@ export default function ReportsPage() {
   const canOpenDriverBorongans = user ? hasPageAccess(user, "driverBorongans") : false;
   const canOpenVehicles = user ? hasPageAccess(user, "vehicles") : false;
   const canOpenIncidents = user ? hasPageAccess(user, "incidents") : false;
+  const canOpenMaintenance = user ? hasPageAccess(user, "maintenance") : false;
   const canOpenPurchases = user ? hasPageAccess(user, "purchases") : false;
+  const canOpenDrivers = user ? hasPageAccess(user, "drivers") : false;
 
   const businessToday = getBusinessCalendarDateParts() || {
     year: String(new Date().getFullYear()),
@@ -743,10 +745,10 @@ export default function ReportsPage() {
                         });
                         return (
                           <tr key={item._id}>
-                            <td style={{ fontWeight: 600 }}>{item.bonNumber}</td>
+                            <td style={{ fontWeight: 600 }}>{canOpenDriverVouchers ? <Link href={`/driver-vouchers/${item._id}`} style={{ color: "var(--color-primary)" }}>{item.bonNumber}</Link> : item.bonNumber}</td>
                             <td>{formatDate(item.issuedDate)}</td>
-                            <td>{item.driverName || "-"}</td>
-                            <td>{item.issueBankName || "-"}</td>
+                            <td>{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: "var(--color-primary)" }}>{item.driverName || "-"}</Link> : (item.driverName || "-")}</td>
+                            <td>{item.issueBankRef && canOpenBankAccounts ? <Link href={`/bank-accounts/${item.issueBankRef}`} style={{ color: "var(--color-primary)" }}>{item.issueBankName || "-"}</Link> : (item.issueBankName || "-")}</td>
                             <td style={{ textAlign: "right", fontWeight: 600 }}>
                               {formatCurrency(totalIssuedAmount)}
                             </td>
@@ -816,10 +818,10 @@ export default function ReportsPage() {
                         <div className="mobile-record-header">
                           <div>
                             <div className="mobile-record-title">
-                              {item.bonNumber}
+                              {canOpenDriverVouchers ? <Link href={`/driver-vouchers/${item._id}`} style={{ color: "var(--color-primary)" }}>{item.bonNumber}</Link> : item.bonNumber}
                             </div>
                             <div className="mobile-record-subtitle">
-                              {item.driverName || "-"} | {formatDate(item.issuedDate)}
+                              {item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: "var(--color-primary)" }}>{item.driverName || "-"}</Link> : (item.driverName || "-")} | {formatDate(item.issuedDate)}
                             </div>
                           </div>
                           <span className="badge badge-warning">Belum Diselesaikan</span>
@@ -828,7 +830,7 @@ export default function ReportsPage() {
                           <div className="mobile-record-kv">
                             <span className="mobile-record-label">Rekening</span>
                             <span className="mobile-record-value">
-                              {item.issueBankName || "-"}
+                              {item.issueBankRef && canOpenBankAccounts ? <Link href={`/bank-accounts/${item.issueBankRef}`} style={{ color: "var(--color-primary)" }}>{item.issueBankName || "-"}</Link> : (item.issueBankName || "-")}
                             </span>
                           </div>
                           <div className="mobile-record-kv">
@@ -1235,6 +1237,7 @@ export default function ReportsPage() {
                           canOpenDriverBorongans,
                           canOpenVehicles,
                           canOpenIncidents,
+                          canOpenMaintenance,
                           canOpenPurchases,
                         },
                       });
@@ -1338,6 +1341,7 @@ export default function ReportsPage() {
                       canOpenDriverBorongans,
                       canOpenVehicles,
                       canOpenIncidents,
+                      canOpenMaintenance,
                       canOpenPurchases,
                     },
                   });

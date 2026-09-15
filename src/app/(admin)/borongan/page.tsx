@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, Receipt } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Plus, Receipt, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import { formatDate, formatCurrency, formatQuantity } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
@@ -17,7 +18,7 @@ import {
     isFinancePeriodRangeReady,
     type FinancePeriodMode,
 } from '@/lib/finance-period';
-import { normalizeUserRole } from '@/lib/rbac';
+import { hasPageAccess, normalizeUserRole } from '@/lib/rbac';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import type { DriverBorongan } from '@/lib/types';
 import { useApp, useToast } from '../layout';
@@ -31,6 +32,7 @@ export default function BoronganListPage() {
     const router = useRouter();
     const { addToast } = useToast();
     const { user } = useApp();
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const defaultPeriod = useMemo(() => getDefaultFinancePeriod(), []);
     const [items, setItems] = useState<DriverBorongan[]>([]);
     const [loading, setLoading] = useState(true);
@@ -294,16 +296,15 @@ export default function BoronganListPage() {
                             ) : items.map(borongan => (
                                 <tr key={borongan._id}>
                                     <td>
-                                        <button
-                                            type="button"
+                                        <Link
+                                            href={`/borongan/${borongan._id}`}
                                             className="btn btn-ghost btn-sm"
                                             style={{ padding: 0, color: 'var(--color-primary)', fontWeight: 600 }}
-                                            onClick={() => router.push(`/borongan/${borongan._id}`)}
                                         >
                                             {borongan.boronganNumber}
-                                        </button>
+                                        </Link>
                                     </td>
-                                    <td className="font-semibold">{borongan.driverName}</td>
+                                    <td className="font-semibold">{borongan.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${borongan.driverRef}`} style={{ color: 'var(--color-primary)' }}>{borongan.driverName}</Link> : borongan.driverName}</td>
                                     <td className="text-muted">{formatDate(borongan.periodStart)} - {formatDate(borongan.periodEnd)}</td>
                                     <td>{formatQuantity(borongan.totalCollie || 0)}</td>
                                     <td>{formatQuantity(borongan.totalWeightKg || 0)} kg</td>
@@ -315,7 +316,7 @@ export default function BoronganListPage() {
                                     </td>
                                     <td>
                                         <button type="button" className="table-action-btn" onClick={() => router.push(`/borongan/${borongan._id}`)}>
-                                            Lihat
+                                            <Eye size={14} /> Detail
                                         </button>
                                     </td>
                                 </tr>

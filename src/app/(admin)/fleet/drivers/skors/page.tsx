@@ -19,7 +19,7 @@ import {
     resolveDriverScoreStatus,
 } from '@/lib/driver-scoring-support';
 import { buildDriversQuery, isDriverActive } from '@/lib/fleet-asset-page-support';
-import { hasPermission } from '@/lib/rbac';
+import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import type { Driver, DriverScore } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 
@@ -37,11 +37,14 @@ export default function DriverSkorsPage() {
     const [editId, setEditId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [endEarlyConfirm, setEndEarlyConfirm] = useState<DriverScore | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<DriverScore | null>(null);
     const [form, setForm] = useState(createDefaultDriverScoreForm(initialDriverRef));
 
     const canCreateScores = user ? hasPermission(user, 'driverScores', 'create') : false;
     const canManageScores = user ? hasPermission(user, 'driverScores', 'update') : false;
     const canDeleteScores = user ? hasPermission(user, 'driverScores', 'delete') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -191,12 +194,7 @@ export default function DriverSkorsPage() {
     }, [addToast, closeModal, editId, form, loadData]);
 
     const handleEndEarly = useCallback(async (score: DriverScore) => {
-        const confirmMessage = score.scoreType === 'WARNING' 
-            ? 'Selesaikan warning ini? Supir tidak akan melihat warning ini lagi.' 
-            : 'Akhiri skors ini lebih awal? Supir akan langsung bisa mengakses aplikasi lagi.';
-        
-        if (!window.confirm(confirmMessage)) return;
-
+        setEndEarlyConfirm(null);
         setLoading(true);
         try {
             const res = await fetch('/api/data', {
@@ -222,12 +220,8 @@ export default function DriverSkorsPage() {
 
     const handleDelete = useCallback(async (score: DriverScore) => {
         const scoreLabel = score.scoreType === 'WARNING' ? 'warning' : 'skors';
-        const confirmMessage = score.scoreType === 'WARNING'
-            ? `Hapus warning untuk ${score.driverName || 'supir ini'}? Riwayat warning ini akan hilang permanen.`
-            : `Hapus skors untuk ${score.driverName || 'supir ini'}? Skors yang sudah selesai pun akan dihapus dari riwayat.`;
 
-        if (!window.confirm(confirmMessage)) return;
-
+        setDeleteConfirm(null);
         setDeletingId(score._id);
         try {
             const res = await fetch('/api/data', {
@@ -326,7 +320,7 @@ export default function DriverSkorsPage() {
                                 const statusMeta = getDriverScoreStatusMeta(score);
                                 return (
                                     <tr key={score._id}>
-                                        <td><div className="font-medium">{score.driverName || '-'}</div></td>
+                                        <td><div className="font-medium">{score.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${score.driverRef}`} style={{ color: 'var(--color-primary)' }}>{score.driverName || '-'}</Link> : (score.driverName || '-')}</div></td>
                                         <td><span className={`badge ${DRIVER_SCORE_TYPE_META[score.scoreType].badgeClass}`}>{DRIVER_SCORE_TYPE_META[score.scoreType].label}</span></td>
                                         <td>{formatDate(score.effectiveDate)}</td>
                                         <td>{score.scoreType === 'WARNING' ? '-' : `${score.durationDays} hari`}</td>
@@ -338,7 +332,7 @@ export default function DriverSkorsPage() {
                                                 {canManageScores && (status === 'ACTIVE' || status === 'DUE_TODAY') && (
                                                     <button 
                                                         className="btn btn-ghost btn-sm text-success" 
-                                                        onClick={() => handleEndEarly(score)}
+                                                        onClick={() => setEndEarlyConfirm(score)}
                                                         title="Selesaikan Sekarang"
                                                     >
                                                         <CheckCircle2 size={14} />
@@ -352,7 +346,7 @@ export default function DriverSkorsPage() {
                                                 {canDeleteScores && (
                                                     <button
                                                         className="btn btn-ghost btn-sm text-danger"
-                                                        onClick={() => handleDelete(score)}
+                                                        onClick={() => setDeleteConfirm(score)}
                                                         disabled={deletingId === score._id}
                                                         title="Hapus"
                                                     >
@@ -381,7 +375,7 @@ export default function DriverSkorsPage() {
                                 <div key={score._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
                                         <div>
-                                            <div className="mobile-record-title">{score.driverName || '-'}</div>
+                                            <div className="mobile-record-title">{score.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${score.driverRef}`} style={{ color: 'var(--color-primary)' }}>{score.driverName || '-'}</Link> : (score.driverName || '-')}</div>
                                             <div className="mobile-record-subtitle">{DRIVER_SCORE_TYPE_META[score.scoreType].label}</div>
                                         </div>
                                         <span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
@@ -407,7 +401,7 @@ export default function DriverSkorsPage() {
                                     {canManageScores && (
                                         <div className="mobile-record-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                                             {(status === 'ACTIVE' || status === 'DUE_TODAY') && (
-                                                <button className="btn btn-secondary" style={{ flex: 1, color: 'var(--color-success-600)' }} onClick={() => handleEndEarly(score)}>
+                                                <button className="btn btn-secondary" style={{ flex: 1, color: 'var(--color-success-600)' }} onClick={() => setEndEarlyConfirm(score)}>
                                                     <CheckCircle2 size={14} /> Selesaikan
                                                 </button>
                                             )}
@@ -418,7 +412,7 @@ export default function DriverSkorsPage() {
                                                 <button
                                                     className="btn btn-secondary"
                                                     style={{ flex: 1, color: 'var(--color-danger-600)' }}
-                                                    onClick={() => handleDelete(score)}
+                                                    onClick={() => setDeleteConfirm(score)}
                                                     disabled={deletingId === score._id}
                                                 >
                                                     <Trash2 size={14} /> {deletingId === score._id ? 'Menghapus...' : 'Hapus'}
@@ -492,6 +486,44 @@ export default function DriverSkorsPage() {
                             <button className="btn btn-secondary" onClick={closeModal} disabled={saving}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
                                 <Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {endEarlyConfirm && (
+                <div className="modal-overlay" onClick={() => setEndEarlyConfirm(null)}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Selesaikan Lebih Awal?</h3></div>
+                        <div className="modal-body">
+                            <p>{endEarlyConfirm.scoreType === 'WARNING'
+                                ? 'Selesaikan warning ini? Supir tidak akan melihat warning ini lagi.'
+                                : 'Akhiri skors ini lebih awal? Supir akan langsung bisa mengakses aplikasi lagi.'}</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setEndEarlyConfirm(null)}>Batal</button>
+                            <button className="btn btn-primary" onClick={() => handleEndEarly(endEarlyConfirm)}>
+                                <CheckCircle2 size={16} /> Selesaikan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirm && (
+                <div className="modal-overlay" onClick={() => { if (deletingId !== deleteConfirm._id) setDeleteConfirm(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus {deleteConfirm.scoreType === 'WARNING' ? 'Warning' : 'Skors'}?</h3></div>
+                        <div className="modal-body">
+                            <p>{deleteConfirm.scoreType === 'WARNING'
+                                ? `Hapus warning untuk ${deleteConfirm.driverName || 'supir ini'}? Riwayat warning ini akan hilang permanen.`
+                                : `Hapus skors untuk ${deleteConfirm.driverName || 'supir ini'}? Skors yang sudah selesai pun akan dihapus dari riwayat.`}</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => { if (deletingId !== deleteConfirm._id) setDeleteConfirm(null); }} disabled={deletingId === deleteConfirm._id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm)} disabled={deletingId === deleteConfirm._id}>
+                                <Trash2 size={16} /> {deletingId === deleteConfirm._id ? 'Menghapus...' : 'Hapus'}
                             </button>
                         </div>
                     </div>

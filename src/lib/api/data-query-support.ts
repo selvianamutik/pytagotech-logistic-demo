@@ -1,5 +1,6 @@
 import type { ApiSession } from '@/lib/api/data-helpers';
 import { registerApiReadCacheInvalidator } from '@/lib/api/read-cache';
+import { buildAuditEntityLabel, getAuditLabelFields, resolveAuditEntityDocType } from '@/lib/audit-labels';
 import { addDaysToDateValue, getBusinessCalendarDateParts, getBusinessDateValue } from '@/lib/business-date';
 import { getDocumentById, listDocumentFieldsByFilter, listDocuments, listDocumentsByFilter } from '@/lib/repositories/document-store';
 import {
@@ -451,6 +452,7 @@ function buildAuditLogFilterCacheKey(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     return JSON.stringify({
         search: params.search?.trim().toLowerCase() || '',
@@ -460,6 +462,7 @@ function buildAuditLogFilterCacheKey(params: {
         period: normalizeAuditLogPeriod(params.period),
         entityRefs: normalizeStringList([params.entityRef, ...(params.entityRefs ?? [])]).sort(),
         entityTypes: normalizeStringList([params.entityType, ...(params.entityTypes ?? [])]).sort(),
+        actorUserName: params.actorUserName?.trim() || '',
     });
 }
 
@@ -473,6 +476,7 @@ async function getFilteredAuditLogs(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     const cacheKey = buildAuditLogFilterCacheKey(params);
     if (AUDIT_LOG_FILTER_CACHE_TTL_MS > 0) {
@@ -557,6 +561,10 @@ async function getFilteredAuditLogs(params: {
             return false;
         }
 
+        if (params.actorUserName && (log.actorUserName || '') !== params.actorUserName) {
+            return false;
+        }
+
         if (!matchesAuditLogPeriod(log, period, today)) {
             return false;
         }
@@ -587,6 +595,89 @@ async function getFilteredAuditLogs(params: {
     return sorted;
 }
 
+const MAX_AUDIT_ENRICH_SLICE = 200;
+
+async function enrichAuditLogLabels(items: AuditLog[]): Promise<AuditLog[]> {
+    if (items.length === 0 || items.length > MAX_AUDIT_ENRICH_SLICE) {
+        return items;
+    }
+
+    const refsByDocType = new Map<string, string[]>();
+    for (const log of items) {
+        const entityType = typeof log.entityType === 'string' ? log.entityType : '';
+        const entityRef = typeof log.entityRef === 'string' ? log.entityRef : '';
+        if (!entityType || !entityRef) {
+            continue;
+        }
+        const docType = resolveAuditEntityDocType(entityType);
+        if (!docType || docType === 'auditLog') {
+            continue;
+        }
+        if (getAuditLabelFields(docType).length === 0) {
+            continue;
+        }
+        const refs = refsByDocType.get(docType) ?? [];
+        if (!refs.includes(entityRef)) {
+            refs.push(entityRef);
+        }
+        refsByDocType.set(docType, refs);
+    }
+    if (refsByDocType.size === 0) {
+        return items;
+    }
+
+    const labelsById = new Map<string, string>();
+    await Promise.all(
+        Array.from(refsByDocType.entries()).map(async ([docType, refs]) => {
+            try {
+                const fields = getAuditLabelFields(docType);
+                const docs = await listDocumentFieldsByFilter<Record<string, unknown> & { _id?: string }>(
+                    docType,
+                    fields,
+                    {
+                        _id: refs,
+                    }
+                );
+                for (const doc of docs) {
+                    const docId = typeof doc._id === 'string' ? doc._id : '';
+                    if (!docId) {
+                        continue;
+                    }
+                    const label = buildAuditEntityLabel(doc, docType);
+                    if (label) {
+                        labelsById.set(docId, label);
+                    }
+                }
+            } catch {
+                // Ignore per-docType enrichment failures; fall back to raw entityRef.
+            }
+        })
+    );
+    if (labelsById.size === 0) {
+        return items;
+    }
+
+    return items.map(log => {
+        const entityRef = typeof log.entityRef === 'string' ? log.entityRef : '';
+        if (!entityRef) {
+            return log;
+        }
+        const label = labelsById.get(entityRef);
+        if (!label) {
+            return log;
+        }
+        const next: AuditLog = {
+            ...log,
+            entityLabel: label,
+        };
+        const summary = log.changesSummary;
+        if (typeof summary === 'string' && summary.includes(entityRef)) {
+            next.changesSummary = summary.split(entityRef).join(label);
+        }
+        return next;
+    });
+}
+
 export async function getAuditLogList(params: {
     search?: string;
     searchFields?: string[];
@@ -599,6 +690,7 @@ export async function getAuditLogList(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
     countOnly?: boolean;
 }) {
     const filtered = await getFilteredAuditLogs(params);
@@ -613,8 +705,9 @@ export async function getAuditLogList(params: {
     }
 
     const offset = Math.max(params.page - 1, 0) * Math.max(params.pageSize, 1);
+    const items = await enrichAuditLogLabels(filtered.slice(offset, offset + params.pageSize));
     return {
-        items: filtered.slice(offset, offset + params.pageSize),
+        items,
         total,
     };
 }
@@ -627,6 +720,7 @@ export async function getAuditLogsSummary(params?: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     const logs = await getFilteredAuditLogs({
         search: params?.search,
@@ -636,6 +730,7 @@ export async function getAuditLogsSummary(params?: {
         entityRefs: params?.entityRefs,
         entityType: params?.entityType,
         entityTypes: params?.entityTypes,
+        actorUserName: params?.actorUserName,
     });
 
     const loginLogs = logs.filter(log => log.action === 'LOGIN' || log.action === 'LOGOUT').length;
@@ -646,11 +741,21 @@ export async function getAuditLogsSummary(params?: {
             .filter(Boolean)
     ).size;
 
+    const allActorLogs = await getFilteredAuditLogs({
+        period: 'all',
+    });
+    const actorNames = [...new Set(
+        allActorLogs
+            .map(log => log.actorUserName)
+            .filter((name): name is string => Boolean(name) && name !== 'User tidak diketahui')
+    )].sort();
+
     return {
         totalLogs: logs.length,
         loginLogs,
         mutationLogs,
         actorCount,
+        actorNames,
         period: normalizeAuditLogPeriod(params?.period),
     };
 }

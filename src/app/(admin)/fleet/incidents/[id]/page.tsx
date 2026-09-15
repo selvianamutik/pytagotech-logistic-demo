@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, Pencil, Plus, Printer, ReceiptText, Save, Trash2, Wrench, XCircle } from 'lucide-react';
 
@@ -24,7 +25,7 @@ import {
     summarizeIncidentSettlements,
 } from '@/lib/fleet-incident-detail-support';
 import { fetchCompanyProfile, openBrandedPrint, openPrintWindow, resolveDocumentIssuerProfile } from '@/lib/print';
-import { hasPermission } from '@/lib/rbac';
+import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { getExpenseCategoryScopeLabel, inferExpenseCategoryScope } from '@/lib/expense-category-scope';
 import { getBusinessDateValue } from '@/lib/business-date';
 import { INVENTORY_UNIT_OPTIONS, isTireTrackedWarehouseItem } from '@/lib/inventory';
@@ -261,6 +262,9 @@ export default function IncidentDetailPage() {
     const { addToast } = useToast();
     const incidentId = params.id as string;
     const canManageIncident = user ? hasPermission(user, 'incidents', 'update') : false;
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDrivers = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenExpenses = user ? hasPageAccess(user, 'expenses') : false;
     const canCreateExpense = user ? hasPermission(user, 'expenses', 'create') : false;
     const canCreateTires = user ? hasPermission(user, 'tires', 'create') : false;
     const canInstallTires = user ? hasPermission(user, 'tires', 'update') : false;
@@ -302,6 +306,9 @@ export default function IncidentDetailPage() {
     const [handlingForm, setHandlingForm] = useState(createDefaultIncidentHandlingForm());
     const [savingHandling, setSavingHandling] = useState(false);
     const [creatingMaintenanceLineRef, setCreatingMaintenanceLineRef] = useState('');
+    const [deletingLineRef, setDeletingLineRef] = useState('');
+    const [deleteConfirmLine, setDeleteConfirmLine] = useState<IncidentSettlementLine | null>(null);
+    const [maintenanceFollowUpConfirmLine, setMaintenanceFollowUpConfirmLine] = useState<IncidentSettlementLine | null>(null);
 
     const loadDetail = useCallback(async () => {
         setLoading(true);
@@ -594,7 +601,8 @@ export default function IncidentDetailPage() {
 
     const deleteLine = async (line: IncidentSettlementLine) => {
         if (!line._rev) return addToast('error', 'Revisi detail insiden tidak tersedia. Refresh halaman lalu coba lagi.');
-        if (!window.confirm('Hapus detail insiden draft ini?')) return;
+        if (deletingLineRef === line._id) return;
+        setDeletingLineRef(line._id);
         try {
             const res = await fetch('/api/data', {
                 method: 'POST',
@@ -604,9 +612,12 @@ export default function IncidentDetailPage() {
             const payload = await res.json();
             if (!res.ok) return addToast('error', payload.error || 'Gagal menghapus detail insiden');
             addToast('success', 'Detail insiden dihapus');
+            setDeleteConfirmLine(null);
             await loadDetail();
         } catch {
             addToast('error', 'Gagal menghapus detail insiden');
+        } finally {
+            setDeletingLineRef('');
         }
     };
 
@@ -1022,7 +1033,6 @@ export default function IncidentDetailPage() {
 
     const createMaintenanceFollowUp = async (line: IncidentSettlementLine) => {
         if (!line._rev) return addToast('error', 'Detail biaya insiden perlu direfresh sebelum membuat follow-up maintenance');
-        if (!window.confirm('Buat jadwal maintenance dari detail biaya insiden ini? Biaya yang sudah diposting dari insiden tidak akan diposting ulang.')) return;
         setCreatingMaintenanceLineRef(line._id);
         try {
             const res = await fetch('/api/data', {
@@ -1040,6 +1050,7 @@ export default function IncidentDetailPage() {
             const payload = await res.json();
             if (!res.ok) return addToast('error', payload.error || 'Gagal membuat follow-up maintenance');
             addToast('success', 'Follow-up maintenance insiden dibuat');
+            setMaintenanceFollowUpConfirmLine(null);
             await loadDetail();
         } catch {
             addToast('error', 'Gagal membuat follow-up maintenance');
@@ -1069,10 +1080,10 @@ export default function IncidentDetailPage() {
             {canCreateTires && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedTireEventRef && <button className="table-action-btn" onClick={() => openTireFollowUpModal(line)}><Plus size={14} /> Catat Aset Ban</button>}
             {canInstallIncidentTire(line) && <button className="table-action-btn" onClick={() => openTireInstallModal(line)}><Wrench size={14} /> Pasang Ban</button>}
             {canCreateMaintenance && !incidentClosed && line.lineType === 'COST' && (line.category === 'REPAIR' || line.category === 'SPAREPART') && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => openHandlingModal(line, 'DIRECT_PURCHASE')}><Wrench size={14} /> Catat Penanganan</button>}
-            {canCreateMaintenance && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => void createMaintenanceFollowUp(line)} disabled={creatingMaintenanceLineRef === line._id}><Wrench size={14} /> {creatingMaintenanceLineRef === line._id ? 'Membuat...' : 'Follow-up Maintenance'}</button>}
+            {canCreateMaintenance && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => setMaintenanceFollowUpConfirmLine(line)} disabled={creatingMaintenanceLineRef === line._id}><Wrench size={14} /> {creatingMaintenanceLineRef === line._id ? 'Membuat...' : 'Follow-up Maintenance'}</button>}
             {canManageIncident && canMarkIncidentRecoveryPosted(line) && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'POSTED')}><CheckCircle2 size={14} /> Tandai Diterima</button>}
             {canManageIncident && line.status !== 'VOID' && line.status !== 'POSTED' && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'VOID')}><XCircle size={14} /> Tolak</button>}
-            {canManageIncident && !incidentClosed && canDeleteIncidentSettlementLine(line) && <button className="table-action-btn danger" onClick={() => void deleteLine(line)}><Trash2 size={14} /> Hapus</button>}
+            {canManageIncident && !incidentClosed && canDeleteIncidentSettlementLine(line) && <button className="table-action-btn danger" onClick={() => setDeleteConfirmLine(line)}><Trash2 size={14} /> Hapus</button>}
         </div>
     );
 
@@ -1121,9 +1132,9 @@ export default function IncidentDetailPage() {
             <div className="detail-grid">
                 <div className="card"><div className="card-header"><span className="card-header-title">Detail Insiden</span></div><div className="card-body">
                     <div className="detail-row"><div className="detail-item"><div className="detail-label">Tipe</div><div className="detail-value">{INCIDENT_TYPE_MAP[incident.incidentType] || incident.incidentType}</div></div><div className="detail-item"><div className="detail-label">Waktu</div><div className="detail-value">{formatDateTime(incident.dateTime)}</div></div></div>
-                    <div className="detail-row"><div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value font-semibold">{incident.vehiclePlate}</div></div><div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{incident.driverName || '-'}</div></div></div>
+                    <div className="detail-row"><div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value font-semibold">{incident.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${incident.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{incident.vehiclePlate}</Link> : incident.vehiclePlate}</div></div><div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{incident.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${incident.driverRef}`} style={{ color: 'var(--color-primary)' }}>{incident.driverName || '-'}</Link> : (incident.driverName || '-')}</div></div></div>
                     <div className="detail-row"><div className="detail-item"><div className="detail-label">Lokasi</div><div className="detail-value">{incident.locationText}</div></div><div className="detail-item"><div className="detail-label">Odometer</div><div className="detail-value">{incident.odometer ? `${formatQuantity(incident.odometer, 0)} km` : '-'}</div></div></div>
-                    {incident.relatedDONumber && <div className="mt-2"><div className="detail-label">DO Internal Terkait</div><div className="detail-value"><a href={`/delivery-orders/${incident.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{incident.relatedDONumber}</a></div></div>}
+                    {incident.relatedDONumber && <div className="mt-2"><div className="detail-label">DO Internal Terkait</div><div className="detail-value"><Link href={`/delivery-orders/${incident.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{incident.relatedDONumber}</Link></div></div>}
                 </div></div>
                 <div className="card"><div className="card-header"><span className="card-header-title">Kronologi</span></div><div className="card-body"><p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.8 }}>{incident.description}</p></div></div>
             </div>
@@ -1157,7 +1168,7 @@ export default function IncidentDetailPage() {
                             <td className="text-muted">{formatDate(line.date)}</td>
                             <td><span className={`badge badge-${INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.color}`}>{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></td>
                             <td>{INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category] || line.category}</td>
-                            <td><div className="font-semibold">{line.description}</div>{line.note && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>{line.note}</div>}{line.linkedExpenseRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.25rem' }}>Expense {line.linkedExpenseRef}</div>}{(line.linkedDriverVoucherItemRef || line.linkedExpenseRoute) && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.15rem' }}>{line.linkedDriverVoucherItemRef ? 'Masuk biaya lain-lain uang jalan' : getIncidentExpenseRouteLabel(line.linkedExpenseRoute)}</div>}{line.linkedTireEventRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><a href={`/fleet/tires/${line.linkedTireEventRef}`}>Aset ban {line.linkedTireCode || line.linkedTireEventRef}</a></div>}{line.linkedMaintenanceRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><a href="/fleet/maintenance">Maintenance {line.linkedMaintenanceType || line.linkedMaintenanceRef}</a></div>}</td>
+                            <td><div className="font-semibold">{line.description}</div>{line.note && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>{line.note}</div>}{line.linkedExpenseRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.25rem' }}>{canOpenExpenses ? <Link href={`/expenses/${line.linkedExpenseRef}`} style={{ color: 'var(--color-success)' }}>Expense {line.linkedExpenseRef}</Link> : <>Expense {line.linkedExpenseRef}</>}</div>}{(line.linkedDriverVoucherItemRef || line.linkedExpenseRoute) && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.15rem' }}>{line.linkedDriverVoucherItemRef ? 'Masuk biaya lain-lain uang jalan' : getIncidentExpenseRouteLabel(line.linkedExpenseRoute)}</div>}{line.linkedTireEventRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><Link href={`/fleet/tires/${line.linkedTireEventRef}`}>Aset ban {line.linkedTireCode || line.linkedTireEventRef}</Link></div>}{line.linkedMaintenanceRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><Link href={`/fleet/maintenance/${line.linkedMaintenanceRef}`}>Maintenance {line.linkedMaintenanceType || line.linkedMaintenanceRef}</Link></div>}</td>
                             <td><div>{line.payeeName || '-'}</div>{line.recipientType && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</div>}</td>
                             <td><span className={`badge badge-${INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.color}`}>{INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.label}</span></td>
                             <td className="font-semibold">{formatCurrency(line.amount)}</td>
@@ -1169,7 +1180,7 @@ export default function IncidentDetailPage() {
                     {lines.length === 0 ? <div className="mobile-record-card"><div className="mobile-record-title">Belum ada detail biaya insiden</div><div className="mobile-record-subtitle">Tambahkan dari halaman ini.</div></div> : lines.map(line => (
                         <div key={line._id} className="mobile-record-card">
                             <div className="mobile-record-header"><div><div className="mobile-record-title">{line.description}</div><div className="mobile-record-subtitle">{formatDate(line.date)} | {INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category] || line.category}</div></div><div className="text-right"><div className="font-semibold">{formatCurrency(line.amount)}</div><div style={{ marginTop: 4 }}><span className={`badge badge-${INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.color}`}>{INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.label}</span></div></div></div>
-                            <div className="mobile-record-meta"><div className="mobile-record-kv"><span className="mobile-record-label">Tipe</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></div><div className="mobile-record-kv"><span className="mobile-record-label">Pihak</span><span className="mobile-record-value">{line.payeeName || '-'}</span></div>{line.recipientType && <div className="mobile-record-kv"><span className="mobile-record-label">Kategori Pihak</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</span></div>}{line.note && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{line.note}</span></div>}{line.linkedTireEventRef && <div className="mobile-record-kv"><span className="mobile-record-label">Aset Ban</span><span className="mobile-record-value">{line.linkedTireCode || line.linkedTireEventRef}</span></div>}{line.linkedMaintenanceRef && <div className="mobile-record-kv"><span className="mobile-record-label">Maintenance</span><span className="mobile-record-value">{line.linkedMaintenanceType || line.linkedMaintenanceRef}</span></div>}</div>
+                            <div className="mobile-record-meta"><div className="mobile-record-kv"><span className="mobile-record-label">Tipe</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></div><div className="mobile-record-kv"><span className="mobile-record-label">Pihak</span><span className="mobile-record-value">{line.payeeName || '-'}</span></div>{line.recipientType && <div className="mobile-record-kv"><span className="mobile-record-label">Kategori Pihak</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</span></div>}{line.note && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{line.note}</span></div>}{line.linkedTireEventRef && <div className="mobile-record-kv"><span className="mobile-record-label">Aset Ban</span><span className="mobile-record-value"><Link href={`/fleet/tires/${line.linkedTireEventRef}`}>{line.linkedTireCode || line.linkedTireEventRef}</Link></span></div>}{line.linkedMaintenanceRef && <div className="mobile-record-kv"><span className="mobile-record-label">Maintenance</span><span className="mobile-record-value"><Link href={`/fleet/maintenance/${line.linkedMaintenanceRef}`}>{line.linkedMaintenanceType || line.linkedMaintenanceRef}</Link></span></div>}</div>
                             {(canManageIncident || canCreateExpense || canCreateTires || canCreateMaintenance) && <div className="mobile-record-actions">{renderActions(line)}</div>}
                         </div>
                     ))}
@@ -1236,6 +1247,36 @@ export default function IncidentDetailPage() {
                 {oldTireInInstallSlot && <div className="info-banner" style={{ marginBottom: '1rem' }}><div className="info-banner-title">Slot tujuan sudah berisi ban lama</div><div className="info-banner-text" style={{ display: 'grid', gap: '0.65rem' }}><div>{oldTireInInstallSlot.tireCodeLabel || oldTireInInstallSlot.tireCode} akan keluar dari slot {tireInstallForm.slotCode}. Isi pemakaian ban lama sebelum diganti agar sisa nilai dan histori tetap benar.</div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Ban Lama Dipindahkan Ke</label><select className="form-select" value={tireInstallForm.oldTireDestination} onChange={event => setTireInstallForm(prev => ({ ...prev, oldTireDestination: event.target.value as IncidentTireInstallForm['oldTireDestination'] }))} disabled={savingTireInstall}><option value="WAREHOUSE">Gudang Ban</option><option value="SCRAPPED">Afkir</option></select></div><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Persentase Pemakaian Ban Lama</label><FormattedNumberInput allowDecimal maxFractionDigits={2} value={tireInstallForm.oldTireUsagePercent} onValueChange={value => setTireInstallForm(prev => ({ ...prev, oldTireUsagePercent: value }))} placeholder={`Maks ${formatQuantity(oldTireRemainingPercent, 2)}%`} disabled={savingTireInstall} /></div></div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Preview Biaya Ban Lama</label><input className="form-input" value={`${formatCurrency(oldTireUsageCostPreview)} | sisa ${formatQuantity(oldTireRemainingPercentAfter, 2)}% (${formatCurrency(oldTireRemainingValueAfter)})`} readOnly /></div></div></div></div>}
                 <div className="form-group"><label className="form-label">Catatan Pemasangan</label><textarea className="form-textarea" rows={3} value={tireInstallForm.note} onChange={event => setTireInstallForm(prev => ({ ...prev, note: event.target.value }))} placeholder="Opsional: lokasi pemasangan, kondisi ban lama, atau nomor kuitansi" disabled={savingTireInstall} /></div>
             </div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => closeTireInstallModal()} disabled={savingTireInstall}>Batal</button><button className="btn btn-primary" onClick={saveTireInstall} disabled={savingTireInstall || !tireInstallForm.slotCode || !tireInstallForm.maintenanceDate || Boolean(oldTireInInstallSlot && tireInstallForm.oldTireUsagePercent === null)}><Save size={16} /> {savingTireInstall ? 'Memasang...' : 'Pasang Ban'}</button></div></div></div>}
+
+            {deleteConfirmLine && (
+                <div className="modal-overlay" onClick={() => { if (!deletingLineRef) setDeleteConfirmLine(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Detail Insiden?</h3></div>
+                        <div className="modal-body"><p>Hapus detail insiden <strong>{deleteConfirmLine.description || 'tanpa deskripsi'}</strong>? Hanya detail berstatus draft yang bisa dihapus.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmLine(null)} disabled={deletingLineRef === deleteConfirmLine._id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => void deleteLine(deleteConfirmLine)} disabled={deletingLineRef === deleteConfirmLine._id}>
+                                <Trash2 size={16} /> {deletingLineRef === deleteConfirmLine._id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {maintenanceFollowUpConfirmLine && (
+                <div className="modal-overlay" onClick={() => { if (creatingMaintenanceLineRef !== maintenanceFollowUpConfirmLine._id) setMaintenanceFollowUpConfirmLine(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Buat Jadwal Maintenance?</h3></div>
+                        <div className="modal-body"><p>Buat jadwal maintenance dari detail biaya insiden ini? Biaya yang sudah diposting dari insiden tidak akan diposting ulang.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setMaintenanceFollowUpConfirmLine(null)} disabled={creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id}>Batal</button>
+                            <button className="btn btn-primary" onClick={() => void createMaintenanceFollowUp(maintenanceFollowUpConfirmLine)} disabled={creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id}>
+                                <Wrench size={16} /> {creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id ? 'Membuat...' : 'Buat Maintenance'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

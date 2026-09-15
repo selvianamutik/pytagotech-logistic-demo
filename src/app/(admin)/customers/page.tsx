@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useApp, useToast } from '../layout';
-import { Plus, Search, Edit, Trash2, Users, Save, X, FileDown } from 'lucide-react';
+import { Plus, Search, Edit, Eye, Trash2, Users, Save, X, FileDown } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -374,8 +374,8 @@ export default function CustomersPage() {
                                         </td>
                                         <td>{customer.defaultPaymentTerm} hari</td>
                                         <td>
-                                            <div className="table-actions">
-                                                <Link href={`/customers/${customer._id}`} className="table-action-btn">Detail & Barang</Link>
+                                            <div className="table-actions-col">
+                                                <Link href={`/customers/${customer._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link>
                                                 {canManageCustomers && <button className="table-action-btn" onClick={() => openEdit(customer)}><Edit size={14} /> Edit</button>}
                                                 {canManageCustomers && <button className="table-action-btn danger" onClick={() => setDeleteId(customer._id)}><Trash2 size={14} /> Hapus</button>}
                                             </div>
@@ -433,7 +433,7 @@ export default function CustomersPage() {
                                     </div>
                                 </div>
                                 <div className="mobile-record-actions">
-                                    <Link href={`/customers/${customer._id}`} className="btn btn-secondary">Detail & Barang</Link>
+                                    <Link href={`/customers/${customer._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link>
                                     {canManageCustomers && <button className="btn btn-secondary" onClick={() => openEdit(customer)}>
                                         <Edit size={14} /> Edit
                                     </button>}

@@ -19,6 +19,7 @@ import {
 } from '@/lib/expense-category-scope';
 import {
     createDocument,
+    deleteDocument,
     getAllDocuments,
     getCompanyProfile,
     getDocumentById,
@@ -2323,6 +2324,9 @@ export async function handleExpenseCreate(
             _id: expenseId,
             ...expenseDocBase,
         };
+        if (!(incidentSettlementLine && incidentExpenseRoute === 'DRIVER_VOUCHER' && (linkedVoucher || shouldDeferIncidentTripExpenseToVoucher))) {
+            await postExpenseJournal(session, expenseDoc as Expense, null);
+        }
         await createDocument(expenseDoc);
         await updateDocument(categoryRef, { updatedAt: now }, 'expenseCategory');
         if (linkedIncident) await updateDocument(linkedIncident._id, { updatedAt: now }, 'incident');
@@ -2370,9 +2374,6 @@ export async function handleExpenseCreate(
                 line: incidentSettlementLine,
                 incident: linkedIncident,
             });
-        }
-        if (!(incidentSettlementLine && incidentExpenseRoute === 'DRIVER_VOUCHER' && (linkedVoucher || shouldDeferIncidentTripExpenseToVoucher))) {
-            await postExpenseJournal(session, expenseDoc as Expense, null);
         }
         await addAuditLog(session, 'CREATE', 'expenses', expenseId, expenseAuditSummary);
         if (incidentSettlementLine) {
@@ -2424,6 +2425,9 @@ export async function handleExpenseCreate(
         });
 
         const now = new Date().toISOString();
+        if (!(incidentSettlementLine && incidentExpenseRoute === 'DRIVER_VOUCHER' && linkedVoucher)) {
+            await postExpenseJournal(session, expenseDoc as Expense, bankAcc);
+        }
         await createDocument(expenseDoc);
         await createDocument({
             _id: crypto.randomUUID(),
@@ -2489,9 +2493,6 @@ export async function handleExpenseCreate(
                 line: incidentSettlementLine,
                 incident: linkedIncident,
             });
-        }
-        if (!(incidentSettlementLine && incidentExpenseRoute === 'DRIVER_VOUCHER' && linkedVoucher)) {
-            await postExpenseJournal(session, expenseDoc as Expense, bankAcc);
         }
         await addAuditLog(session, 'CREATE', 'expenses', expenseId, expenseAuditSummaryWithBank);
         if (incidentSettlementLine) {
@@ -4461,5 +4462,77 @@ export async function handleFreightNotaDelete(
     }
 
     await addAuditLog(session, 'DELETE', 'freight-notas', id, `Invoice ${nota.notaNumber || id} dibatalkan`);
+    return NextResponse.json({ success: true });
+}
+
+export async function handleExpenseDelete(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = typeof data.id === 'string' ? data.id : '';
+    if (!id) {
+        return NextResponse.json({ error: 'Pengeluaran tidak valid' }, { status: 400 });
+    }
+
+    const expense = await getDocumentById<Expense>(id, 'expense');
+    if (!expense) {
+        return NextResponse.json({ error: 'Pengeluaran tidak ditemukan' }, { status: 404 });
+    }
+
+    if (expense.relatedIncidentSettlementLineRef) {
+        return NextResponse.json(
+            { error: 'Pengeluaran yang sudah diposting dari detail insiden tidak bisa dihapus. Batalkan dari alur insiden.' },
+            { status: 409 }
+        );
+    }
+
+    const linkedSettlementLines = await listDocumentsByFilter<Array<{ _id: string; status?: string }>[number]>(
+        'incidentSettlementLine',
+        { linkedExpenseRef: id }
+    );
+    if (linkedSettlementLines.some(line => line.status !== 'VOID')) {
+        return NextResponse.json(
+            { error: 'Pengeluaran terhubung ke detail insiden aktif dan tidak bisa dihapus' },
+            { status: 409 }
+        );
+    }
+
+    const linkedVoucherItems = await listDocumentsByFilter<Array<{ _id: string; status?: string }>[number]>(
+        'driverVoucherItem',
+        { linkedExpenseRef: id }
+    );
+    if (linkedVoucherItems.length > 0) {
+        return NextResponse.json(
+            { error: 'Pengeluaran sudah masuk ke bon trip driver dan tidak bisa dihapus' },
+            { status: 409 }
+        );
+    }
+
+    const linkedBankTransactions = await listDocumentsByFilter<Array<{ _id: string; bankAccountRef?: string; amount?: number; date?: string }>[number]>(
+        'bankTransaction',
+        { relatedExpenseRef: id }
+    );
+    const affectedAccountRefs = linkedBankTransactions
+        .map(transaction => transaction.bankAccountRef)
+        .filter((ref): ref is string => Boolean(ref));
+    if (linkedBankTransactions.length > 0) {
+        await Promise.all(linkedBankTransactions
+            .map(transaction => deleteDocument(transaction._id, 'bankTransaction')));
+    }
+
+    await deleteDocument(id, 'expense');
+    await voidJournalEntryForSource(session, 'EXPENSE', id, 'CREATE');
+    if (affectedAccountRefs.length > 0) {
+        await recomputeBankLedgerBalancesForAccounts([...new Set(affectedAccountRefs)]);
+    }
+
+    await addAuditLog(
+        session,
+        'DELETE',
+        'expenses',
+        id,
+        `Pengeluaran ${expense.categoryName || 'tanpa kategori'} Rp${formatAuditMoney(expense.amount)} dihapus`
+    );
     return NextResponse.json({ success: true });
 }

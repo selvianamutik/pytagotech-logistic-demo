@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownCircle, ArrowUpCircle, Edit, FileDown, Package, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Edit, Eye, FileDown, Package, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -99,6 +99,8 @@ export default function WarehouseItemsPage() {
   const [saving, setSaving] = useState(false);
   const [savingMovement, setSavingMovement] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemFormState>(createItemForm());
   const [movementForm, setMovementForm] = useState<MovementFormState>(createMovementForm());
 
@@ -282,6 +284,27 @@ export default function WarehouseItemsPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!canManage) return addToast('error', 'Anda tidak punya hak menghapus barang gudang');
+    setDeletingId(id);
+    try {
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity: 'warehouse-items', action: 'delete', data: { id } }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Gagal menghapus barang gudang');
+      addToast('success', 'Barang gudang dihapus');
+      setDeleteId(null);
+      await loadItems();
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Gagal menghapus barang gudang');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -357,14 +380,15 @@ export default function WarehouseItemsPage() {
                     <td>{Number(item.defaultPurchasePrice || 0) > 0 ? formatCurrency(Number(item.defaultPurchasePrice || 0)) : '-'}</td>
                     <td><span className={`badge ${badge.className}`}>{badge.label}</span></td>
                     <td>
-                      <div className="table-actions">
-                        {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="table-action-btn">Detail</Link> : null}
+                      <div className="table-actions-col">
+                        {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link> : null}
                         {canManage ? (
                           <>
                             <button className="table-action-btn" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button>
                             {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button>}
                             {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button>}
                             <button className="table-action-btn" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                            <button className="table-action-btn danger" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button>
                           </>
                         ) : null}
                       </div>
@@ -418,11 +442,12 @@ export default function WarehouseItemsPage() {
                     )}
                   </div>
                   <div className="mobile-record-actions">
-                    {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="btn btn-secondary">Detail</Link> : null}
+                    {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link> : null}
                     {canManage ? <button className="btn btn-secondary" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button> : null}
                     {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button> : null}
                     {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button> : null}
                     {canManage ? <button className="btn btn-secondary" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button> : null}
+                    {canManage ? <button className="btn btn-secondary" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button> : null}
                   </div>
                 </div>
               );
@@ -492,6 +517,27 @@ export default function WarehouseItemsPage() {
               <div className="info-banner" style={{ marginTop: '0.5rem' }}><div className="info-banner-title">Stok Saat Ini</div><div className="info-banner-text">{formatInventoryQuantity(movementItem.currentStockQty || 0)} {movementItem.unit}</div></div>
             </div>
             <div className="modal-footer"><button className="btn btn-secondary" onClick={closeMovementModal} disabled={savingMovement}>Batal</button><button className="btn btn-primary" onClick={handleStockMovement} disabled={savingMovement}><Save size={16} /> {savingMovement ? 'Menyimpan...' : 'Simpan Mutasi'}</button></div>
+          </div>
+        </div>
+      )}
+
+      {deleteId && (
+        <div className="modal-overlay" onClick={() => { if (deletingId !== deleteId) setDeleteId(null); }}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Hapus Barang Gudang</h3>
+              <button className="modal-close" onClick={() => setDeleteId(null)} disabled={deletingId === deleteId}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="info-banner">
+                <div className="info-banner-title">Yakin ingin menghapus barang ini?</div>
+                <div className="info-banner-text">Barang yang sudah punya histori pembelian, stok, atau harga supplier tidak bisa dihapus. Aksi ini tidak bisa dibatalkan.</div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDeleteId(null)} disabled={deletingId === deleteId}>Batal</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(deleteId)} disabled={deletingId === deleteId}><Trash2 size={16} /> {deletingId === deleteId ? 'Menghapus...' : 'Hapus'}</button>
+            </div>
           </div>
         </div>
       )}

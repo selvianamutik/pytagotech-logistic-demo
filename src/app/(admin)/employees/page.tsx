@@ -337,7 +337,7 @@ export default function EmployeesPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {canUpdateEmployees || canDeleteEmployees ? (
                                                 <>
                                                     {canUpdateEmployees && <button className="table-action-btn" onClick={() => openEdit(employee)}>

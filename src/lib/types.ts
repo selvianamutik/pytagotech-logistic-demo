@@ -1610,6 +1610,7 @@ export interface AuditLog {
   action: string;
   entityType: string;
   entityRef?: string;
+  entityLabel?: string;
   changesSummary: string;
   timestamp: string;
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileDown, Plus, Receipt, Search } from 'lucide-react';
+import { FileDown, Plus, Receipt, Search, Eye } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
@@ -305,7 +305,7 @@ export default function PurchasesPage() {
                   <td>{formatCurrency(Number(purchase.totalAmount || 0))}</td>
                   <td>{formatCurrency(Number(purchase.outstandingAmount || 0))}</td>
                   <td><PurchaseLifecycleBadges purchase={purchase} /></td>
-                  <td><Link href={`/inventory/purchases/${purchase._id}`} className="table-action-btn">Lihat Detail</Link></td>
+                  <td><Link href={`/inventory/purchases/${purchase._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link></td>
                 </tr>
               ))}
             </tbody>
@@ -338,7 +338,7 @@ export default function PurchasesPage() {
                   <div className="mobile-record-field"><span className="mobile-record-label">Sisa Tagihan</span><span className="mobile-record-value">{formatCurrency(Number(purchase.outstandingAmount || 0))}</span></div>
                   <div className="mobile-record-field mobile-record-field-full"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{purchase.notes || '-'}</span></div>
                 </div>
-                <div className="mobile-record-actions"><Link href={`/inventory/purchases/${purchase._id}`} className="btn btn-secondary">Lihat Detail</Link></div>
+                <div className="mobile-record-actions"><Link href={`/inventory/purchases/${purchase._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link></div>
               </div>
             ))}
           </div>

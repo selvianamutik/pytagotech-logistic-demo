@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building2, Edit, FileDown, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { Building2, Edit, Eye, FileDown, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -397,11 +397,11 @@ export default function SuppliersPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {canManage ? (
                                                 <>
                                                     <Link href={`/suppliers/${supplier._id}`} className="table-action-btn">
-                                                        Lihat Detail
+                                                        <Eye size={14} /> Detail
                                                     </Link>
                                                     <button className="table-action-btn" onClick={() => openEdit(supplier)}>
                                                         <Edit size={14} /> Edit
@@ -478,7 +478,7 @@ export default function SuppliersPage() {
                                 {canManage && (
                                     <div className="mobile-record-actions">
                                         <Link href={`/suppliers/${supplier._id}`} className="btn btn-secondary">
-                                            Lihat Detail
+                                            <Eye size={14} /> Detail
                                         </Link>
                                         <button className="btn btn-secondary" onClick={() => openEdit(supplier)}>
                                             <Edit size={14} /> Edit
@@ -496,7 +496,7 @@ export default function SuppliersPage() {
                                 {!canManage && (
                                     <div className="mobile-record-actions">
                                         <Link href={`/suppliers/${supplier._id}`} className="btn btn-secondary">
-                                            Lihat Detail
+                                            <Eye size={14} /> Detail
                                         </Link>
                                     </div>
                                 )}

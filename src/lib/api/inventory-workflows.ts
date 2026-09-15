@@ -97,7 +97,8 @@ async function getNextPurchaseNumber(orderDate: string) {
     const period = orderDate.slice(0, 7).replace('-', '');
     // PERF: Filter by orderDate range at query level instead of fetching all purchases
     const monthStart = `${period.slice(0, 4)}-${period.slice(4, 6)}-01`;
-    const monthEnd = `${period.slice(0, 4)}-${period.slice(4, 6)}-31`;
+    const lastDay = new Date(Number(period.slice(0, 4)), Number(period.slice(4, 6)), 0).getDate();
+    const monthEnd = `${period.slice(0, 4)}-${period.slice(4, 6)}-${String(lastDay).padStart(2, '0')}`;
     const existing = await listDocumentsByFilter<{ purchaseNumber?: string; orderDate?: string }>('purchase', {
         orderDate__gte: monthStart,
         orderDate__lte: monthEnd,

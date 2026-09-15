@@ -142,7 +142,7 @@ export function getAuditLogTargetHref(log: AuditLogTargetInput) {
             return modulePath('/fleet/incidents');
         case 'maintenances':
         case 'maintenance':
-            return modulePath('/fleet/maintenance');
+            return pathWithEncodedTarget('/fleet/maintenance', entityRef);
         case 'tire-events':
         case 'tire-event':
         case 'tire-history-logs':
@@ -156,7 +156,7 @@ export function getAuditLogTargetHref(log: AuditLogTargetInput) {
             return modulePath('/bank-accounts');
         case 'expenses':
         case 'expense':
-            return modulePath('/expenses');
+            return pathWithEncodedTarget('/expenses', entityRef);
         case 'expense-categories':
         case 'expense-category':
             return modulePath('/expense-categories');

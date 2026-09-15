@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { fetchAllAdminCollectionData } from "@/lib/api/admin-client";
 import {
@@ -24,6 +25,9 @@ import {
   type FinancePeriodMode,
 } from "@/lib/finance-period";
 import type { ChartOfAccount, JournalEntry, JournalLine } from "@/lib/types";
+import { resolveJournalSourceLink } from "@/lib/journal-source-links";
+import { hasPageAccess } from "@/lib/rbac";
+import { useApp } from "../../layout";
 
 type LedgerPeriodMode = Exclude<FinancePeriodMode, "all">;
 const JOURNAL_LINE_ENTRY_ID_BATCH_SIZE = 75;
@@ -69,6 +73,7 @@ async function fetchJournalLinesByEntryIds(entryIds: string[]) {
 }
 
 export default function LedgerPage() {
+  const { user } = useApp();
   const defaultPeriod = useMemo(() => getDefaultFinancePeriod(), []);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -79,6 +84,15 @@ export default function LedgerPage() {
   const [dateFrom, setDateFrom] = useState(getDefaultFinanceCustomDateFrom());
   const [dateTo, setDateTo] = useState(getDefaultFinanceCustomDateTo());
   const [loading, setLoading] = useState(true);
+
+  const journalSourcePermissions = {
+    canOpenInvoices: user ? hasPageAccess(user, "invoices") : false,
+    canOpenExpenses: user ? hasPageAccess(user, "expenses") : false,
+    canOpenDriverVouchers: user ? hasPageAccess(user, "driverVouchers") : false,
+    canOpenPurchases: user ? hasPageAccess(user, "purchases") : false,
+    canOpenBankAccounts: user ? hasPageAccess(user, "bankAccounts") : false,
+    canOpenWarehouseItems: user ? hasPageAccess(user, "warehouseItems") : false,
+  };
 
   const yearOptions = useMemo(() => {
     const years = new Set<number>([...getFinancePeriodYearOptions(year), year]);
@@ -303,15 +317,25 @@ export default function LedgerPage() {
               </tr>
             </thead>
             <tbody>
-              {recentLedgerLines.map(line => (
-                <tr key={line._id}>
-                  <td>{line.entryDate || "-"}</td>
-                  <td>{line.entryNumber || "-"}</td>
-                  <td>{line.accountCode} - {line.accountName}</td>
-                  <td style={{ textAlign: "right" }}>{line.debit ? formatAccountingCurrency(line.debit) : "-"}</td>
-                  <td style={{ textAlign: "right" }}>{line.credit ? formatAccountingCurrency(line.credit) : "-"}</td>
-                </tr>
-              ))}
+              {recentLedgerLines.map(line => {
+                const sourceLink = resolveJournalSourceLink(line, journalSourcePermissions);
+                return (
+                  <tr key={line._id}>
+                    <td>{line.entryDate || "-"}</td>
+                    <td>
+                      {line.entryNumber || "-"}
+                      {sourceLink && (
+                        <div style={{ fontSize: "0.75rem" }}>
+                          <Link href={sourceLink.href} style={{ color: "var(--color-primary)", fontWeight: 600 }}>{line.sourceNumber || sourceLink.label}</Link>
+                        </div>
+                      )}
+                    </td>
+                    <td>{line.accountCode} - {line.accountName}</td>
+                    <td style={{ textAlign: "right" }}>{line.debit ? formatAccountingCurrency(line.debit) : "-"}</td>
+                    <td style={{ textAlign: "right" }}>{line.credit ? formatAccountingCurrency(line.credit) : "-"}</td>
+                  </tr>
+                );
+              })}
               {!loading && recentLedgerLines.length === 0 && (
                 <tr>
                   <td colSpan={5} style={{ padding: "2rem 1rem", textAlign: "center", color: "var(--color-gray-500)" }}>Belum ada mutasi jurnal.</td>
@@ -321,30 +345,36 @@ export default function LedgerPage() {
           </table>
         </div>
         <div className="mobile-record-list" style={{ padding: "var(--space-3)" }}>
-          {recentLedgerLines.map(line => (
-            <article key={line._id} className="mobile-record-card">
-              <div className="mobile-record-header">
-                <div>
-                  <p className="mobile-record-title">{line.entryNumber || "-"}</p>
-                  <p className="mobile-record-subtitle">{line.entryDate || "-"}</p>
+          {recentLedgerLines.map(line => {
+            const sourceLink = resolveJournalSourceLink(line, journalSourcePermissions);
+            return (
+              <article key={line._id} className="mobile-record-card">
+                <div className="mobile-record-header">
+                  <div>
+                    <p className="mobile-record-title">{line.entryNumber || "-"}</p>
+                    <p className="mobile-record-subtitle">{line.entryDate || "-"}</p>
+                    {sourceLink && (
+                      <Link href={sourceLink.href} style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "0.8rem" }}>{line.sourceNumber || sourceLink.label}</Link>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="mobile-record-meta">
-                <div className="mobile-record-kv">
-                  <span className="mobile-record-label">Akun</span>
-                  <span className="mobile-record-value">{line.accountCode} - {line.accountName}</span>
+                <div className="mobile-record-meta">
+                  <div className="mobile-record-kv">
+                    <span className="mobile-record-label">Akun</span>
+                    <span className="mobile-record-value">{line.accountCode} - {line.accountName}</span>
+                  </div>
+                  <div className="mobile-record-kv">
+                    <span className="mobile-record-label">Debit</span>
+                    <span className="mobile-record-value">{line.debit ? formatAccountingCurrency(line.debit) : "-"}</span>
+                  </div>
+                  <div className="mobile-record-kv">
+                    <span className="mobile-record-label">Kredit</span>
+                    <span className="mobile-record-value">{line.credit ? formatAccountingCurrency(line.credit) : "-"}</span>
+                  </div>
                 </div>
-                <div className="mobile-record-kv">
-                  <span className="mobile-record-label">Debit</span>
-                  <span className="mobile-record-value">{line.debit ? formatAccountingCurrency(line.debit) : "-"}</span>
-                </div>
-                <div className="mobile-record-kv">
-                  <span className="mobile-record-label">Kredit</span>
-                  <span className="mobile-record-value">{line.credit ? formatAccountingCurrency(line.credit) : "-"}</span>
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
           {!loading && recentLedgerLines.length === 0 && (
             <article className="mobile-record-card">
               <p className="mobile-record-title">Belum ada mutasi jurnal.</p>

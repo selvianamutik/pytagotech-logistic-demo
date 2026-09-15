@@ -195,6 +195,8 @@ export default function VehicleDetailPage() {
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
     const vehicleTabs = getVehicleTabs(canViewExpenses);
 
     const loadVehicleDetail = useCallback(async () => {
@@ -1048,7 +1050,7 @@ export default function VehicleDetailPage() {
                         <div className="table-wrapper table-desktop-only"><table>
                             <thead><tr><th>Trip / DO</th><th>Tanggal</th><th>Supir</th><th>Rute Trip</th><th>Customer</th><th>Barang</th><th>Status</th></tr></thead>
                             <tbody>{dos.length === 0 ? <tr><td colSpan={7} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada riwayat trip</td></tr> : dos.map(d => (
-                                <tr key={d._id}><td><a href={`/delivery-orders/${d._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{formatInternalDeliveryOrderNumber(d)}</a>{getShipperReferenceCount(d) > 0 && <div className="text-muted text-sm font-mono">{formatShipperDeliveryOrderNumber(d)}</div>}</td><td>{formatDate(d.date)}</td><td>{d.driverName || '-'}</td><td>{formatDeliveryOrderTripRoute(d)}</td><td>{d.customerName}</td><td>{renderDeliveryOrderCargoSummary(d)}</td><td><span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span></td></tr>
+                                <tr key={d._id}><td><Link href={`/delivery-orders/${d._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{formatInternalDeliveryOrderNumber(d)}</Link>{getShipperReferenceCount(d) > 0 && <div className="text-muted text-sm font-mono">{formatShipperDeliveryOrderNumber(d)}</div>}</td><td>{formatDate(d.date)}</td><td>{d.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${d.driverRef}`} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}</td><td>{formatDeliveryOrderTripRoute(d)}</td><td>{d.customerRef && canOpenCustomerPage ? <Link href={`/customers/${d.customerRef}`} style={{ color: 'var(--color-primary)' }}>{d.customerName}</Link> : d.customerName}</td><td>{renderDeliveryOrderCargoSummary(d)}</td><td><span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span></td></tr>
                             ))}</tbody>
                         </table></div>
                         <div className="mobile-record-list">
@@ -1061,7 +1063,7 @@ export default function VehicleDetailPage() {
                                     <div className="mobile-record-header">
                                         <div>
                                             <div className="mobile-record-title">{formatInternalDeliveryOrderNumber(d)}</div>
-                                            <div className="mobile-record-subtitle">{d.customerName}</div>
+                                            <div className="mobile-record-subtitle">{d.customerRef && canOpenCustomerPage ? <Link href={`/customers/${d.customerRef}`} style={{ color: 'var(--color-primary)' }}>{d.customerName}</Link> : d.customerName}</div>
                                         </div>
                                         <span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span>
                                     </div>
@@ -1078,7 +1080,7 @@ export default function VehicleDetailPage() {
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Driver</span>
-                                            <span className="mobile-record-value">{d.driverName || '-'}</span>
+                                            <span className="mobile-record-value">{d.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${d.driverRef}`} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}</span>
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Rute Trip</span>
@@ -1169,7 +1171,7 @@ export default function VehicleDetailPage() {
                                 <thead><tr><th>Tipe</th><th>Jadwal</th><th>Status</th><th>Material Gudang</th><th>Odometer</th><th>Vendor</th>{canViewExpenses && <th>Biaya Internal</th>}</tr></thead>
                                 <tbody>{maints.length === 0 ? <tr><td colSpan={canViewExpenses ? 7 : 6} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada maintenance</td></tr> : maints.map(m => {
                                     return (
-                                    <tr key={m._id}><td>{m.type}</td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{canViewExpenses && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
+                                    <tr key={m._id}><td><Link href={`/fleet/maintenance/${m._id}`} style={{ color: 'var(--color-primary)' }}>{m.type}</Link></td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{canViewExpenses && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
                                     );
                                 })}</tbody>
                             </table></div>
@@ -1182,7 +1184,7 @@ export default function VehicleDetailPage() {
                                     <div key={m._id} className="mobile-record-card">
                                         <div className="mobile-record-header">
                                             <div>
-                                                <div className="mobile-record-title">{m.type}</div>
+                                                <div className="mobile-record-title"><Link href={`/fleet/maintenance/${m._id}`} style={{ color: 'var(--color-primary)' }}>{m.type}</Link></div>
                                                 <div className="mobile-record-subtitle">{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</div>
                                             </div>
                                             <span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span>
@@ -1331,7 +1333,7 @@ export default function VehicleDetailPage() {
                         <div className="table-wrapper table-desktop-only"><table>
                             <thead><tr><th>No.</th><th>Tanggal</th><th>Tipe</th><th>Lokasi</th><th>Biaya Insiden</th><th>Status</th></tr></thead>
                             <tbody>{incidents.length === 0 ? <tr><td colSpan={6} className="text-center text-muted" style={{ padding: '2rem' }}>Tidak ada insiden</td></tr> : incidents.map(i => (
-                                <tr key={i._id}><td><a href={`/fleet/incidents/${i._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</a></td><td>{formatDate(i.dateTime)}</td><td>{i.incidentType}</td><td>{i.locationText}</td><td>{renderIncidentCostSummary(i)}</td><td><span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span></td></tr>
+                                <tr key={i._id}><td><Link href={`/fleet/incidents/${i._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</Link></td><td>{formatDate(i.dateTime)}</td><td>{i.incidentType}</td><td>{i.locationText}</td><td>{renderIncidentCostSummary(i)}</td><td><span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span></td></tr>
                             ))}</tbody>
                         </table></div>
                         <div className="mobile-record-list">
@@ -1343,7 +1345,7 @@ export default function VehicleDetailPage() {
                                 <div key={i._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
                                         <div>
-                                            <div className="mobile-record-title">{i.incidentNumber}</div>
+                                            <div className="mobile-record-title">{canOpenIncidentPage ? <Link href={`/fleet/incidents/${i._id}`} style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</Link> : i.incidentNumber}</div>
                                             <div className="mobile-record-subtitle">{formatDate(i.dateTime)} - {i.locationText || '-'}</div>
                                         </div>
                                         <span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span>
@@ -1355,7 +1357,7 @@ export default function VehicleDetailPage() {
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">DO Terkait</span>
-                                            <span className="mobile-record-value">{i.relatedDONumber || '-'}</span>
+                                            <span className="mobile-record-value">{i.relatedDeliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${i.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{i.relatedDONumber || '-'}</Link> : (i.relatedDONumber || '-')}</span>
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Biaya Insiden</span>

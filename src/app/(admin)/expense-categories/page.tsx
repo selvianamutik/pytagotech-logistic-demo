@@ -239,7 +239,7 @@ export default function ExpenseCategoriesPage() {
                                                 <td><span className={`badge ${isManualExpenseCategory(category) ? 'badge-success' : 'badge-gray'}`}>{isManualExpenseCategory(category) ? 'Ya' : 'Tidak'}</span></td>
                                                 <td><span className={`badge ${category.active !== false ? 'badge-success' : 'badge-gray'}`}>{category.active !== false ? 'Aktif' : 'Non-Aktif'}</span></td>
                                                 <td>{isOwner ? (
-                                                    <div className="table-actions">
+                                                    <div className="table-actions-col">
                                                         <button className="table-action-btn" onClick={() => openEdit(category)}><Edit size={14} /> Edit</button>
                                                         <button className="table-action-btn danger" onClick={() => setDeleteId(category._id)}><Trash2 size={14} /> Hapus</button>
                                                     </div>

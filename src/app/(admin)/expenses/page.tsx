@@ -3,12 +3,23 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast, useApp } from '../layout';
-import { Plus, Search, Wallet, Save, X } from 'lucide-react';
+import { Eye, Plus, Save, Search, Trash2, Wallet, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
-import { fetchAdminCollectionData, fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
+import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
+import {
+    fetchExpenseReferences,
+    fetchOptionalCollection,
+    getExpenseAccountLabel,
+    getExpenseDescriptionLabel,
+    getExpenseRelatedDocuments,
+    getExpenseVehicleLabel,
+    mapById,
+    type ExpenseLinkPermissions,
+    type ExpenseReferenceMaps,
+} from '@/lib/expense-related-docs';
 import {
     getDefaultInventoryReportPeriod,
     getInventoryReportDateRange,
@@ -29,31 +40,6 @@ type ExpenseCategoryTotal = {
     total: number;
 };
 
-type ExpenseReferenceMaps = {
-    accountMap: Map<string, BankAccount>;
-    boronganMap: Map<string, DriverBorongan>;
-    incidentMap: Map<string, Incident>;
-    maintenanceMap: Map<string, Maintenance>;
-    vehicleMap: Map<string, Vehicle>;
-    voucherMap: Map<string, DriverVoucher>;
-};
-
-type ExpenseLinkPermissions = {
-    canOpenBankAccountPage: boolean;
-    canOpenDriverBoronganPage: boolean;
-    canOpenDriverVoucherPage: boolean;
-    canOpenIncidentPage: boolean;
-    canOpenMaintenancePage: boolean;
-    canOpenVehiclePage: boolean;
-};
-
-type ExpenseRelatedDocumentLink = {
-    key: string;
-    kind: string;
-    label: string;
-    href?: string;
-};
-
 const DEFAULT_EXPENSE_FORM = () => ({
     categoryRef: '',
     date: getBusinessDateValue(),
@@ -67,122 +53,6 @@ const DEFAULT_EXPENSE_FORM = () => ({
 });
 
 const LINK_STYLE = { color: 'var(--color-primary)', fontWeight: 600 } as const;
-const REFERENCE_FETCH_CHUNK_SIZE = 80;
-
-function uniqueNonEmpty(values: Array<string | undefined>) {
-    return Array.from(new Set(values.map(value => value?.trim()).filter((value): value is string => Boolean(value))));
-}
-
-function mapById<T extends { _id: string }>(items: T[]) {
-    return new Map(items.map(item => [item._id, item]));
-}
-
-async function fetchOptionalCollection<T>(url: string, fallbackData: T): Promise<T> {
-    try {
-        return await fetchAdminCollectionData<T>(url, 'Gagal memuat data pengeluaran');
-    } catch (error) {
-        if (error instanceof Error && /403|forbidden|akses/i.test(error.message)) {
-            return fallbackData;
-        }
-        throw error;
-    }
-}
-
-async function fetchReferencedCollection<T extends { _id: string }>(entity: string, refs: Array<string | undefined>): Promise<T[]> {
-    const ids = uniqueNonEmpty(refs);
-    if (ids.length === 0) return [];
-
-    const rows: T[] = [];
-    for (let index = 0; index < ids.length; index += REFERENCE_FETCH_CHUNK_SIZE) {
-        const chunk = ids.slice(index, index + REFERENCE_FETCH_CHUNK_SIZE);
-        const filter = encodeURIComponent(JSON.stringify({ _id: chunk }));
-        rows.push(...await fetchOptionalCollection<T[]>(`/api/data?entity=${entity}&filter=${filter}`, []));
-    }
-    return rows;
-}
-
-async function fetchExpenseReferences(expenses: Expense[]) {
-    const [voucherRows, boronganRows, incidentRows, maintenanceRows] = await Promise.all([
-        fetchReferencedCollection<DriverVoucher>('driver-vouchers', expenses.map(expense => expense.voucherRef)),
-        fetchReferencedCollection<DriverBorongan>('driver-borongans', expenses.map(expense => expense.boronganRef)),
-        fetchReferencedCollection<Incident>('incidents', expenses.map(expense => expense.relatedIncidentRef)),
-        fetchReferencedCollection<Maintenance>('maintenances', expenses.map(expense => expense.relatedMaintenanceRef)),
-    ]);
-
-    return {
-        voucherRows,
-        boronganRows,
-        incidentRows,
-        maintenanceRows,
-    };
-}
-
-function getExpenseDescriptionLabel(expense: Expense) {
-    return expense.note || expense.description || 'Pengeluaran tanpa catatan';
-}
-
-function getExpenseVehicleLabel(expense: Expense, vehicleMap: Map<string, Vehicle>) {
-    const currentVehicle = expense.relatedVehicleRef ? vehicleMap.get(expense.relatedVehicleRef) : undefined;
-    return currentVehicle?.plateNumber || expense.relatedVehiclePlate || '';
-}
-
-function getExpenseAccountLabel(expense: Expense, accountMap: Map<string, BankAccount>) {
-    const currentAccount = expense.bankAccountRef ? accountMap.get(expense.bankAccountRef) : undefined;
-    if (currentAccount) {
-        return `${currentAccount.bankName} - ${currentAccount.accountNumber}${currentAccount.accountType === 'CASH' ? ' (Kas Tunai)' : ''}`;
-    }
-    if (expense.bankAccountName) {
-        return `${expense.bankAccountName}${expense.bankAccountNumber ? ` - ${expense.bankAccountNumber}` : ''}`;
-    }
-    return '';
-}
-
-function getExpenseRelatedDocuments(
-    expense: Expense,
-    maps: ExpenseReferenceMaps,
-    permissions: ExpenseLinkPermissions
-): ExpenseRelatedDocumentLink[] {
-    const links: ExpenseRelatedDocumentLink[] = [];
-    if (expense.voucherRef) {
-        const voucher = maps.voucherMap.get(expense.voucherRef);
-        links.push({
-            key: `voucher:${expense.voucherRef}`,
-            kind: 'Bon trip',
-            label: voucher?.bonNumber || expense.voucherRef,
-            href: permissions.canOpenDriverVoucherPage ? `/driver-vouchers/${expense.voucherRef}` : undefined,
-        });
-    }
-    if (expense.boronganRef) {
-        const borongan = maps.boronganMap.get(expense.boronganRef);
-        links.push({
-            key: `borongan:${expense.boronganRef}`,
-            kind: 'Borongan',
-            label: borongan?.boronganNumber || expense.boronganRef,
-            href: permissions.canOpenDriverBoronganPage ? `/borongan/${expense.boronganRef}` : undefined,
-        });
-    }
-    if (expense.relatedIncidentRef) {
-        const incident = maps.incidentMap.get(expense.relatedIncidentRef);
-        links.push({
-            key: `incident:${expense.relatedIncidentRef}`,
-            kind: 'Insiden',
-            label: incident?.incidentNumber || expense.relatedIncidentRef,
-            href: permissions.canOpenIncidentPage ? `/fleet/incidents/${expense.relatedIncidentRef}` : undefined,
-        });
-    }
-    if (expense.relatedMaintenanceRef) {
-        const maintenance = maps.maintenanceMap.get(expense.relatedMaintenanceRef);
-        links.push({
-            key: `maintenance:${expense.relatedMaintenanceRef}`,
-            kind: 'Maintenance',
-            label: maintenance?.vehiclePlate || maintenance?.type || expense.relatedMaintenanceRef,
-            href: permissions.canOpenMaintenancePage
-                ? `/fleet/maintenance${maintenance?.vehicleRef ? `?vehicleRef=${maintenance.vehicleRef}` : ''}`
-                : undefined,
-        });
-    }
-    return links;
-}
 
 export default function ExpensesPage() {
     const { addToast } = useToast();
@@ -206,6 +76,8 @@ export default function ExpensesPage() {
     const [categoryTotals, setCategoryTotals] = useState<ExpenseCategoryTotal[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState(false);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>('desc');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [bankAccountFilter, setBankAccountFilter] = useState('');
@@ -219,6 +91,7 @@ export default function ExpensesPage() {
 
     const isOwner = user ? hasPermission(user, 'expenses', 'update') : false;
     const canCreateExpenses = user ? hasPermission(user, 'expenses', 'create') : false;
+    const canDeleteExpenses = user ? hasPermission(user, 'expenses', 'delete') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
     const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
@@ -457,6 +330,30 @@ export default function ExpensesPage() {
         }
     };
 
+    const handleDelete = async (id: string) => {
+        if (!canDeleteExpenses) return;
+        setDeletingId(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entity: 'expenses', action: 'delete', data: { id } }),
+            });
+            const payload = await res.json();
+            if (!res.ok) {
+                addToast('error', payload.error || 'Gagal menghapus pengeluaran');
+                return;
+            }
+            addToast('success', 'Pengeluaran dihapus');
+            setDeleteId(null);
+            setItems(prev => prev.filter(expense => expense._id !== id));
+        } catch {
+            addToast('error', 'Gagal menghapus pengeluaran');
+        } finally {
+            setDeletingId(false);
+        }
+    };
+
     return (
         <div>
             <div className="page-header"><div className="page-header-left"><h1 className="page-title">Pengeluaran</h1></div>
@@ -568,10 +465,10 @@ export default function ExpensesPage() {
                 </div>
                 <div className="table-wrapper table-desktop-only">
                     <table>
-                        <thead><tr><th><SortableTableHeader label="Tanggal" direction={dateSortDir} onToggle={() => setDateSortDir(current => current === 'desc' ? 'asc' : 'desc')} /></th><th>Kategori</th><th>Deskripsi</th><th>Jumlah</th>{isOwner && <th>Privacy</th>}</tr></thead>
+                        <thead><tr><th><SortableTableHeader label="Tanggal" direction={dateSortDir} onToggle={() => setDateSortDir(current => current === 'desc' ? 'asc' : 'desc')} /></th><th>Kategori</th><th>Deskripsi</th><th>Jumlah</th>{isOwner && <th>Privacy</th>}<th>Aksi</th></tr></thead>
                         <tbody>
-                            {loading ? [1, 2, 3].map(i => <tr key={i}>{Array.from({ length: isOwner ? 5 : 4 }, (_, j) => <td key={j}><div className="skeleton skeleton-text" /></td>)}</tr>) :
-                                filteredTotalExpenses === 0 ? <tr><td colSpan={isOwner ? 5 : 4}><div className="empty-state"><Wallet size={48} className="empty-state-icon" /><div className="empty-state-title">Belum ada pengeluaran</div></div></td></tr> :
+                            {loading ? [1, 2, 3].map(i => <tr key={i}>{Array.from({ length: isOwner ? 6 : 5 }, (_, j) => <td key={j}><div className="skeleton skeleton-text" /></td>)}</tr>) :
+                                filteredTotalExpenses === 0 ? <tr><td colSpan={isOwner ? 6 : 5}><div className="empty-state"><Wallet size={48} className="empty-state-icon" /><div className="empty-state-title">Belum ada pengeluaran</div></div></td></tr> :
                                     items.map(expense => {
                                         const relatedDocs = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
                                         const vehicleLabel = getExpenseVehicleLabel(expense, vehicleMap);
@@ -581,7 +478,7 @@ export default function ExpensesPage() {
                                                 <td className="text-muted">{formatDate(expense.date)}</td>
                                                 <td><span className="badge badge-gray">{expense.categoryName}</span></td>
                                                 <td>
-                                                    <div>{getExpenseDescriptionLabel(expense)}</div>
+                                                    <div><Link href={`/expenses/${expense._id}`} style={LINK_STYLE}>{getExpenseDescriptionLabel(expense)}</Link></div>
                                                     {relatedDocs.length > 0 && (
                                                         <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>
                                                             dokumen{' '}
@@ -627,6 +524,18 @@ export default function ExpensesPage() {
                                                 </td>
                                                 <td className="font-medium">{formatCurrency(expense.amount)}</td>
                                                 {isOwner && <td><span className={`badge ${expense.privacyLevel === 'ownerOnly' ? 'badge-purple' : 'badge-info'}`}>{expense.privacyLevel === 'ownerOnly' ? 'Owner Only' : 'Internal'}</span></td>}
+                                                <td>
+                                                    <div className="table-actions-col">
+                                                        <Link href={`/expenses/${expense._id}`} className="table-action-btn">
+                                                            <Eye size={14} /> Lihat Detail
+                                                        </Link>
+                                                        {canDeleteExpenses && (
+                                                            <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
+                                                                <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -635,6 +544,7 @@ export default function ExpensesPage() {
                                     <td colSpan={3} className="font-semibold" style={{ textAlign: 'right', color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>TOTAL</td>
                                     <td className="font-semibold" style={{ color: 'var(--color-danger)', fontSize: '1rem' }}>{formatCurrency(grandTotal)}</td>
                                     {isOwner && <td />}
+                                    <td />
                                 </tr>
                             )}
                         </tbody>
@@ -656,7 +566,7 @@ export default function ExpensesPage() {
                                     <div key={expense._id} className="mobile-record-card">
                                         <div className="mobile-record-header">
                                             <div>
-                                                <div className="mobile-record-title">{getExpenseDescriptionLabel(expense)}</div>
+                                                <div className="mobile-record-title"><Link href={`/expenses/${expense._id}`} style={LINK_STYLE}>{getExpenseDescriptionLabel(expense)}</Link></div>
                                                 <div className="mobile-record-subtitle">{formatDate(expense.date)} | {expense.categoryName || 'Tanpa kategori'}</div>
                                             </div>
                                             <div style={{ textAlign: 'right' }}>
@@ -716,6 +626,16 @@ export default function ExpensesPage() {
                                                         )}
                                                     </span>
                                                 </div>
+                                            )}
+                                        </div>
+                                        <div className="mobile-record-actions">
+                                            <Link href={`/expenses/${expense._id}`} className="table-action-btn">
+                                                <Eye size={14} /> Lihat Detail
+                                            </Link>
+                                            {canDeleteExpenses && (
+                                                <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
+                                                    <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
+                                                </button>
                                             )}
                                         </div>
                                     </div>
@@ -789,6 +709,24 @@ export default function ExpensesPage() {
                             </div>}
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving || !isFormValid}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
+                    </div>
+                </div>
+            )}
+            {canDeleteExpenses && deleteId && (
+                <div className="modal-overlay" onClick={() => { if (!deletingId) setDeleteId(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Hapus Pengeluaran?</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p>Catatan pengeluaran akan dihapus permanen dan jurnal akunting serta transaksi kas terkait akan dibatalkan. Jika sudah terhubung ke detail insiden atau bon trip, sistem akan menolak penghapusan ini.</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteId(null)} disabled={deletingId}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDelete(deleteId)} disabled={deletingId}>
+                                <Trash2 size={16} /> {deletingId ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

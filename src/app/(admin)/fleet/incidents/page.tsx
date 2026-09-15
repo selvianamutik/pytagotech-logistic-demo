@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useToast } from '../../layout';
+import { useApp, useToast } from '../../layout';
 import { Plus, Search, Eye, AlertTriangle, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
@@ -19,6 +19,7 @@ import {
 } from '@/lib/fleet-queue-page-support';
 import { formatDateTime, formatInternalDeliveryOrderNumber, formatQuantity, formatShipperDeliveryOrderNumber, getShipperReferenceCount, INCIDENT_STATUS_MAP, URGENCY_MAP, INCIDENT_TYPE_MAP } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
+import { hasPageAccess } from '@/lib/rbac';
 import type { Incident, Vehicle, DeliveryOrder, IncidentSettlementLine } from '@/lib/types';
 
 function isDriverSubmittedDraftLine(line: IncidentSettlementLine) {
@@ -33,6 +34,10 @@ export default function IncidentsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { addToast } = useToast();
+    const { user } = useApp();
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDrivers = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'deliveryOrders') : false;
     const [items, setItems] = useState<Incident[]>([]);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [dos, setDos] = useState<DeliveryOrder[]>([]);
@@ -341,9 +346,9 @@ export default function IncidentsPage() {
                                         <tr key={item._id}>
                                             <td><Link href={`/fleet/incidents/${item._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{item.incidentNumber}</Link></td>
                                             <td className="text-muted" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(item.dateTime)}</td>
-                                            <td>{item.vehicleRef ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
-                                            <td>{item.driverName || '-'}</td>
-                                            <td>{item.relatedDONumber || '-'}</td>
+                                            <td>{item.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
+                                            <td>{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: 'var(--color-primary)' }}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</td>
+                                            <td>{item.relatedDeliveryOrderRef && canOpenDeliveryOrders ? <Link href={`/delivery-orders/${item.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{item.relatedDONumber || '-'}</Link> : (item.relatedDONumber || '-')}</td>
                                             <td>{INCIDENT_TYPE_MAP[item.incidentType] || item.incidentType}</td>
                                             <td>{item.locationText}</td>
                                             <td><span className={`badge badge-${URGENCY_MAP[item.urgency]?.color}`}>{URGENCY_MAP[item.urgency]?.label}</span></td>
@@ -368,7 +373,7 @@ export default function IncidentsPage() {
                                 <div className="mobile-record-header">
                                     <div>
                                         <div className="mobile-record-title">{item.incidentNumber}</div>
-                                        <div className="mobile-record-subtitle">{item.vehiclePlate || '-'} / {formatDateTime(item.dateTime)}</div>
+                                        <div className="mobile-record-subtitle">{item.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')} / {formatDateTime(item.dateTime)}</div>
                                     </div>
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                         <span className={`badge badge-${INCIDENT_STATUS_MAP[item.status]?.color}`}>
@@ -380,11 +385,11 @@ export default function IncidentsPage() {
                                 <div className="mobile-record-meta">
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Supir</span>
-                                        <span className="mobile-record-value">{item.driverName || '-'}</span>
+                                        <span className="mobile-record-value">{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: 'var(--color-primary)' }}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">No. DO Internal</span>
-                                        <span className="mobile-record-value">{item.relatedDONumber || '-'}</span>
+                                        <span className="mobile-record-value">{item.relatedDeliveryOrderRef && canOpenDeliveryOrders ? <Link href={`/delivery-orders/${item.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{item.relatedDONumber || '-'}</Link> : (item.relatedDONumber || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Tipe</span>

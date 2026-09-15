@@ -1836,7 +1836,7 @@ export async function handleDriverUpdate(
             });
         }
 
-        await addAuditLog(session, 'UPDATE', 'drivers', id, `Updated drivers: ${JSON.stringify(normalizedUpdates).slice(0, 200)}`);
+await addAuditLog(session, 'UPDATE', 'drivers', id, `Perbarui supir ${nextDriverName || id}`);
         return NextResponse.json({
             data: updated,
             meta: {
@@ -1891,7 +1891,7 @@ export async function handleDriverUpdate(
         }
     }
 
-    await addAuditLog(session, 'UPDATE', 'drivers', id, `Updated drivers: ${JSON.stringify(normalizedUpdates).slice(0, 200)}`);
+    await addAuditLog(session, 'UPDATE', 'drivers', id, `Nonaktifkan supir ${nextDriverName || id}`);
     for (const deliveryOrder of trackedDeliveryOrders) {
         await addAuditLog(
             session,

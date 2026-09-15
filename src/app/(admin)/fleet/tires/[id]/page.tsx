@@ -86,6 +86,7 @@ export default function TireDetailPage() {
     });
     const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
     const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
 
     const reloadHistory = async () => {
@@ -359,7 +360,7 @@ export default function TireDetailPage() {
                     <div className="card-header"><span className="card-header-title">Relasi</span></div>
                     <div className="card-body">
                         <div className="detail-row"><div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{vehicle ? (canOpenVehicles ? <Link href={`/fleet/vehicles/${vehicle._id}`}>{vehicle.plateNumber}</Link> : vehicle.plateNumber) : tire.vehiclePlate || '-'}</div></div><div className="detail-item"><div className="detail-label">Item Gudang</div><div className="detail-value">{warehouseItem ? (canOpenItems ? <Link href={`/inventory/items/${warehouseItem._id}`}>{warehouseItem.itemCode || warehouseItem.name}</Link> : warehouseItem.itemCode || warehouseItem.name) : tire.linkedWarehouseItemCode || tire.linkedWarehouseItemName || '-'}</div></div></div>
-                        <div className="detail-row"><div className="detail-item"><div className="detail-label">Sumber Pembelian</div><div className="detail-value">{tire.sourcePurchaseNumber || '-'}</div></div></div>
+                        <div className="detail-row"><div className="detail-item"><div className="detail-label">Sumber Pembelian</div><div className="detail-value">{tire.sourcePurchaseRef && canOpenPurchases ? <Link href={`/inventory/purchases/${tire.sourcePurchaseRef}`}>{tire.sourcePurchaseNumber || '-'}</Link> : (tire.sourcePurchaseNumber || '-')}</div></div></div>
                     </div>
                 </div>
             </div>

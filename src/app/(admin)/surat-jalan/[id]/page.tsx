@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { FileText, MapPin, Plus, Save, Truck, X } from 'lucide-react';
+import { FileText, MapPin, Plus, Save, Trash2, Truck, X } from 'lucide-react';
 import PageBackButton from '@/components/PageBackButton';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -172,6 +172,7 @@ export default function SuratJalanDetailPage() {
     const [savingEdit, setSavingEdit] = useState(false);
     const [savingActualEdit, setSavingActualEdit] = useState(false);
     const [removingCargoItemId, setRemovingCargoItemId] = useState<string | null>(null);
+    const [removeConfirmItem, setRemoveConfirmItem] = useState<EditExistingCargoItem | null>(null);
     const [editForm, setEditForm] = useState<EditSuratJalanForm>({
         referenceNumber: '',
         pickupStopKey: '',
@@ -190,6 +191,8 @@ export default function SuratJalanDetailPage() {
     const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenInvoicePage = user ? hasPageAccess(user, 'invoices') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
     const canManageDeliveryStatus = user ? hasPermission(user, 'deliveryOrders', 'update') : false;
     const canEditSuratJalan = canManageDeliveryStatus;
@@ -327,9 +330,7 @@ export default function SuratJalanDetailPage() {
     const addNewItem = () => setEditNewItems(previous => [...previous, createDefaultDeliveryOrderCargoDraftItem()]);
     const removeNewItem = (itemIndex: number) => setEditNewItems(previous => previous.filter((_, index) => index !== itemIndex));
     const removeExistingItem = async (item: EditExistingCargoItem) => {
-        if (!deliveryOrder || !canEditSuratJalan || deliveryOrder.tripClosedByAdminAt) return;
-        const confirmed = window.confirm(`Hapus barang ${item.description || 'ini'} dari Surat Jalan?`);
-        if (!confirmed) return;
+        if (!deliveryOrder || !canEditSuratJalan || deliveryOrder.tripClosedByAdminAt || removingCargoItemId) return;
         setRemovingCargoItemId(item.deliveryOrderItemId);
         try {
             const res = await fetch('/api/data', {
@@ -356,6 +357,7 @@ export default function SuratJalanDetailPage() {
             addToast('error', 'Gagal menghapus barang dari Surat Jalan');
         } finally {
             setRemovingCargoItemId(null);
+            setRemoveConfirmItem(null);
         }
     };
     const saveEdit = async () => {
@@ -1744,7 +1746,7 @@ export default function SuratJalanDetailPage() {
                             <div className="detail-item"><div className="detail-label">Pickup</div><div className="detail-value">{suratJalanDocument.pickupAddress || '-'}</div></div>
                         </div>
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Kendaraan / Driver</div><div className="detail-value">{`${suratJalanDocument.vehiclePlate || '-'} / ${suratJalanDocument.driverName || '-'}`}</div></div>
+                            <div className="detail-item"><div className="detail-label">Kendaraan / Driver</div><div className="detail-value">{deliveryOrder?.vehicleRef && canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${deliveryOrder.vehicleRef}`)}>{suratJalanDocument.vehiclePlate || '-'}</Link> : (suratJalanDocument.vehiclePlate || '-')} / {deliveryOrder?.driverRef && canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${deliveryOrder.driverRef}`)}>{suratJalanDocument.driverName || '-'}</Link> : (suratJalanDocument.driverName || '-')}</div></div>
                         </div>
                         <div className="detail-row">
                             <div className="detail-item"><div className="detail-label">Penerima / Tujuan</div><div className="detail-value">{suratJalanDocument.receiverCompany || suratJalanDocument.receiverName || suratJalanDocument.receiverAddress || '-'}</div></div>
@@ -2029,7 +2031,7 @@ export default function SuratJalanDetailPage() {
                                                     <button
                                                         type="button"
                                                         className="btn btn-ghost btn-sm"
-                                                        onClick={() => void removeExistingItem(item)}
+                                                        onClick={() => setRemoveConfirmItem(item)}
                                                         disabled={savingEdit || removingCargoItemId === item.deliveryOrderItemId}
                                                         style={{ color: 'var(--color-danger-700)' }}
                                                     >
@@ -2190,6 +2192,21 @@ export default function SuratJalanDetailPage() {
                             <button className="btn btn-secondary" onClick={() => setShowEditModal(false)} disabled={savingEdit}>Batal</button>
                             <button className="btn btn-primary" onClick={saveEdit} disabled={savingEdit || !editForm.referenceNumber.trim()}>
                                 <Save size={16} /> {savingEdit ? 'Menyimpan...' : 'Simpan Edit'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {canEditSuratJalan && removeConfirmItem && (
+                <div className="modal-overlay" onClick={() => { if (!removingCargoItemId) setRemoveConfirmItem(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Barang?</h3></div>
+                        <div className="modal-body"><p>Hapus barang <strong>{removeConfirmItem.description || 'tanpa deskripsi'}</strong> dari Surat Jalan? Barang akan dilepas dari surat jalan ini dan stok akan dikembalikan secara otomatis.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setRemoveConfirmItem(null)} disabled={removingCargoItemId === removeConfirmItem.deliveryOrderItemId}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => void removeExistingItem(removeConfirmItem)} disabled={removingCargoItemId === removeConfirmItem.deliveryOrderItemId}>
+                                <Trash2 size={16} /> {removingCargoItemId === removeConfirmItem.deliveryOrderItemId ? 'Menghapus...' : 'Hapus'}
                             </button>
                         </div>
                     </div>

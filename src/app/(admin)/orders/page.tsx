@@ -510,9 +510,9 @@ export default function OrdersPage() {
                                             </td>
                                             <td className="text-muted">{formatDate(order.createdAt)}</td>
                                             <td>
-                                                <div className="table-actions">
+                                                <div className="table-actions-col">
                                                     <button className="table-action-btn" onClick={() => router.push(`/orders/${order._id}`)}>
-                                                        <Eye size={14} /> Buka
+                                                        <Eye size={14} /> Detail
                                                     </button>
                                                     <button className="table-action-btn" onClick={() => router.push(`/orders/${order._id}/edit`)}>
                                                         <Edit size={14} /> Edit
@@ -587,7 +587,7 @@ export default function OrdersPage() {
                                 </div>
                                 <div className="mobile-record-actions">
                                     <button className="btn btn-secondary" onClick={() => router.push(`/orders/${order._id}`)}>
-                                        <Eye size={14} /> Buka
+                                        <Eye size={14} /> Detail
                                     </button>
                                     <button className="btn btn-secondary" onClick={() => router.push(`/orders/${order._id}/edit`)}>
                                         <Edit size={14} /> Edit

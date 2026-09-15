@@ -176,7 +176,8 @@ async function resolveAccount(systemKey: AccountingSystemKey) {
 async function buildJournalNumberAfterCollision(entryDate: string, lastAttemptedSequence: number) {
     const monthPrefix = entryDate.replace(/-/g, '').slice(0, 6);
     const monthStart = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-01`;
-    const monthEnd = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-31`;
+    const lastDay = new Date(Number(monthPrefix.slice(0, 4)), Number(monthPrefix.slice(4, 6)), 0).getDate();
+    const monthEnd = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-${String(lastDay).padStart(2, '0')}`;
     const monthEntries = await listDocumentsByFilter<JournalEntry>('journalEntry', {
         entryDate__gte: monthStart,
         entryDate__lte: monthEnd,
