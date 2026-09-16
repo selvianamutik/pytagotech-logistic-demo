@@ -62,6 +62,8 @@
     "seed:supabase:clean-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=user,service,tripRouteRate --enforce-inventory-linked-tires --skip-doc-ids=do-005,doi-006,ii-001,ii-002,inc-003,inv-001,pay-003",
     "seed:supabase:trip-surat-jalan": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --enforce-inventory-linked-tires",
     "reseed:supabase": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
+    "reset:bank-account": "node scripts/reset-bank-account.mjs",
+    "reset:bank-account:cash": "node scripts/reset-bank-account.mjs --account=bank-cash-on-hand --prune-test-artifacts",
     "repair:supabase:bank-ledgers": "node scripts/repair-supabase-bank-ledgers.mjs",
     "reseed:supabase:safe-workflow": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:safe-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
     "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting"

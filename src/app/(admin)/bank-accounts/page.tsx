@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRightLeft,
+  CircleDollarSign,
   Edit,
   Eye,
   FileDown,
@@ -20,6 +21,7 @@ import {
   buildBankAccountsQuery,
   buildBankAccountPrintHtml,
   createDefaultBankAccountForm,
+  createDefaultBankAdjustmentForm,
   createDefaultBankTransferForm,
   formatBankAccountCurrency,
   getAccountNextAction,
@@ -59,7 +61,16 @@ export default function BankAccountsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState(createDefaultBankAccountForm());
   const [transferForm, setTransferForm] = useState(createDefaultBankTransferForm());
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustForm, setAdjustForm] = useState(createDefaultBankAdjustmentForm());
+  const [adjustReview, setAdjustReview] = useState(false);
   const editingSystemCash = !!editAccount && isCashAccount(editAccount);
+  const adjustAccount = accounts.find((account) => account._id === adjustForm.bankAccountRef) || null;
+  const adjustDelta = adjustForm.direction === "in" ? adjustForm.amount : -adjustForm.amount;
+  const adjustBalanceAfter = adjustAccount
+    ? (normalizeBankAccountAmount(adjustAccount.currentBalance) || 0) + adjustDelta
+    : 0;
   const canCreateBankAccounts = user ? hasPermission(user, "bankAccounts", "create") : false;
   const canManageBankAccounts = user ? hasPermission(user, "bankAccounts", "update") : false;
   const canDeleteBankAccounts = user ? hasPermission(user, "bankAccounts", "delete") : false;
@@ -200,6 +211,18 @@ export default function BankAccountsPage() {
       notes: account.notes || "",
     });
     setShowModal(true);
+  };
+
+  const openAdjust = () => {
+    setAdjustForm(createDefaultBankAdjustmentForm(accounts[0]?._id || ""));
+    setAdjustReview(false);
+    setShowAdjust(true);
+  };
+
+  const openAdjustFor = (accountRef: string) => {
+    setAdjustForm(createDefaultBankAdjustmentForm(accountRef));
+    setAdjustReview(false);
+    setShowAdjust(true);
   };
 
   const refreshAccounts = async () => {
@@ -358,6 +381,48 @@ export default function BankAccountsPage() {
     }
   };
 
+  const handleAdjust = async () => {
+    if (!adjustForm.bankAccountRef) {
+      addToast("error", "Pilih rekening / kas terlebih dahulu");
+      return;
+    }
+    if (!adjustForm.amount || adjustForm.amount <= 0) {
+      addToast("error", "Nominal penyesuaian tidak valid");
+      return;
+    }
+    if (!adjustForm.date) {
+      addToast("error", "Tanggal penyesuaian wajib diisi");
+      return;
+    }
+    setAdjusting(true);
+    try {
+      const res = await fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entity: "bank-transactions",
+          action: "adjust",
+          data: adjustForm,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        addToast("error", result.error || "Penyesuaian saldo gagal");
+        return;
+      }
+
+      setShowAdjust(false);
+      setAdjustReview(false);
+      setAdjustForm(createDefaultBankAdjustmentForm(accounts[0]?._id || ""));
+      addToast("success", "Saldo berhasil disesuaikan");
+      await refreshAccounts();
+    } catch {
+      addToast("error", "Penyesuaian saldo gagal");
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
   const handleExportExcel = async () => {
     try {
       const printableAccounts = await fetchAllAccounts();
@@ -444,6 +509,14 @@ export default function BankAccountsPage() {
           >
             <Printer size={15} /> Print
           </button>}
+          {canManageBankAccounts && (
+            <button
+              className="btn btn-secondary"
+              onClick={openAdjust}
+            >
+              <CircleDollarSign size={16} /> Tambah Saldo
+            </button>
+          )}
           {canManageBankAccounts && (
             <button
               className="btn btn-secondary"
@@ -1051,6 +1124,212 @@ export default function BankAccountsPage() {
               <button className="btn btn-primary" onClick={handleTransfer} disabled={transferring}>
                 <ArrowRightLeft size={16} /> {transferring ? "Memproses..." : "Transfer"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canManageBankAccounts && showAdjust && (
+        <div className="modal-overlay" onClick={() => { if (!adjusting) { setShowAdjust(false); setAdjustReview(false); } }}>
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            style={{ maxWidth: 500 }}
+          >
+            <div className="modal-header">
+              <h3
+                className="modal-title"
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <CircleDollarSign size={18} /> {adjustReview ? "Konfirmasi Penyesuaian Saldo" : "Tambah Saldo"}
+              </h3>
+              <button
+                className="modal-close"
+                onClick={() => { setShowAdjust(false); setAdjustReview(false); }}
+                disabled={adjusting}
+              >
+                x
+              </button>
+            </div>
+            <div className="modal-body">
+              {adjustReview ? (
+                <div style={{ border: "1px solid var(--color-gray-200)", borderRadius: 12, padding: "1rem 1.1rem", background: "var(--color-gray-50)", display: "grid", gap: "0.75rem" }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Rekening / Kas</label>
+                    <div className="font-medium">
+                      {adjustAccount ? `${adjustAccount.bankName} - ${adjustAccount.accountNumber}` : "-"}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Jenis Penyesuaian</label>
+                    <div className="font-medium">
+                      {adjustForm.direction === "in" ? "Tambah saldo (+)" : "Kurangi saldo (-)"}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Nominal (Rp)</label>
+                    <div className="font-medium">
+                      {formatBankAccountCurrency(adjustForm.amount)}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Tanggal</label>
+                    <div className="font-medium">
+                      {adjustForm.date || "-"}
+                    </div>
+                  </div>
+                  {adjustForm.description && (
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Keterangan</label>
+                      <div className="font-medium">{adjustForm.description}</div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
+                    <div>Saldo saat ini</div>
+                    <div className="font-medium">{formatBankAccountCurrency(adjustAccount?.currentBalance ?? 0)}</div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
+                    <div>Penyesuaian</div>
+                    <div className="font-medium" style={{ color: adjustForm.direction === "in" ? "var(--color-success)" : "var(--color-danger)" }}>
+                      {formatBankAccountCurrency(adjustForm.direction === "in" ? adjustForm.amount : -adjustForm.amount)}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", borderTop: "1px solid var(--color-gray-200)", paddingTop: "0.75rem", fontWeight: 700 }}>
+                    <div>Saldo setelah penyesuaian</div>
+                    <div>{formatBankAccountCurrency(adjustBalanceAfter)}</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Rekening / Kas <span className="required">*</span>
+                    </label>
+                    <select
+                      className="form-select"
+                      value={adjustForm.bankAccountRef}
+                      disabled={adjusting}
+                      onChange={(event) =>
+                        setAdjustForm({
+                          ...adjustForm,
+                          bankAccountRef: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">-- Pilih rekening / kas --</option>
+                      {accounts.map((account) => (
+                        <option key={account._id} value={account._id}>
+                          {account.bankName} - {account.accountNumber} (
+                          {formatBankAccountCurrency(account.currentBalance || 0)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Jenis Penyesuaian</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
+                      <button
+                        type="button"
+                        className={adjustForm.direction === "in" ? "btn btn-success" : "btn btn-secondary"}
+                        disabled={adjusting}
+                        onClick={() => setAdjustForm({ ...adjustForm, direction: "in" })}
+                      >
+                        Tambah saldo (+)
+                      </button>
+                      <button
+                        type="button"
+                        className={adjustForm.direction === "out" ? "btn btn-danger" : "btn btn-secondary"}
+                        disabled={adjusting}
+                        onClick={() => setAdjustForm({ ...adjustForm, direction: "out" })}
+                      >
+                        Kurangi saldo (-)
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">
+                        Nominal (Rp) <span className="required">*</span>
+                      </label>
+                      <FormattedNumberInput allowDecimal={false}
+                        value={adjustForm.amount}
+                        disabled={adjusting}
+                        onValueChange={(value) =>
+                          setAdjustForm({
+                            ...adjustForm,
+                            amount: value,
+                          })
+                        }
+                        placeholder="Ketik nominal penyesuaian"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">
+                        Tanggal <span className="required">*</span>
+                      </label>
+                      <input
+                        className="form-input"
+                        type="date"
+                        value={adjustForm.date}
+                        disabled={adjusting}
+                        onChange={(event) =>
+                          setAdjustForm({
+                            ...adjustForm,
+                            date: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Keterangan</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      value={adjustForm.description}
+                      disabled={adjusting}
+                      onChange={(event) =>
+                        setAdjustForm({
+                          ...adjustForm,
+                          description: event.target.value,
+                        })
+                      }
+                      placeholder="Contoh: koreksi saldo awal, penyesuaian bank"
+                    />
+                  </div>
+                  {adjustAccount && (
+                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      Saldo saat ini: {formatBankAccountCurrency(adjustAccount.currentBalance ?? 0)} ·
+                      Setelah penyesuaian: {formatBankAccountCurrency(adjustBalanceAfter)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (adjustReview) {
+                      setAdjustReview(false);
+                    } else {
+                      setShowAdjust(false);
+                      setAdjustReview(false);
+                    }
+                  }}
+                  disabled={adjusting}
+                >
+                {adjustReview ? "Kembali" : "Batal"}
+              </button>
+              {adjustReview ? (
+                <button className="btn btn-primary" onClick={handleAdjust} disabled={adjusting || !adjustForm.bankAccountRef || !adjustForm.amount || adjustForm.amount <= 0}>
+                  <CircleDollarSign size={16} /> {adjusting ? "Menyimpan..." : "Simpan Penyesuaian"}
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={() => setAdjustReview(true)} disabled={!adjustForm.bankAccountRef || !adjustForm.amount || adjustForm.amount <= 0 || !adjustForm.date}>
+                  Lanjutkan
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -10,6 +10,7 @@ import {
     listDocumentsByFilter,
     updateDocument,
 } from '@/lib/repositories/document-store';
+import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { readLedgerBalance } from './data-helpers';
 import type { BankAccount, BankTransaction } from '@/lib/types';
 
@@ -18,7 +19,9 @@ import type { BankAccount, BankTransaction } from '@/lib/types';
  * Used for transaction amounts which should always be positive.
  */
 function normalizeWholeMoneyAmount(value: unknown): number {
-    const normalized = typeof value === 'number' ? value : 0;
+    const normalized = typeof value === 'number'
+        ? value
+        : typeof value === 'string' ? parseFormattedNumberish(value, { maxFractionDigits: 0 }) : 0;
     if (!Number.isFinite(normalized) || normalized <= 0) {
         return 0;
     }
@@ -30,7 +33,9 @@ function normalizeWholeMoneyAmount(value: unknown): number {
  */
 function bankTransactionDelta(transaction: Pick<BankTransaction, 'type' | 'amount'>): number {
     const amount = normalizeWholeMoneyAmount(transaction.amount);
-    return transaction.type === 'DEBIT' || transaction.type === 'TRANSFER_OUT' ? -amount : amount;
+    return transaction.type === 'DEBIT' || transaction.type === 'TRANSFER_OUT' || transaction.type === 'ADJUSTMENT_DEBIT'
+        ? -amount
+        : amount;
 }
 
 /**

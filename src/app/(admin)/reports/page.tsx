@@ -343,7 +343,7 @@ export default function ReportsPage() {
               )}</div><table><thead><tr><th>Bank</th><th>Tanggal</th><th>Tipe</th><th>Deskripsi</th><th class="r">Jumlah</th><th class="r">Saldo</th></tr></thead><tbody>${sortedFilteredBankTx
               .map((item) => {
                 const isIn =
-                  item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                  item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                 const bankName = resolveBankTransactionAccountName(
                   item,
                   allBankAccounts,
@@ -1216,7 +1216,7 @@ export default function ReportsPage() {
                   ) : (
                     sortedFilteredBankTx.map((item) => {
                       const isIn =
-                        item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                        item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                       const bankName = resolveBankTransactionAccountName(
                         item,
                         allBankAccounts,
@@ -1320,7 +1320,7 @@ export default function ReportsPage() {
               ) : (
                 sortedFilteredBankTx.map((item) => {
                   const isIn =
-                    item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                    item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                   const bankName = resolveBankTransactionAccountName(
                     item,
                     allBankAccounts,

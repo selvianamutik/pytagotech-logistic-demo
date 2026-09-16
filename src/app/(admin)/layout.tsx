@@ -295,7 +295,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const href = '/' + pathParts.slice(0, idx + 1).join('/');
         const previousPart = idx > 0 ? pathParts[idx - 1] : '';
         const labels: Record<string, string> = {
-            dashboard: 'Dashboard', orders: 'Order', trips: 'Trip', 'surat-jalan': 'Surat Jalan', 'delivery-orders': 'Trip Lama',
+            dashboard: 'Dashboard', orders: 'Order', trips: 'Trip', 'surat-jalan': 'Surat Jalan', 'delivery-orders': 'Trip',
             invoices: 'Invoice', customers: 'Customer', 'trip-rates': 'Biaya Rute Trip', services: 'Jenis Armada',
             'expense-categories': 'Kategori Biaya', expenses: 'Pengeluaran',
             employees: 'Karyawan', attendance: 'Absensi',

@@ -1902,6 +1902,183 @@ export async function handleBankTransfer(
     return NextResponse.json({ success: true, transferId });
 }
 
+function resolveBankAdjustmentDirection(value: unknown): 'in' | 'out' | null {
+    if (value === 'in' || value === 'out') {
+        return value;
+    }
+    return null;
+}
+
+function buildBankAdjustmentLabel(bankName: string, direction: 'in' | 'out', amount: number) {
+    return direction === 'in'
+        ? `Penyesuaian saldo +${formatAuditMoney(amount)} pada ${bankName}`
+        : `Penyesuaian saldo -${formatAuditMoney(amount)} pada ${bankName}`;
+}
+
+export async function handleBankAdjustmentCreate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const accountRef = typeof data.bankAccountRef === 'string' ? data.bankAccountRef : '';
+    if (!accountRef) {
+        return NextResponse.json({ error: 'Rekening / kas wajib dipilih' }, { status: 400 });
+    }
+    const direction = resolveBankAdjustmentDirection(data.direction);
+    if (!direction) {
+        return NextResponse.json({ error: 'Arah penyesuaian tidak valid' }, { status: 400 });
+    }
+    const amount = normalizeCurrencyNumber(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: 'Nominal penyesuaian tidak valid' }, { status: 400 });
+    }
+    const adjustmentDate =
+        typeof data.date === 'string' && data.date
+            ? data.date
+            : getBusinessDateValue();
+    const dateError = validateIsoDateOrResponse(adjustmentDate, 'Tanggal penyesuaian', 'Tanggal penyesuaian tidak valid');
+    if (dateError) {
+        return dateError;
+    }
+    const description = normalizeOptionalText(data.description);
+    const account = await getLedgerAccount(accountRef);
+    if (!account) {
+        return NextResponse.json({ error: 'Rekening / kas tidak ditemukan' }, { status: 404 });
+    }
+
+    const adjustmentId = `adjustment-${crypto.randomUUID()}`;
+    const startingBalance = normalizeCurrencyNumber(account.currentBalance ?? 0, { maxFractionDigits: 0 });
+    const delta = direction === 'in' ? amount : -amount;
+    const balanceAfter = startingBalance + delta;
+
+    await createDocument({
+        _id: adjustmentId,
+        _type: 'bankTransaction',
+        bankAccountRef: account._id,
+        bankAccountName: account.bankName,
+        bankAccountNumber: account.accountNumber,
+        type: direction === 'in' ? 'ADJUSTMENT' : 'ADJUSTMENT_DEBIT',
+        amount,
+        date: adjustmentDate,
+        description: description || buildBankAdjustmentLabel(account.bankName, direction, amount),
+        balanceAfter,
+        relatedAdjustmentRef: adjustmentId,
+    });
+    await recomputeBankLedgerBalancesForAccounts([account._id]);
+
+    await addAuditLog(
+        session,
+        'CREATE',
+        'bank-transactions',
+        adjustmentId,
+        (description ? `${description} - ` : '') + buildBankAdjustmentLabel(account.bankName, direction, amount)
+    );
+    return NextResponse.json({ success: true, adjustmentId });
+}
+
+export async function handleBankAdjustmentUpdate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = typeof data.id === 'string' ? data.id : '';
+    if (!id) {
+        return NextResponse.json({ error: 'Penyesuaian saldo tidak valid' }, { status: 400 });
+    }
+    const direction = resolveBankAdjustmentDirection(data.direction);
+    if (!direction) {
+        return NextResponse.json({ error: 'Arah penyesuaian tidak valid' }, { status: 400 });
+    }
+    const amount = normalizeCurrencyNumber(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: 'Nominal penyesuaian tidak valid' }, { status: 400 });
+    }
+    const adjustmentDate =
+        typeof data.date === 'string' && data.date
+            ? data.date
+            : getBusinessDateValue();
+    const dateError = validateIsoDateOrResponse(adjustmentDate, 'Tanggal penyesuaian', 'Tanggal penyesuaian tidak valid');
+    if (dateError) {
+        return dateError;
+    }
+    const description = normalizeOptionalText(data.description);
+
+    const existing = await getDocumentById<BankTransaction>(id, 'bankTransaction');
+    if (!existing) {
+        return NextResponse.json({ error: 'Penyesuaian saldo tidak ditemukan' }, { status: 404 });
+    }
+    if (existing.type !== 'ADJUSTMENT' && existing.type !== 'ADJUSTMENT_DEBIT') {
+        return NextResponse.json({ error: 'Transaksi ini bukan penyesuaian saldo' }, { status: 409 });
+    }
+    if (existing.replacedByBankTransactionRef || existing.reversesBankTransactionRef) {
+        return NextResponse.json({ error: 'Penyesuaian yang sudah dikoreksi tidak bisa diubah lagi' }, { status: 409 });
+    }
+    const account = await getLedgerAccount(existing.bankAccountRef);
+    if (!account) {
+        return NextResponse.json({ error: 'Rekening / kas tidak ditemukan' }, { status: 404 });
+    }
+
+    const originalDirection: 'in' | 'out' = existing.type === 'ADJUSTMENT' ? 'in' : 'out';
+    const newAutoLabel = buildBankAdjustmentLabel(account.bankName, direction, amount);
+    const oldAutoDescription = buildBankAdjustmentLabel(account.bankName, originalDirection, existing.amount);
+    const resolvedDescription = description === oldAutoDescription || description === undefined
+        ? newAutoLabel
+        : description;
+
+    await updateDocument(existing._id, {
+        type: direction === 'in' ? 'ADJUSTMENT' : 'ADJUSTMENT_DEBIT',
+        amount,
+        date: adjustmentDate,
+        description: resolvedDescription,
+    }, 'bankTransaction');
+    await recomputeBankLedgerBalancesForAccounts([account._id]);
+
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'bank-transactions',
+        id,
+        `Perbarui ${(existing.description || 'penyesuaian saldo').split(' - ')[0]} menjadi ${buildBankAdjustmentLabel(account.bankName, direction, amount)}`
+    );
+    return NextResponse.json({ success: true, adjustmentId: id });
+}
+
+export async function handleBankAdjustmentDelete(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = typeof data.id === 'string' ? data.id : '';
+    if (!id) {
+        return NextResponse.json({ error: 'Penyesuaian saldo tidak valid' }, { status: 400 });
+    }
+    const existing = await getDocumentById<BankTransaction>(id, 'bankTransaction');
+    if (!existing) {
+        return NextResponse.json({ error: 'Penyesuaian saldo tidak ditemukan' }, { status: 404 });
+    }
+    if (existing.type !== 'ADJUSTMENT' && existing.type !== 'ADJUSTMENT_DEBIT') {
+        return NextResponse.json({ error: 'Transaksi ini bukan penyesuaian saldo' }, { status: 409 });
+    }
+    if (existing.replacedByBankTransactionRef || existing.reversesBankTransactionRef) {
+        return NextResponse.json({ error: 'Penyesuaian yang sudah dikoreksi tidak bisa dihapus' }, { status: 409 });
+    }
+
+    const accountRef = existing.bankAccountRef;
+    await deleteDocument(existing._id, 'bankTransaction');
+    if (accountRef) {
+        await recomputeBankLedgerBalancesForAccounts([accountRef]);
+    }
+
+    await addAuditLog(
+        session,
+        'DELETE',
+        'bank-transactions',
+        id,
+        `Hapus ${existing.description || buildBankAdjustmentLabel(existing.bankAccountName || 'rekening', existing.type === 'ADJUSTMENT' ? 'in' : 'out', existing.amount)}`
+    );
+    return NextResponse.json({ success: true });
+}
+
 export async function handleExpenseCreate(
     session: ApiSession,
     data: Record<string, unknown>,

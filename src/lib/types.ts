@@ -1707,7 +1707,7 @@ export interface BankAccount {
 }
 
 // ── Bank Transaction ──
-export type BankTransactionType = 'CREDIT' | 'DEBIT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+export type BankTransactionType = 'CREDIT' | 'DEBIT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'ADJUSTMENT' | 'ADJUSTMENT_DEBIT';
 
 export interface BankTransaction {
   _id: string;
@@ -1728,8 +1728,10 @@ export interface BankTransaction {
   relatedOverpaymentRefundRef?: string;
   relatedPurchasePaymentRef?: string;
   relatedPurchaseRef?: string;
+  relatedAdjustmentRef?: string;
   reversesBankTransactionRef?: string;
   replacesBankTransactionRef?: string;
+  replacedByBankTransactionRef?: string;
   _createdAt?: string;
 }
 

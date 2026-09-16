@@ -53,7 +53,7 @@ function sumBy<T>(rows: T[], selector: (row: T) => unknown) {
 
 function bankDelta(transaction: BankTransaction) {
     const amount = money(transaction.amount);
-    return transaction.type === 'DEBIT' || transaction.type === 'TRANSFER_OUT' ? -amount : amount;
+    return transaction.type === 'DEBIT' || transaction.type === 'TRANSFER_OUT' || transaction.type === 'ADJUSTMENT_DEBIT' ? -amount : amount;
 }
 
 function bankTransactionOrderKey(transaction: BankTransaction) {
@@ -89,6 +89,7 @@ function bankPrimaryRef(transaction: BankTransaction) {
         ['relatedVoucherRef', transaction.relatedVoucherRef],
         ['relatedOverpaymentRefundRef', transaction.relatedOverpaymentRefundRef],
         ['relatedPurchasePaymentRef', transaction.relatedPurchasePaymentRef],
+        ['relatedAdjustmentRef', transaction.relatedAdjustmentRef],
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
     return refs;
 }
@@ -243,7 +244,12 @@ async function main() {
         const primaryRefs = bankPrimaryRef(transaction);
         assert(primaryRefs.length === 1, `Mutasi bank ${transaction._id} harus punya tepat 1 referensi sumber utama.`);
         const [refKey, refValue] = primaryRefs[0];
-        if (refKey === 'relatedPaymentRef') {
+        if (refKey === 'relatedAdjustmentRef') {
+            assert(
+                transaction.type === 'ADJUSTMENT' || transaction.type === 'ADJUSTMENT_DEBIT',
+                `Mutasi penyesuaian ${transaction._id} harus ADJUSTMENT/ADJUSTMENT_DEBIT.`
+            );
+        } else if (refKey === 'relatedPaymentRef') {
             assert(payments.some(row => row._id === refValue), `Mutasi bank ${transaction._id} mengarah ke payment yang tidak ditemukan.`);
             if (transaction.type === 'DEBIT') {
                 assert(

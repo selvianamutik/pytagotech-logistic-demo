@@ -49,6 +49,9 @@ import {
     handleDriverVoucherTopUp,
 } from '@/lib/api/driver-workflows';
 import {
+    handleBankAdjustmentCreate,
+    handleBankAdjustmentDelete,
+    handleBankAdjustmentUpdate,
     handleBankTransfer,
     handleCustomerOverpaymentRefund,
     handleCustomerReceiptCreate,
@@ -259,7 +262,7 @@ function getEntityModule(entity: string | null): AppModule | null {
 }
 
 function getMutationPermissionAction(action?: string): keyof ModulePermissions {
-    if (action === 'delete') return 'delete';
+    if (action === 'delete' || action === 'adjust-delete') return 'delete';
     if (
         action === 'update' ||
         action === 'receive' ||
@@ -301,7 +304,8 @@ function getMutationPermissionAction(action?: string): keyof ModulePermissions {
         action === 'complete-with-materials'
         || action === 'install-to-slot' ||
         action === 'close-period' ||
-        action === 'open-period'
+        action === 'open-period' ||
+        action === 'adjust-update'
     ) {
         return 'update';
     }
@@ -839,9 +843,9 @@ export async function GET(request: Request) {
             const summary = txRows.reduce(
                 (acc, tx) => {
                     const amount = parseFormattedNumberish(tx.amount ?? 0, { maxFractionDigits: 0 });
-                    if (tx.type === 'CREDIT' || tx.type === 'TRANSFER_IN') {
+                    if (tx.type === 'CREDIT' || tx.type === 'TRANSFER_IN' || tx.type === 'ADJUSTMENT') {
                         acc.totalIn += amount;
-                    } else if (tx.type === 'DEBIT' || tx.type === 'TRANSFER_OUT') {
+                    } else if (tx.type === 'DEBIT' || tx.type === 'TRANSFER_OUT' || tx.type === 'ADJUSTMENT_DEBIT') {
                         acc.totalOut += amount;
                     }
                     acc.totalTransactions += 1;
@@ -1992,6 +1996,18 @@ export async function POST(request: Request) {
 
         if (entity === 'bank-transactions' && action === 'transfer') {
             return await handleBankTransfer(session, data, addAuditLog);
+        }
+
+        if (entity === 'bank-transactions' && action === 'adjust') {
+            return await handleBankAdjustmentCreate(session, data, addAuditLog);
+        }
+
+        if (entity === 'bank-transactions' && action === 'adjust-update') {
+            return await handleBankAdjustmentUpdate(session, data, addAuditLog);
+        }
+
+        if (entity === 'bank-transactions' && action === 'adjust-delete') {
+            return await handleBankAdjustmentDelete(session, data, addAuditLog);
         }
 
         if (entity === 'payments' && action === 'update') {

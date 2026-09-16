@@ -1064,7 +1064,7 @@ export function applyDerivedDriverVoucherLedger<
 
 function getSignedBankTransactionDelta(type: BankTransaction['type'] | undefined, amount: unknown) {
     const numericAmount = parseWholeMoneyLike(amount);
-    if (type === 'DEBIT' || type === 'TRANSFER_OUT') {
+    if (type === 'DEBIT' || type === 'TRANSFER_OUT' || type === 'ADJUSTMENT_DEBIT') {
         return -numericAmount;
     }
     return numericAmount;
