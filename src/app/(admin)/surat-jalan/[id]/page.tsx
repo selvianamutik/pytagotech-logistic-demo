@@ -37,8 +37,10 @@ import { deriveSuratJalanDocumentStatus } from '@/lib/trip-document-mappers';
 import { convertKgToWeightInputValue, convertM3ToVolumeInputValue, convertVolumeToM3, convertWeightToKg, formatCargoSummary, getWeightInputFractionDigits, VOLUME_INPUT_UNIT_OPTIONS, WEIGHT_INPUT_UNIT_OPTIONS } from '@/lib/measurement';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import {
-    applyCustomerProductToOrderItem,
     applyOrderItemAutoWeightFromQty,
+    applyOrderItemPickerSelection,
+    getOrderItemPickerValue,
+    MANUAL_ITEM_OPTION_VALUE,
     shouldLockOrderItemVolume,
     shouldLockOrderItemWeight,
     updateOrderItemVolumeUnit,
@@ -300,30 +302,28 @@ export default function SuratJalanDetailPage() {
         }));
     };
     const applyExistingItemProduct = (itemIndex: number, productRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === productRef);
         setEditExistingItems(previous => previous.map((item, index) => (
             index === itemIndex
                 ? {
                     ...item,
-                    ...toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                    ...toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                         ...item,
                         pickupStopKey: editForm.pickupStopKey,
                         shipperReferenceNumber: editForm.referenceNumber,
-                    }, selectedProduct)),
+                    }, productRef, customerProducts)),
                     deliveryOrderItemId: item.deliveryOrderItemId,
                 }
                 : item
         )));
     };
     const applyNewItemProduct = (itemIndex: number, productRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === productRef);
         setEditNewItems(previous => previous.map((item, index) => (
             index === itemIndex
-                ? toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                ? toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                     ...item,
                     pickupStopKey: editForm.pickupStopKey,
                     shipperReferenceNumber: editForm.referenceNumber,
-                }, selectedProduct))
+                }, productRef, customerProducts))
                 : item
         )));
     };
@@ -2041,8 +2041,9 @@ export default function SuratJalanDetailPage() {
                                                 <div className="form-row">
                                                     <div className="form-group">
                                                         <label className="form-label">Barang Customer</label>
-                                                        <select className="form-select" value={item.customerProductRef} onChange={event => applyExistingItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
+                                                        <select className="form-select" value={getOrderItemPickerValue(item)} onChange={event => applyExistingItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
                                                             <option value="">{customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
+                                                            <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                             {customerProducts.map(product => <option key={product._id} value={product._id}>{product.code ? `${product.code} - ` : ''}{product.name}</option>)}
                                                         </select>
                                                     </div>
@@ -2124,8 +2125,9 @@ export default function SuratJalanDetailPage() {
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Barang Customer</label>
-                                                <select className="form-select" value={item.customerProductRef} onChange={event => applyNewItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
+                                                <select className="form-select" value={getOrderItemPickerValue(item)} onChange={event => applyNewItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
                                                     <option value="">{customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
+                                                    <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                     {customerProducts.map(product => <option key={product._id} value={product._id}>{product.code ? `${product.code} - ` : ''}{product.name}</option>)}
                                                 </select>
                                             </div>

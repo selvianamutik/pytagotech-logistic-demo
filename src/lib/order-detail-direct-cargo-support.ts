@@ -31,6 +31,7 @@ export type TripDraftForm = {
 
 export function toDirectCargoGroupItem(item: OrderItemForm): DirectCargoGroupItem {
     return {
+        manualEntry: item.manualEntry,
         customerProductRef: item.customerProductRef,
         description: item.description,
         qtyKoli: item.qtyKoli,

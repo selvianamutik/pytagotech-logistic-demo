@@ -46,9 +46,11 @@ import {
     summarizeSelectedShipments,
 } from '@/lib/order-detail-support';
 import {
-    applyCustomerProductToOrderItem,
     applyOrderItemAutoWeightFromQty,
+    applyOrderItemPickerSelection,
+    getOrderItemPickerValue,
     getDraftOrderItems,
+    MANUAL_ITEM_OPTION_VALUE,
     shouldLockOrderItemVolume,
     shouldLockOrderItemWeight,
     summarizeDraftOrderCargo,
@@ -608,7 +610,6 @@ export default function OrderDetailPage() {
     };
 
     const applyDirectCargoProductSelection = (groupId: string, itemIndex: number, nextProductRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === nextProductRef);
         setDirectCargoGroups(previous =>
             previous.map(group => (
                 group.id === groupId
@@ -616,11 +617,11 @@ export default function OrderDetailPage() {
                         ...group,
                         items: group.items.map((item, index) => (
                             index === itemIndex
-                                ? applyCustomerProductToOrderItem({
+                                ? applyOrderItemPickerSelection({
                                     ...item,
                                     pickupStopKey: group.pickupStopKey,
                                     shipperReferenceNumber: group.shipperReferenceNumber,
-                                }, selectedProduct)
+                                }, nextProductRef, customerProducts)
                                 : { ...item, pickupStopKey: group.pickupStopKey, shipperReferenceNumber: group.shipperReferenceNumber }
                         )).map(item => toDirectCargoGroupItem(item)),
                     }
@@ -3137,11 +3138,12 @@ export default function OrderDetailPage() {
                                                                     <label className="form-label">Barang Customer</label>
                                                                     <select
                                                                         className="form-select"
-                                                                        value={item.customerProductRef}
+                                                                        value={getOrderItemPickerValue(item)}
                                                                         onChange={e => applyDirectCargoProductSelection(group.id, itemIndex, e.target.value)}
                                                                         disabled={creatingDO || !order.customerRef}
                                                                     >
                                                                         <option value="">{customerProducts.length > 0 ? 'Pilih dari master barang customer (opsional)' : 'Belum ada master barang customer'}</option>
+                                                                        <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                                         {customerProducts.map(product => (
                                                                             <option key={product._id} value={product._id}>
                                                                                 {product.code ? `${product.code} - ` : ''}{product.name}

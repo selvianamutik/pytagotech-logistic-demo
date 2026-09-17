@@ -121,7 +121,7 @@ import {
     inferDriverVoucherDisbursementCount,
     sortDriverVoucherDisbursements,
 } from '@/lib/driver-voucher-detail-support';
-import { applyCustomerProductToOrderItem, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
+import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPTION_VALUE, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
 import { generateDOPdf } from '@/lib/pdf/doTemplate';
 import { hasPageAccess, hasPermission, normalizeUserRole } from '@/lib/rbac';
 import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel } from '@/lib/trip-route-rate-support';
@@ -1059,16 +1059,15 @@ export default function TripDetailPage() {
 
     const applySelectedShipperReferenceItemProduct = (itemIndex: number, nextProductRef: string) => {
         if (!selectedShipperReferenceDraft) return;
-        const selectedProduct = deliveryOrderCustomerProducts.find(product => product._id === nextProductRef);
         setShipperReferenceItemDraftMap(previous => ({
             ...previous,
             [selectedShipperReferenceDraft.draftKey]: (previous[selectedShipperReferenceDraft.draftKey] || []).map((item, currentIndex) => (
                 currentIndex === itemIndex
-                    ? toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                    ? toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                         ...item,
                         pickupStopKey: selectedShipperReferenceDraft.pickupStopKey,
                         shipperReferenceNumber: selectedShipperReferenceDraft.referenceNumber,
-                    }, selectedProduct))
+                    }, nextProductRef, deliveryOrderCustomerProducts))
                     : item
             )),
         }));
@@ -1076,18 +1075,17 @@ export default function TripDetailPage() {
 
     const applySelectedExistingShipperReferenceItemProduct = (itemIndex: number, nextProductRef: string) => {
         if (!selectedShipperReferenceDraft) return;
-        const selectedProduct = deliveryOrderCustomerProducts.find(product => product._id === nextProductRef);
         setShipperReferenceExistingItemDraftMap(previous => ({
             ...previous,
             [selectedShipperReferenceDraft.draftKey]: (previous[selectedShipperReferenceDraft.draftKey] || []).map((item, currentIndex) => (
                 currentIndex === itemIndex
                     ? {
                         ...item,
-                        ...toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                        ...toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                             ...item,
                             pickupStopKey: selectedShipperReferenceDraft.pickupStopKey,
                             shipperReferenceNumber: selectedShipperReferenceDraft.referenceNumber,
-                        }, selectedProduct)),
+                        }, nextProductRef, deliveryOrderCustomerProducts)),
                         deliveryOrderItemId: item.deliveryOrderItemId,
                     }
                     : item
@@ -1269,18 +1267,17 @@ export default function TripDetailPage() {
     };
 
     const applyCargoDraftProductSelection = (groupId: string, itemIndex: number, nextProductRef: string) => {
-        const selectedProduct = deliveryOrderCustomerProducts.find(product => product._id === nextProductRef);
         setCargoDraftGroups(previous => previous.map(group => (
             group.id === groupId
                 ? {
                     ...group,
                     items: group.items.map((item, currentIndex) => (
                         currentIndex === itemIndex
-                            ? toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                            ? toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                                 ...item,
                                 pickupStopKey: group.pickupStopKey,
                                 shipperReferenceNumber: group.shipperReferenceNumber,
-                            }, selectedProduct))
+                            }, nextProductRef, deliveryOrderCustomerProducts))
                             : item
                     )),
                 }
@@ -9531,11 +9528,12 @@ export default function TripDetailPage() {
                                                                 <label className="form-label">Barang Customer</label>
                                                                 <select
                                                                     className="form-select"
-                                                                    value={item.customerProductRef}
+                                                                    value={getOrderItemPickerValue(item)}
                                                                     onChange={e => applySelectedExistingShipperReferenceItemProduct(itemIndex, e.target.value)}
                                                                     disabled={savingShipperReference || !doData?.customerRef}
                                                                 >
                                                                     <option value="">{deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
+                                                                    <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                                     {deliveryOrderCustomerProducts.map(product => (
                                                                         <option key={product._id} value={product._id}>
                                                                             {product.code ? `${product.code} - ` : ''}{product.name}
@@ -9645,11 +9643,12 @@ export default function TripDetailPage() {
                                                     <label className="form-label">Barang Customer</label>
                                                     <select
                                                         className="form-select"
-                                                        value={item.customerProductRef}
+                                                        value={getOrderItemPickerValue(item)}
                                                         onChange={e => applySelectedShipperReferenceItemProduct(itemIndex, e.target.value)}
                                                         disabled={savingShipperReference || !doData?.customerRef}
                                                     >
                                                         <option value="">{deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
+                                                        <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                         {deliveryOrderCustomerProducts.map(product => (
                                                             <option key={product._id} value={product._id}>
                                                                 {product.code ? `${product.code} - ` : ''}{product.name}
@@ -10051,11 +10050,12 @@ export default function TripDetailPage() {
                                                             <label className="form-label">Barang Customer</label>
                                                             <select
                                                                 className="form-select"
-                                                                value={item.customerProductRef}
+                                                                value={getOrderItemPickerValue(item)}
                                                                 onChange={e => applyCargoDraftProductSelection(group.id, itemIndex, e.target.value)}
                                                                 disabled={savingCargo || !doData?.customerRef}
                                                             >
                                                                 <option value="">{deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
+                                                                <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                                 {deliveryOrderCustomerProducts.map(product => (
                                                                     <option key={product._id} value={product._id}>
                                                                         {product.code ? `${product.code} - ` : ''}{product.name}

@@ -18,6 +18,7 @@ type ShipperReferenceLike = Pick<DeliveryOrderShipperReference, '_key' | 'refere
 
 export function toDeliveryOrderCargoDraftItem(item: DeliveryOrderCargoDraftItem | OrderItemForm): DeliveryOrderCargoDraftItem {
     return {
+        manualEntry: item.manualEntry,
         customerProductRef: item.customerProductRef,
         description: item.description,
         qtyKoli: item.qtyKoli,

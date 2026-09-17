@@ -49,6 +49,12 @@ function parseWholeMoneyLike(value: unknown) {
     return Math.max(parseFormattedNumberish(value ?? 0, { maxFractionDigits: 0 }), 0);
 }
 
+function dedupeById<T extends { _id: string }>(rows: T[]) {
+    const seen = new Map<string, T>();
+    for (const row of rows) seen.set(row._id, row);
+    return [...seen.values()];
+}
+
 async function getDocumentCount(docType: string, filterObj: Record<string, unknown> = {}) {
     const result = await listDocuments(docType, {
         filterObj,
@@ -1762,10 +1768,10 @@ export async function getCustomerOverpaymentById(id: string) {
     const notaIds = notas.map(item => item._id).filter(Boolean);
     const [receiptPayments, invoicePayments, receiptRefunds, invoiceRefunds, invoiceAdjustments] = await Promise.all([
         receiptIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
             : Promise.resolve([]),
         notaIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
             : Promise.resolve([]),
         receiptIds.length > 0
             ? listDocumentsByFilter<CustomerOverpaymentRefund>('customerOverpaymentRefund', {
@@ -1785,7 +1791,7 @@ export async function getCustomerOverpaymentById(id: string) {
             })
             : Promise.resolve([]),
     ]);
-    const payments = [...receiptPayments, ...invoicePayments];
+    const payments = dedupeById([...receiptPayments, ...invoicePayments]);
     const refunds = [...receiptRefunds, ...invoiceRefunds];
     const activeInvoiceAdjustments = invoiceAdjustments.filter(row => row.status !== 'VOID' && row.invoiceRef);
 
@@ -1836,10 +1842,10 @@ export async function getCustomerOverpaymentList(params: {
     const notaIds = notas.map(item => item._id).filter(Boolean);
     const [receiptPayments, invoicePayments, receiptRefunds, invoiceRefunds, invoiceAdjustments] = await Promise.all([
         receiptIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
             : Promise.resolve([]),
         notaIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
             : Promise.resolve([]),
         receiptIds.length > 0
             ? listDocumentsByFilter<CustomerOverpaymentRefund>('customerOverpaymentRefund', {
@@ -1859,7 +1865,7 @@ export async function getCustomerOverpaymentList(params: {
             })
             : Promise.resolve([]),
     ]);
-    const payments = [...receiptPayments, ...invoicePayments];
+    const payments = dedupeById([...receiptPayments, ...invoicePayments]);
     const refunds = [...receiptRefunds, ...invoiceRefunds];
     const activeInvoiceAdjustments = invoiceAdjustments.filter(row => row.status !== 'VOID' && row.invoiceRef);
 

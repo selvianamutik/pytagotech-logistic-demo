@@ -18,7 +18,6 @@ import {
 } from '@/lib/measurement';
 import {
     applyCustomerPickupToStop,
-    applyCustomerProductToOrderItem,
     applyOrderItemAutoWeightFromQty,
     createDefaultOrderItemForm,
     createDefaultPickupStopForm,
@@ -26,6 +25,9 @@ import {
     getDraftPickupStops,
     sortCustomerPickups,
     summarizePickupStopList,
+    applyOrderItemPickerSelection,
+    getOrderItemPickerValue,
+    MANUAL_ITEM_OPTION_VALUE,
     shouldLockOrderItemVolume,
     shouldLockOrderItemWeight,
     updateOrderItemVolumeUnit,
@@ -311,9 +313,8 @@ export default function OrderEditPage() {
     };
 
     const applyCustomerProductSelection = (idx: number, nextProductRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === nextProductRef);
         setItems(prev => prev.map((item, i) => (
-            i === idx ? applyCustomerProductToOrderItem(item, selectedProduct) : item
+            i === idx ? applyOrderItemPickerSelection(item, nextProductRef, customerProducts) : item
         )));
     };
 
@@ -732,11 +733,12 @@ export default function OrderEditPage() {
                                                 <label className="form-label">Barang Customer</label>
                                                 <select
                                                     className="form-select"
-                                                    value={item.customerProductRef}
+                                                    value={getOrderItemPickerValue(item)}
                                                     onChange={e => applyCustomerProductSelection(idx, e.target.value)}
                                                     disabled={!form.customerRef}
                                                 >
                                                     <option value="">{form.customerRef ? 'Pilih dari master barang customer (opsional)' : 'Pilih customer dulu'}</option>
+                                                    <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
                                                     {customerProducts.map(product => (
                                                         <option key={product._id} value={product._id}>
                                                             {product.code ? `${product.code} - ` : ''}{product.name}
