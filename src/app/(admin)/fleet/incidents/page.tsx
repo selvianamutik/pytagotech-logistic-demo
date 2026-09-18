@@ -37,7 +37,7 @@ export default function IncidentsPage() {
     const { user } = useApp();
     const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenDrivers = user ? hasPageAccess(user, 'drivers') : false;
-    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'trips') : false;
     const [items, setItems] = useState<Incident[]>([]);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [dos, setDos] = useState<DeliveryOrder[]>([]);

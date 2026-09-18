@@ -35,6 +35,8 @@ export type AppModule =
     | 'purchases'
     | 'orders'
     | 'deliveryOrders'
+    | 'trips'
+    | 'suratJalan'
     | 'invoices'
     | 'customers'
     | 'tripRouteRates'
@@ -125,6 +127,18 @@ const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, Modu
         OPERASIONAL: OWNER_FULL,
     },
     deliveryOrders: {
+        OWNER: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
+    },
+    trips: {
+        OWNER: OWNER_FULL,
+        OPERASIONAL: OWNER_FULL,
+        FINANCE: OWNER_FULL,
+        ARMADA: OWNER_FULL,
+    },
+    suratJalan: {
         OWNER: OWNER_FULL,
         OPERASIONAL: OWNER_FULL,
         FINANCE: OWNER_FULL,
@@ -251,25 +265,53 @@ const permissionMatrix: Record<AppModule, Partial<Record<EffectiveUserRole, Modu
     },
 };
 
+export function hasRolePermission(subject: PermissionSubject, module: AppModule, action: keyof ModulePermissions): boolean {
+    const role = normalizeUserRole(toRole(subject));
+    return permissionMatrix[module]?.[role]?.[action] ?? false;
+}
+
+export function hasAnyRoleAccess(role: UserRole, module: AppModule): boolean {
+    const normalizedRole = normalizeUserRole(role);
+    const perms = permissionMatrix[module]?.[normalizedRole];
+    return !!perms && Object.values(perms).some(Boolean);
+}
+
+/**
+ * Data-realm alias: the Trip / Surat Jalan split keeps a single shared
+ * data layer ('deliveryOrders'). Any page module that reads from that layer
+ * is satisfied when the user is granted any alias of the realm.
+ */
+function resolveModuleKeys(module: AppModule): AppModule[] {
+    if (module === 'deliveryOrders') return ['deliveryOrders', 'trips', 'suratJalan'];
+    if (module === 'trips') return ['trips', 'deliveryOrders'];
+    if (module === 'suratJalan') return ['suratJalan', 'deliveryOrders'];
+    return [module];
+}
+
 export function hasPermission(subject: PermissionSubject, module: AppModule, action: keyof ModulePermissions): boolean {
     const role = toRole(subject);
     if (role === 'OWNER') return true;
-    const assigned = toModulePermissions(subject);
-    const override = assigned?.[module];
-    if (override === true) return true;
-    if (override === false) return false;
     const normalizedRole = normalizeUserRole(role);
+    if (normalizedRole === 'DRIVER') return false;
+    const assigned = toModulePermissions(subject);
+    if (assigned) {
+        const keys = resolveModuleKeys(module);
+        if (keys.some(k => assigned[k] === true)) return true;
+        if (keys.some(k => assigned[k] === false)) return false;
+    }
     return permissionMatrix[module]?.[normalizedRole]?.[action] ?? false;
 }
 
 export function getModulePermissions(subject: PermissionSubject, module: AppModule): ModulePermissions {
     const role = toRole(subject);
-    if (role === 'OWNER') return { view: true, create: true, update: true, delete: true, export: true, print: true };
-    const assigned = toModulePermissions(subject);
-    const override = assigned?.[module];
-    if (override === true) return OWNER_FULL;
-    if (override === false) return DENY_ALL;
+    if (role === 'OWNER') return OWNER_FULL;
     const normalizedRole = normalizeUserRole(role);
+    const assigned = toModulePermissions(subject);
+    if (assigned) {
+        const keys = resolveModuleKeys(module);
+        if (keys.some(k => assigned[k] === true)) return OWNER_FULL;
+        if (keys.some(k => assigned[k] === false)) return DENY_ALL;
+    }
     return permissionMatrix[module]?.[normalizedRole] ?? DENY_ALL;
 }
 
@@ -319,8 +361,8 @@ export function getSidebarMenu(subject: PermissionSubject): SidebarMenuGroup[] {
             label: 'Kerja Harian',
             items: [
                 { label: 'Order / Resi', href: '/orders', icon: 'Package', module: 'orders' },
-                { label: 'Trip', href: '/trips', icon: 'Truck', module: 'deliveryOrders' },
-                { label: 'Surat Jalan', href: '/surat-jalan', icon: 'ScrollText', module: 'deliveryOrders' },
+                { label: 'Trip', href: '/trips', icon: 'Truck', module: 'trips' },
+                { label: 'Surat Jalan', href: '/surat-jalan', icon: 'ScrollText', module: 'suratJalan' },
                 { label: 'Uang Jalan Trip', href: '/driver-vouchers', icon: 'Wallet', module: 'driverVouchers' },
                 { label: 'Pengeluaran', href: '/expenses', icon: 'Wallet', module: 'expenses' },
             ],

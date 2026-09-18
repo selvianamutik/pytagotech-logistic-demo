@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
-import { type AppModule, type InternalUserRole, getModulePermissions } from '@/lib/rbac';
+import { hasAnyRoleAccess, type AppModule, type InternalUserRole } from '@/lib/rbac';
 
 const MODULE_LABELS: Record<AppModule, string> = {
     dashboard: 'Dashboard',
@@ -12,7 +12,9 @@ const MODULE_LABELS: Record<AppModule, string> = {
     warehouseItems: 'Barang Gudang',
     purchases: 'Pembelian',
     orders: 'Order / Resi',
-    deliveryOrders: 'Surat Jalan / Trip',
+    deliveryOrders: 'Trip / Surat Jalan',
+    trips: 'Trip',
+    suratJalan: 'Surat Jalan',
     invoices: 'Invoice',
     customers: 'Customer',
     tripRouteRates: 'Biaya Rute Trip',
@@ -39,7 +41,7 @@ const MODULE_LABELS: Record<AppModule, string> = {
 
 const MODULE_GROUPS: { label: string; modules: AppModule[] }[] = [
     { label: 'Utama', modules: ['dashboard'] },
-    { label: 'Kerja Harian', modules: ['orders', 'deliveryOrders', 'driverVouchers', 'expenses'] },
+    { label: 'Kerja Harian', modules: ['orders', 'trips', 'suratJalan', 'driverVouchers', 'expenses'] },
     { label: 'Armada', modules: ['vehicles', 'drivers', 'maintenance', 'tires', 'incidents'] },
     { label: 'Gudang & Pembelian', modules: ['suppliers', 'warehouseItems', 'purchases'] },
     { label: 'Invoice & Kas', modules: ['invoices', 'bankAccounts', 'reports'] },
@@ -49,49 +51,45 @@ const MODULE_GROUPS: { label: string; modules: AppModule[] }[] = [
 ];
 
 interface ModulePermissionsEditorProps {
+    /** Current role of the user being edited — drives which modules are pre-filled as defaults. */
     role: InternalUserRole;
-    /** Overrides: true = explicitly assign, false = explicitly deny, absent = role default */
+    /** Overrides: true = explicitly grant, false = explicitly deny, absent = role default. */
     overrides: Partial<Record<AppModule, boolean>>;
     onChange: (overrides: Partial<Record<AppModule, boolean>>) => void;
-    onReset?: () => void;
 }
 
-function roleHasAccess(role: InternalUserRole, module: AppModule): boolean {
-    return Object.values(getModulePermissions(role, module)).some(Boolean);
-}
-
-export default function ModulePermissionsEditor({ role, overrides, onChange, onReset }: ModulePermissionsEditorProps) {
+export default function ModulePermissionsEditor({ role, overrides, onChange }: ModulePermissionsEditorProps) {
     const [expanded, setExpanded] = useState(false);
 
+    function isRoleDefault(module: AppModule): boolean {
+        return hasAnyRoleAccess(role, module);
+    }
+
     function handleToggle(module: AppModule) {
-        const isDefault = roleHasAccess(role, module);
         const override = overrides[module];
-        const effectivelyEnabled = override === true || (override === undefined && isDefault);
+        const checked = override === true || (override === undefined && isRoleDefault(module));
 
         const next: Partial<Record<AppModule, boolean>> = { ...overrides };
-
-        if (effectivelyEnabled) {
-            // Unchecking: deny if it was a role default, otherwise just remove the assign
-            if (isDefault && override === undefined) {
+        if (checked) {
+            // Unchecking: deny a role-granted module, otherwise revert an explicit grant
+            if (isRoleDefault(module)) {
                 next[module] = false;
             } else {
                 delete next[module];
             }
         } else {
-            // Checking: re-allow if it was explicitly denied, otherwise assign
+            // Checking: restore a role default, otherwise grant explicitly
             if (override === false) {
                 delete next[module];
             } else {
                 next[module] = true;
             }
         }
-
         onChange(next);
     }
 
     function resetAll() {
         onChange({});
-        onReset?.();
     }
 
     return (
@@ -111,7 +109,7 @@ export default function ModulePermissionsEditor({ role, overrides, onChange, onR
                     className="btn btn-ghost"
                     style={{ fontSize: 12, color: Object.keys(overrides).length > 0 ? 'var(--color-danger)' : 'var(--color-muted)', padding: '4px 8px' }}
                     onClick={resetAll}
-                    title="Hapus semua penyesuaian"
+                    title="Hapus semua penyesuaian (kembali ke akses default role)"
                 >
                     <RotateCcw size={12} /> Reset semua
                 </button>
@@ -126,9 +124,10 @@ export default function ModulePermissionsEditor({ role, overrides, onChange, onR
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {group.modules.map(module => {
-                                    const isDefault = roleHasAccess(role, module);
                                     const override = overrides[module];
-                                    const effectivelyEnabled = override === true || (override === undefined && isDefault);
+                                    const roleDefault = isRoleDefault(module);
+                                    const effectivelyEnabled = override === true || (override === undefined && roleDefault);
+                                    const explicit = override !== undefined;
 
                                     return (
                                         <div
@@ -139,7 +138,7 @@ export default function ModulePermissionsEditor({ role, overrides, onChange, onR
                                                 gap: 8,
                                                 padding: '6px 10px',
                                                 borderRadius: 6,
-                                                background: override !== undefined ? 'var(--color-bg-secondary, #f5f5f5)' : undefined,
+                                                background: explicit ? 'var(--color-bg-secondary, #f5f5f5)' : undefined,
                                             }}
                                         >
                                             <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
@@ -153,8 +152,10 @@ export default function ModulePermissionsEditor({ role, overrides, onChange, onR
                                                     {MODULE_LABELS[module]}
                                                 </span>
                                             </label>
-                                            {isDefault && (
-                                                <span style={{ fontSize: 10, color: '#888', marginLeft: 4 }}>(Default)</span>
+                                            {explicit && (
+                                                <span style={{ fontSize: 10, color: '#888', marginLeft: 4 }}>
+                                                    {override ? '(Diatur)' : '(Disembunyikan)'}
+                                                </span>
                                             )}
                                         </div>
                                     );

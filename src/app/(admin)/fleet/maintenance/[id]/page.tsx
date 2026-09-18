@@ -33,7 +33,7 @@ export default function MaintenanceDetailPage() {
     const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
     const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
     const canOpenExpensesPage = user ? hasPageAccess(user, 'expenses') : false;
-    const canOpenDeliveryOrdersPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrdersPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
 
     useEffect(() => {

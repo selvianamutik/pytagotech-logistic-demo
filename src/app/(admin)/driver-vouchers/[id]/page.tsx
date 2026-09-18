@@ -74,7 +74,7 @@ export default function DriverVoucherDetailPage() {
     const [settlementBankRef, setSettlementBankRef] = useState('');
     const [issueBankRepairRef, setIssueBankRepairRef] = useState('');
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;

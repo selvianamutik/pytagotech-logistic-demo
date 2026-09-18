@@ -55,7 +55,7 @@ export default function DriverVouchersPage() {
     const { user } = useApp();
     const { addToast } = useToast();
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
     const defaultPeriod = useMemo(() => getDefaultFinancePeriod(), []);
     const [items, setItems] = useState<DriverVoucher[]>([]);
     const [loading, setLoading] = useState(true);

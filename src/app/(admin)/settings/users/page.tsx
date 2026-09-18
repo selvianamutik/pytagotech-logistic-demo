@@ -28,6 +28,15 @@ const ROLE_LABELS: Record<InternalUserRole, string> = {
     ARMADA: 'ARMADA',
 };
 
+const KNOWN_MODULES = new Set<string>([
+    'dashboard', 'employees', 'attendance', 'suppliers', 'warehouseItems', 'purchases',
+    'orders', 'deliveryOrders', 'trips', 'suratJalan', 'invoices', 'customers',
+    'tripRouteRates', 'services', 'expenseCategories', 'expenses', 'reports',
+    'vehicles', 'maintenance', 'incidents', 'companySettings', 'userManagement',
+    'auditLogs', 'profile', 'tires', 'drivers', 'bankAccounts', 'driverVouchers',
+    'freightNotas', 'driverBorongans', 'driverScores', 'dataImports',
+]);
+
 export default function UsersPage() {
     const { addToast } = useToast();
     const [users, setUsers] = useState<InternalUser[]>([]);
@@ -43,7 +52,7 @@ export default function UsersPage() {
     const [editUser, setEditUser] = useState<InternalUser | null>(null);
     const [saving, setSaving] = useState(false);
     const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
-    const [form, setForm] = useState({ name: '', email: '', role: 'OPERASIONAL' as InternalUserRole, password: '', overrides: {} as Partial<Record<AppModule, boolean>>, permissionsReset: false });
+    const [form, setForm] = useState({ name: '', email: '', role: 'OPERASIONAL' as InternalUserRole, password: '', overrides: {} as Partial<Record<AppModule, boolean>> });
     const activeUsers = totalUsers - inactiveUsers;
 
     const internalRoleFilter = JSON.stringify({ role: INTERNAL_USER_ROLE_OPTIONS });
@@ -81,17 +90,24 @@ export default function UsersPage() {
         void loadUsers();
     }, [loadUsers]);
 
-    const openNew = () => { setEditUser(null); setForm({ name: '', email: '', role: 'OPERASIONAL', password: '', overrides: {}, permissionsReset: false }); setShowModal(true); };
+    const openNew = () => { setEditUser(null); setForm({ name: '', email: '', role: 'OPERASIONAL', password: '', overrides: {} }); setShowModal(true); };
     const openEdit = (u: InternalUser) => {
         const stored = u.modulePermissions ?? {};
         const overrides: Partial<Record<AppModule, boolean>> = {};
         for (const [mod, val] of Object.entries(stored)) {
-            if (typeof val === 'boolean' && mod !== 'profile') {
+            if (typeof val !== 'boolean') continue;
+            // Legacy combined module → both split page modules
+            if (mod === 'deliveryOrders') {
+                overrides.trips = val;
+                overrides.suratJalan = val;
+                continue;
+            }
+            if (KNOWN_MODULES.has(mod)) {
                 overrides[mod as AppModule] = val;
             }
         }
         setEditUser(u);
-        setForm({ name: u.name, email: u.email, role: u.role, password: '', overrides, permissionsReset: false });
+        setForm({ name: u.name, email: u.email, role: u.role, password: '', overrides });
         setShowModal(true);
     };
 
@@ -99,20 +115,16 @@ export default function UsersPage() {
         if (!form.name || !form.email) { addToast('error', 'Nama dan email wajib'); return; }
         if (!editUser && !form.password) { addToast('error', 'Password wajib untuk pengguna baru'); return; }
         if (form.password && form.password.length < 8) { addToast('error', 'Password minimal 8 karakter'); return; }
+        const toStoredPermissions = () => {
+            // Overrides: true = explicit grant, false = explicit deny, absent = role default.
+            return { ...form.overrides };
+        };
         setSaving(true);
         try {
             if (editUser) {
                 const updates: Record<string, unknown> = { name: form.name, email: form.email, role: form.role };
                 if (form.password) updates.password = form.password;
-
-                if (form.permissionsReset || Object.keys(form.overrides).length === 0) {
-                    // Reset: clear all explicit module assignments — send empty object,
-                    // server will delete modulePermissions from extra_data entirely
-                    updates.modulePermissions = {};
-                } else {
-                    // Send the full overrides — server stores true/false as-is
-                    updates.modulePermissions = { ...form.overrides };
-                }
+                updates.modulePermissions = toStoredPermissions();
                 const res = await fetch('/api/data', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -129,7 +141,7 @@ export default function UsersPage() {
                 const res = await fetch('/api/data', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ entity: 'users', data: { name: form.name, email: form.email, role: form.role, password: form.password } }),
+                    body: JSON.stringify({ entity: 'users', data: { name: form.name, email: form.email, role: form.role, password: form.password, modulePermissions: toStoredPermissions() } }),
                 });
                 const payload = await res.json();
                 if (!res.ok) {
@@ -280,8 +292,7 @@ export default function UsersPage() {
                             <ModulePermissionsEditor
                                 role={form.role}
                                 overrides={form.overrides}
-                                onChange={overrides => setForm(f => ({ ...f, overrides, permissionsReset: false }))}
-                                onReset={() => setForm(f => ({ ...f, overrides: {}, permissionsReset: true }))}
+                                onChange={overrides => setForm(f => ({ ...f, overrides }))}
                             />
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>

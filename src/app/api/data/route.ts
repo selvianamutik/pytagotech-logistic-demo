@@ -183,6 +183,25 @@ export const revalidate = 0;
 // All entities are gated via ENTITY_MODULE_MAP + forbidModuleAccess.
 const LEGACY_READ_ONLY_ENTITIES = new Set(['invoices', 'invoice-items']);
 const PROJECTED_READ_ENTITIES = new Set(['trips', 'surat-jalan', 'surat-jalan-items', 'trip-tracking', 'trip-detail', 'surat-jalan-detail', 'trip-detail-references']);
+// Master/reference data readable by every internal user (OWNER/OPERASIONAL/FINANCE/ARMADA)
+// for dropdowns & lookups, regardless of their per-user module list. Mutations stay gated.
+const REFERENCE_READ_ENTITIES = new Set([
+    'customers',
+    'customer-products',
+    'customer-billing-rates',
+    'customer-recipients',
+    'customer-pickups',
+    'suppliers',
+    'supplier-item-prices',
+    'services',
+    'trip-route-rates',
+    'expense-categories',
+    'drivers',
+    'vehicles',
+    'warehouse-items',
+    'bank-accounts',
+    'chart-of-accounts',
+]);
 type ReceiptResponseShape = Record<string, unknown> & {
     _id: string;
     totalAmount?: number | string | null;
@@ -1159,9 +1178,14 @@ export async function GET(request: Request) {
     // Module-based read gate for ALL entities including users and company.
     // Privacy filtering (e.g. sanitizeCompanyProfileForRole) is applied later.
     if (entity !== 'users') {
-        const forbiddenModuleRead = forbidModuleAccess(session, entity, 'view');
-        if (forbiddenModuleRead) {
-            return forbiddenModuleRead;
+        const isInternalReferenceRead =
+            REFERENCE_READ_ENTITIES.has(entity) &&
+            normalizeUserRole(session.role) !== 'DRIVER';
+        if (!isInternalReferenceRead) {
+            const forbiddenModuleRead = forbidModuleAccess(session, entity, 'view');
+            if (forbiddenModuleRead) {
+                return forbiddenModuleRead;
+            }
         }
     }
 

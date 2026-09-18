@@ -189,14 +189,14 @@ export default function SuratJalanDetailPage() {
     const [editNewItems, setEditNewItems] = useState<DeliveryOrderCargoDraftItem[]>([]);
     const [actualEditItems, setActualEditItems] = useState<ActualCargoDraft[]>([]);
     const [selectedActualEditItemRef, setSelectedActualEditItemRef] = useState('');
-    const canOpenTripPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenTripPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenInvoicePage = user ? hasPageAccess(user, 'invoices') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
-    const canManageDeliveryStatus = user ? hasPermission(user, 'deliveryOrders', 'update') : false;
+    const canManageDeliveryStatus = user ? hasPermission(user, 'suratJalan', 'update') : false;
     const canEditSuratJalan = canManageDeliveryStatus;
     const currentPath = pathname || `/surat-jalan/${encodeURIComponent(id)}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;

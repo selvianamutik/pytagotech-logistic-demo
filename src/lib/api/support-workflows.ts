@@ -230,8 +230,13 @@ export async function normalizeUserUpdates(
     }
 
     if (Object.prototype.hasOwnProperty.call(nextUpdates, 'modulePermissions')) {
-        if (nextUpdates.modulePermissions === null || nextUpdates.modulePermissions === '__reset__') {
-            // Reset: delete modulePermissions from extra_data and write back
+        const hasValidShape =
+            nextUpdates.modulePermissions !== null &&
+            nextUpdates.modulePermissions !== '__reset__' &&
+            typeof nextUpdates.modulePermissions === 'object' &&
+            !Array.isArray(nextUpdates.modulePermissions);
+        if (!hasValidShape) {
+            // Not a grants object: clear the key entirely (revert to role defaults)
             delete currentExtraData.modulePermissions;
             const supabase = getSupabaseClient();
             await supabase.fetch(`app_users?source_document_id=eq.${encodeURIComponent(targetUserId)}`, {
@@ -241,21 +246,38 @@ export async function normalizeUserUpdates(
             });
             clearRelationalReadCache();
             delete nextUpdates.modulePermissions;
-        } else if (typeof nextUpdates.modulePermissions !== 'object' || Array.isArray(nextUpdates.modulePermissions)) {
-            delete nextUpdates.modulePermissions;
         } else {
-            // Compute the final desired extra_data: true = explicitly assigned,
-            // false = explicitly denied, absent = role default.
-            const desired: Record<string, unknown> = { ...currentExtraData };
+            // Override semantics: true = explicit grant, false = explicit deny,
+            // absent = role default. Legacy per-action objects are upgraded to a
+            // single boolean (true if any action granted, false otherwise), and the
+            // legacy combined 'deliveryOrders' module expands into the split
+            // 'trips' + 'suratJalan' page modules.
             const raw = nextUpdates.modulePermissions as Record<string, unknown>;
-            const entries = Object.entries(raw)
-                .filter(([mod, val]) => mod !== '__reset__' && (val === true || val === false));
-            if (entries.length === 0) {
-                delete desired.modulePermissions;
-            } else {
-                desired.modulePermissions = Object.fromEntries(entries);
+            const grants: Record<string, boolean> = {};
+            const normalizeValue = (val: unknown): boolean => {
+                if (typeof val === 'boolean') return val;
+                if (val && typeof val === 'object' && !Array.isArray(val)) {
+                    return Object.values(val as Record<string, unknown>).some(Boolean);
+                }
+                return true;
+            };
+            for (const mod of Object.keys(raw)) {
+                if (mod === '__reset__') continue;
+                const value = normalizeValue(raw[mod]);
+                if (mod === 'deliveryOrders') {
+                    grants.trips = value;
+                    grants.suratJalan = value;
+                    continue;
+                }
+                grants[mod] = value;
             }
             // Write the complete final extra_data to DB — avoids JSONB merge pitfalls
+            const desired: Record<string, unknown> = { ...currentExtraData };
+            if (Object.keys(grants).length === 0) {
+                delete desired.modulePermissions;
+            } else {
+                desired.modulePermissions = grants;
+            }
             const supabase = getSupabaseClient();
             await supabase.fetch(`app_users?source_document_id=eq.${encodeURIComponent(targetUserId)}`, {
                 method: 'PATCH',

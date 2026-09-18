@@ -41,7 +41,7 @@ export default function DriverDetailPage() {
     const canViewDriverScores = user ? hasPermission(user, 'driverScores', 'view') : false;
     const canViewDriverVouchers = user ? hasPermission(user, 'driverVouchers', 'view') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
 

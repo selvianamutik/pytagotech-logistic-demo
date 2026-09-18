@@ -155,7 +155,7 @@ export default function NotaDetailPage() {
     const canManageOverpaymentRefund = canManageInvoice;
     const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
     const canOpenCustomers = user ? hasPageAccess(user, 'customers') : false;
-    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'trips') : false;
     const isVoidedInvoice = nota?.status === 'VOID';
     const canEditPph23 = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0;
     const canReviseInvoice = canManageInvoice && !isVoidedInvoice && totalPaidRaw <= 0 && refundedOverpaymentAmount <= 0 && totalAdjustmentAmount <= 0;

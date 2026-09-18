@@ -193,7 +193,7 @@ export default function VehicleDetailPage() {
     const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
     const canViewVehicleExpenses = user ? hasPermission(user, 'expenses', 'view') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'deliveryOrders') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;

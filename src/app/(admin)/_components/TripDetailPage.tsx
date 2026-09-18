@@ -323,9 +323,9 @@ export default function TripDetailPage() {
     const driverReviewDropEditedRef = useRef(false);
     const loadedReferenceCustomerRef = useRef<string>('');
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canManageDeliveryStatus = user ? hasPermission(user, 'deliveryOrders', 'update') : false;
-    const canExportDeliveryOrder = user ? hasPermission(user, 'deliveryOrders', 'export') : false;
-    const canPrintDeliveryOrder = user ? hasPermission(user, 'deliveryOrders', 'print') : false;
+    const canManageDeliveryStatus = user ? hasPermission(user, 'trips', 'update') : false;
+    const canExportDeliveryOrder = user ? hasPermission(user, 'trips', 'export') : false;
+    const canPrintDeliveryOrder = user ? hasPermission(user, 'trips', 'print') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;

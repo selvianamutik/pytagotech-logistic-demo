@@ -128,7 +128,7 @@ export default function DashboardPage() {
     }
     const canSeeFinancialTotals = user ? hasPermission(user, 'reports', 'view') : false;
     const canViewOrders = user ? hasPageAccess(user, 'orders') : false;
-    const canViewDeliveryOrders = user ? hasPermission(user, 'deliveryOrders', 'view') : false;
+    const canViewDeliveryOrders = user ? hasPermission(user, 'trips', 'view') : false;
     const canViewInvoices = user ? hasPermission(user, 'invoices', 'view') : false;
     const canViewIncidents = user ? hasPermission(user, 'incidents', 'view') : false;
     const canViewMaintenance = user ? hasPermission(user, 'maintenance', 'view') : false;
