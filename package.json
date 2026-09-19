@@ -37,6 +37,7 @@
     "audit:incident-before-voucher-flow": "npx tsx --conditions react-server scripts/audit-incident-before-voucher-flow.ts",
     "audit:incident-maintenance-handling": "node scripts/audit-incident-maintenance-handling-static.mjs",
     "audit:incident-maintenance-handling:e2e": "npx tsx --conditions react-server scripts/audit-incident-maintenance-handling-e2e.ts",
+    "audit:incident-inline-purchase:e2e": "npx tsx --conditions react-server scripts/audit-incident-inline-purchase-e2e.ts",
     "audit:mobile-incident-voucher-integrity": "npx tsx --conditions react-server scripts/audit-mobile-incident-voucher-integrity.ts",
     "audit:mobile-timezone-consistency": "node scripts/audit-mobile-timezone-consistency.mjs",
     "audit:driver-trip-closure-flow": "node scripts/audit-driver-trip-closure-flow.mjs",

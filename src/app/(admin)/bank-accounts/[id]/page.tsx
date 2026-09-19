@@ -732,12 +732,12 @@ export default function BankAccountDetailPage() {
                                         {canManageBankAccount && (
                                             <td style={{ textAlign: 'center' }}>
                                                 {isActiveAdjustment(tx) && (
-                                                    <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                                                    <div className="table-actions-col">
                                                         <button className="table-action-btn" title="Perbarui penyesuaian" onClick={() => openAdjustEdit(tx)}>
-                                                            <Edit size={14} />
+                                                            <Edit size={14} /> Perbarui
                                                         </button>
                                                         <button className="table-action-btn danger" title="Hapus penyesuaian" onClick={() => setAdjustDeleteConfirm(tx)}>
-                                                            <Trash2 size={14} />
+                                                            <Trash2 size={14} /> Hapus
                                                         </button>
                                                     </div>
                                                 )}
