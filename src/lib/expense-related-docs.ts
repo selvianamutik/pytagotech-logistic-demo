@@ -28,6 +28,7 @@ export type ExpenseLinkPermissions = {
     canOpenDriverVoucherPage: boolean;
     canOpenIncidentPage: boolean;
     canOpenMaintenancePage: boolean;
+    canOpenOrderPage: boolean;
     canOpenVehiclePage: boolean;
 };
 
@@ -102,6 +103,73 @@ export function getExpenseAccountLabel(expense: Expense, accountMap: Map<string,
         return `${expense.bankAccountName}${expense.bankAccountNumber ? ` - ${expense.bankAccountNumber}` : ''}`;
     }
     return '';
+}
+
+export type ExpenseSourceInfo = {
+    kind: 'MANUAL' | 'INCIDENT' | 'VOUCHER' | 'BORONGAN' | 'MAINTENANCE' | 'CANCEL_TRIP';
+    label: string;
+    href?: string;
+    editable: boolean;
+    hint?: string;
+};
+
+export function getExpenseSource(expense: Expense, maps: ExpenseReferenceMaps, canOpen: ExpenseLinkPermissions): ExpenseSourceInfo {
+    if (expense.relatedIncidentRef) {
+        const incident = maps.incidentMap.get(expense.relatedIncidentRef);
+        return {
+            kind: 'INCIDENT',
+            label: incident?.incidentNumber || 'Insiden',
+            href: canOpen.canOpenIncidentPage ? `/fleet/incidents/${expense.relatedIncidentRef}` : undefined,
+            editable: false,
+            hint: 'Pengeluaran dibuat dari penyelesaian insiden. Batalkan atau perbaiki lewat detail insiden.',
+        };
+    }
+    if (expense.relatedMaintenanceRef) {
+        const maintenance = maps.maintenanceMap.get(expense.relatedMaintenanceRef);
+        return {
+            kind: 'MAINTENANCE',
+            label: maintenance?.vehiclePlate || maintenance?.type || 'Maintenance',
+            href: canOpen.canOpenMaintenancePage ? `/fleet/maintenance/${expense.relatedMaintenanceRef}` : undefined,
+            editable: false,
+            hint: 'Pengeluaran dibuat dari biaya maintenance. Batalkan atau perbaiki lewat detail maintenance.',
+        };
+    }
+    if (expense.voucherRef) {
+        const voucher = maps.voucherMap.get(expense.voucherRef);
+        return {
+            kind: 'VOUCHER',
+            label: voucher?.bonNumber || 'Bon Trip',
+            href: canOpen.canOpenDriverVoucherPage ? `/driver-vouchers/${expense.voucherRef}` : undefined,
+            editable: false,
+            hint: 'Pengeluaran masuk dalam bon trip driver. Setel atau jurnal lewat detail bon trip.',
+        };
+    }
+    if (expense.boronganRef) {
+        const borongan = maps.boronganMap.get(expense.boronganRef);
+        return {
+            kind: 'BORONGAN',
+            label: borongan?.boronganNumber || 'Borongan',
+            href: canOpen.canOpenDriverBoronganPage ? `/borongan/${expense.boronganRef}` : undefined,
+            editable: false,
+            hint: 'Pengeluaran dibuat dari borongan driver. Batalkan atau perbaiki lewat detail borongan.',
+        };
+    }
+    if (expense.relatedDeliveryOrderRef || expense.relatedOrderRef) {
+        const ref = expense.relatedDeliveryOrderRef || expense.relatedOrderRef;
+        return {
+            kind: 'CANCEL_TRIP',
+            label: expense.relatedDeliveryOrderNumber || expense.relatedOrderNumber || ref || 'Pembatalan Trip',
+            href: canOpen.canOpenOrderPage && ref ? `/orders/${ref}` : undefined,
+            editable: false,
+            hint: 'Pengeluaran dibuat dari pembatalan trip / delivery order. Batalkan atau perbaiki lewat detail order.',
+        };
+    }
+    return {
+        kind: 'MANUAL',
+        label: 'Manual',
+        editable: true,
+        hint: 'Pengeluaran dicatat manual. Anda dapat mengubah nominal, tanggal, kategori, dan sumber dana.',
+    };
 }
 
 export function getExpenseRelatedDocuments(

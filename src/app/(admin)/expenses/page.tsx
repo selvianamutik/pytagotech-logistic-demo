@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast, useApp } from '../layout';
-import { Eye, Plus, Save, Search, Trash2, Wallet, X } from 'lucide-react';
+import { Eye, Pencil, Plus, Save, Search, Trash2, Wallet, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import ExpenseEditModal from '@/components/ExpenseEditModal';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
 import {
@@ -15,6 +16,7 @@ import {
     getExpenseAccountLabel,
     getExpenseDescriptionLabel,
     getExpenseRelatedDocuments,
+    getExpenseSource,
     getExpenseVehicleLabel,
     mapById,
     type ExpenseLinkPermissions,
@@ -78,6 +80,7 @@ export default function ExpensesPage() {
     const [saving, setSaving] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState(false);
+    const [editExpense, setEditExpense] = useState<Expense | null>(null);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>('desc');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [bankAccountFilter, setBankAccountFilter] = useState('');
@@ -92,12 +95,14 @@ export default function ExpensesPage() {
     const isOwner = user ? hasPermission(user, 'expenses', 'update') : false;
     const canCreateExpenses = user ? hasPermission(user, 'expenses', 'create') : false;
     const canDeleteExpenses = user ? hasPermission(user, 'expenses', 'delete') : false;
+    const canUpdateExpenses = user ? hasPermission(user, 'expenses', 'update') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
     const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
     const canOpenDriverBoronganPage = user ? hasPageAccess(user, 'driverBorongans') : false;
     const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
     const canOpenMaintenancePage = user ? hasPageAccess(user, 'maintenance') : false;
+    const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const vehicleMap = useMemo(() => new Map(vehicles.map(vehicle => [vehicle._id, vehicle])), [vehicles]);
     const accountMap = useMemo(() => new Map(bankAccounts.map(account => [account._id, account])), [bankAccounts]);
     const voucherMap = useMemo(() => mapById(driverVouchers), [driverVouchers]);
@@ -118,8 +123,9 @@ export default function ExpensesPage() {
         canOpenDriverVoucherPage,
         canOpenIncidentPage,
         canOpenMaintenancePage,
+        canOpenOrderPage,
         canOpenVehiclePage,
-    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenVehiclePage]);
+    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenOrderPage, canOpenVehiclePage]);
     const manualCategories = useMemo(
         () => categories.filter(isManualExpenseCategory),
         [categories]
@@ -473,6 +479,7 @@ export default function ExpensesPage() {
                                         const relatedDocs = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
                                         const vehicleLabel = getExpenseVehicleLabel(expense, vehicleMap);
                                         const accountLabel = getExpenseAccountLabel(expense, accountMap);
+                                        const expenseSource = getExpenseSource(expense, referenceMaps, linkPermissions);
                                         return (
                                             <tr key={expense._id}>
                                                 <td className="text-muted">{formatDate(expense.date)}</td>
@@ -529,6 +536,11 @@ export default function ExpensesPage() {
                                                         <Link href={`/expenses/${expense._id}`} className="table-action-btn">
                                                             <Eye size={14} /> Lihat Detail
                                                         </Link>
+                                                        {canUpdateExpenses && expenseSource.editable && (
+                                                            <button className="table-action-btn" onClick={() => setEditExpense(expense)} aria-label={`Edit ${getExpenseDescriptionLabel(expense)}`}>
+                                                                <Pencil size={14} /> Edit
+                                                            </button>
+                                                        )}
                                                         {canDeleteExpenses && (
                                                             <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
                                                                 <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
@@ -562,6 +574,7 @@ export default function ExpensesPage() {
                                 const relatedDocs = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
                                 const vehicleLabel = getExpenseVehicleLabel(expense, vehicleMap);
                                 const accountLabel = getExpenseAccountLabel(expense, accountMap);
+                                const expenseSource = getExpenseSource(expense, referenceMaps, linkPermissions);
                                 return (
                                     <div key={expense._id} className="mobile-record-card">
                                         <div className="mobile-record-header">
@@ -632,6 +645,11 @@ export default function ExpensesPage() {
                                             <Link href={`/expenses/${expense._id}`} className="table-action-btn">
                                                 <Eye size={14} /> Lihat Detail
                                             </Link>
+                                            {canUpdateExpenses && expenseSource.editable && (
+                                                <button className="table-action-btn" onClick={() => setEditExpense(expense)} aria-label={`Edit ${getExpenseDescriptionLabel(expense)}`}>
+                                                    <Pencil size={14} /> Edit
+                                                </button>
+                                            )}
                                             {canDeleteExpenses && (
                                                 <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
                                                     <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
@@ -729,6 +747,15 @@ export default function ExpensesPage() {
                         </div>
                     </div>
                 </div>
+            )}
+            {editExpense && (
+                <ExpenseEditModal
+                    expense={editExpense}
+                    open={Boolean(editExpense)}
+                    isOwner={canUpdateExpenses}
+                    onClose={() => setEditExpense(null)}
+                    onSaved={() => void loadExpenses()}
+                />
             )}
         </div>
     );

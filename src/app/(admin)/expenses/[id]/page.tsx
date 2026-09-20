@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useApp } from '../../layout';
-import { ArrowLeft, Calendar, Tag, Wallet } from 'lucide-react';
+import { ArrowLeft, Calendar, Pencil, Tag, Wallet } from 'lucide-react';
 import PageBackButton from '@/components/PageBackButton';
+import ExpenseEditModal from '@/components/ExpenseEditModal';
 import { fetchAdminData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, isNotFoundMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
-import { hasPageAccess } from '@/lib/rbac';
+import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import type { BankAccount, DriverBorongan, DriverVoucher, Expense, Incident, Maintenance, Vehicle } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -17,6 +18,7 @@ import {
     getExpenseAccountLabel,
     getExpenseDescriptionLabel,
     getExpenseRelatedDocuments,
+    getExpenseSource,
     getExpenseVehicleLabel,
     mapById,
     type ExpenseLinkPermissions,
@@ -36,6 +38,7 @@ export default function ExpenseDetailPage() {
     const [maintenances, setMaintenances] = useState<Maintenance[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadNotice, setLoadNotice] = useState<AdminLoadNotice | null>(null);
+    const [editOpen, setEditOpen] = useState(false);
 
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
@@ -44,6 +47,7 @@ export default function ExpenseDetailPage() {
     const canOpenDriverBoronganPage = user ? hasPageAccess(user, 'driverBorongans') : false;
     const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
     const canOpenMaintenancePage = user ? hasPageAccess(user, 'maintenance') : false;
+    const canUpdateExpense = user ? hasPermission(user, 'expenses', 'update') : false;
 
     const vehicleMap = useMemo(() => mapById(vehicles), [vehicles]);
     const accountMap = useMemo(() => mapById(bankAccounts), [bankAccounts]);
@@ -65,8 +69,9 @@ export default function ExpenseDetailPage() {
         canOpenDriverVoucherPage,
         canOpenIncidentPage,
         canOpenMaintenancePage,
+        canOpenOrderPage,
         canOpenVehiclePage,
-    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenVehiclePage]);
+    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenOrderPage, canOpenVehiclePage]);
 
     useEffect(() => {
         const loadExpense = async () => {
@@ -133,6 +138,7 @@ export default function ExpenseDetailPage() {
     const accountLabel = getExpenseAccountLabel(expense, accountMap);
     const relatedDocuments = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
     const descriptionLabel = getExpenseDescriptionLabel(expense);
+    const expenseSource = getExpenseSource(expense, referenceMaps, linkPermissions);
 
     return (
         <div>
@@ -145,6 +151,11 @@ export default function ExpenseDetailPage() {
                     </div>
                 </div>
                 <div className="page-actions">
+                    {canUpdateExpense && expenseSource.editable && (
+                        <button className="btn btn-primary" onClick={() => setEditOpen(true)}>
+                            <Pencil size={16} /> Edit Pengeluaran
+                        </button>
+                    )}
                     <Link className="btn btn-secondary" href="/expenses">
                         <ArrowLeft size={16} /> Daftar Pengeluaran
                     </Link>
@@ -182,6 +193,15 @@ export default function ExpenseDetailPage() {
                             <div className="detail-row">
                                 <div className="detail-item"><div className="detail-label">Privasi</div><div className="detail-value"><span className={`badge badge-${expense.privacyLevel === 'ownerOnly' ? 'danger' : 'gray'}`}>{expense.privacyLevel === 'ownerOnly' ? 'Internal Owner' : 'Internal'}</span></div></div>
                                 <div className="detail-item" />
+                            </div>
+                        )}
+                        <div className="detail-row">
+                            <div className="detail-item"><div className="detail-label">Sumber Pengeluaran</div><div className="detail-value">{expenseSource.href ? <Link href={expenseSource.href}>{expenseSource.label}</Link> : expenseSource.label}</div></div>
+                            <div className="detail-item" />
+                        </div>
+                        {expenseSource.hint && (
+                            <div className="info-banner" style={{ marginBottom: '0.75rem' }}>
+                                <div className="info-banner-text">{expenseSource.hint}</div>
                             </div>
                         )}
                     </div>
@@ -232,12 +252,22 @@ export default function ExpenseDetailPage() {
                         {vehicleLabel && (
                             <div className="detail-row" style={{ marginTop: 'var(--space-4)' }}>
                                 <div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{canOpenVehiclePage && expense.relatedVehicleRef ? <Link href={`/fleet/vehicles/${expense.relatedVehicleRef}`}>{vehicleLabel}</Link> : vehicleLabel}</div></div>
-                                <div className="detail-item"><div className="detail-label">Delivery Order</div><div className="detail-value">{expense.relatedDeliveryOrderNumber || '-'}</div></div>
+                                <div className="detail-item"><div className="detail-label">Delivery Order</div><div className="detail-value">{canOpenOrderPage && expense.relatedDeliveryOrderRef ? <Link href={`/orders/${expense.relatedDeliveryOrderRef}`}>{expense.relatedDeliveryOrderNumber || '-'}</Link> : (expense.relatedDeliveryOrderNumber || '-')}</div></div>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+
+            {editOpen && (
+                <ExpenseEditModal
+                    expense={expense}
+                    open={editOpen}
+                    isOwner={canUpdateExpense}
+                    onClose={() => setEditOpen(false)}
+                    onSaved={updated => setExpense(updated)}
+                />
+            )}
         </div>
     );
 }

@@ -35,6 +35,8 @@
     "audit:driver-approval-corrections-flow": "npx tsx --conditions react-server scripts/audit-driver-approval-corrections-flow.ts",
     "audit:driver-incident-flow": "npx tsx --conditions react-server scripts/audit-driver-incident-flow.ts",
     "audit:incident-before-voucher-flow": "npx tsx --conditions react-server scripts/audit-incident-before-voucher-flow.ts",
+    "audit:expense-link-permissions": "node scripts/audit-expense-link-permissions.mjs",
+    "audit:expense-edit-flow": "node scripts/audit-expense-edit-flow.mjs",
     "audit:incident-maintenance-handling": "node scripts/audit-incident-maintenance-handling-static.mjs",
     "audit:incident-maintenance-handling:e2e": "npx tsx --conditions react-server scripts/audit-incident-maintenance-handling-e2e.ts",
     "audit:incident-inline-purchase:e2e": "npx tsx --conditions react-server scripts/audit-incident-inline-purchase-e2e.ts",

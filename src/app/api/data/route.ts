@@ -48,6 +48,7 @@ import {
     handleDriverVoucherSettlement,
     handleDriverVoucherTopUp,
 } from '@/lib/api/driver-workflows';
+import { handleExpenseUpdate } from '@/lib/api/expense-update';
 import {
     handleBankAdjustmentCreate,
     handleBankAdjustmentDelete,
@@ -490,7 +491,7 @@ function shouldFallbackToBusinessDate(entity: string, action: string | undefined
         entity === 'bank-accounts' ||
         (entity === 'driver-vouchers' && (action === 'settle' || action === 'repair-issue-ledger')) ||
         (entity === 'stock-movements' && (!action || action === 'create')) ||
-        (entity === 'expenses' && (!action || action === 'create'))
+        (entity === 'expenses' && (!action || action === 'create' || action === 'update'))
     );
 }
 
@@ -2076,6 +2077,10 @@ export async function POST(request: Request) {
 
         if (entity === 'driver-scores' && action === 'end-early') {
             return await handleDriverScoreEndEarly(session, data, addAuditLog);
+        }
+
+        if (entity === 'expenses' && action === 'update') {
+            return await handleExpenseUpdate(session, data, addAuditLog);
         }
 
         if (entity === 'expenses' && action === 'delete') {
