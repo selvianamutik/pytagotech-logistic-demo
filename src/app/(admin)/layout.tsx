@@ -8,7 +8,7 @@ import {
     BarChart3, Car, Wrench, AlertTriangle, User, Lock, Building2, UserCog,
     ScrollText, PanelLeftClose, PanelLeftOpen, Menu, LogOut, X, CheckCircle, XCircle, Info, AlertCircle, Landmark,
     MapPin,
-    UserCircle, Receipt, Upload
+    UserCircle, Receipt, Upload, ArrowLeftRight
 } from 'lucide-react';
 import { matchesPathSegment } from '@/lib/pathname';
 import { resolveCompanyLogoUrl } from '@/lib/branding';
@@ -41,6 +41,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
     UserCircle: <UserCircle size={20} />,
     Receipt: <Receipt size={20} />,
     Upload: <Upload size={20} />,
+    ArrowLeftRight: <ArrowLeftRight size={20} />,
 };
 
 // ── Toast Context ──

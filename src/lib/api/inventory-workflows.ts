@@ -4,6 +4,7 @@ import { getBusinessDateValue } from '@/lib/business-date';
 import {
     computePurchaseSummary,
     computePurchaseStatus,
+    formatInventoryQuantity,
     isInventoryUnit,
     isTireTrackedWarehouseItem,
     parseInventoryQuantity,
@@ -921,6 +922,160 @@ export async function handleStockMovementCreate(
             })
         );
         return NextResponse.json({ data: movementDoc, id: movementDoc._id });
+    } catch (error) {
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Mutasi stok tidak valid' },
+            { status: 400 }
+        );
+    }
+}
+
+export async function handleStockMovementCreateMany(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    try {
+        const movementDate = normalizeOptionalText(data.movementDate) || getBusinessDateValue();
+        const direction = normalizeText(data.direction).toUpperCase();
+        const rawEntries = Array.isArray(data.entries) ? data.entries : [];
+
+        assertIsoDate(movementDate, 'Tanggal mutasi stok');
+        if (direction !== 'IN' && direction !== 'OUT') {
+            return NextResponse.json({ error: 'Arah mutasi stok tidak valid' }, { status: 400 });
+        }
+        if (rawEntries.length === 0) {
+            return NextResponse.json({ error: 'Minimal satu barang wajib diisi' }, { status: 400 });
+        }
+        if (rawEntries.length > 50) {
+            return NextResponse.json({ error: 'Maksimal 50 barang dalam satu mutasi' }, { status: 400 });
+        }
+
+        const entries: Array<{ warehouseItemRef: string; quantity: number; note: string }> = [];
+        const seenRefs = new Set<string>();
+        for (let index = 0; index < rawEntries.length; index += 1) {
+            const raw = rawEntries[index];
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                return NextResponse.json({ error: `Baris #${index + 1} tidak valid` }, { status: 400 });
+            }
+            const entry = raw as Record<string, unknown>;
+            const warehouseItemRef = normalizeOptionalText(entry.warehouseItemRef);
+            const quantity = parseInventoryQuantity(entry.quantity);
+            if (!warehouseItemRef) {
+                return NextResponse.json({ error: `Baris #${index + 1}: barang gudang wajib dipilih` }, { status: 400 });
+            }
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                return NextResponse.json({ error: `Baris #${index + 1}: qty mutasi stok tidak valid` }, { status: 400 });
+            }
+            if (seenRefs.has(warehouseItemRef)) {
+                return NextResponse.json({ error: `Baris #${index + 1}: barang gudang tidak boleh duplikat dalam satu mutasi` }, { status: 400 });
+            }
+            seenRefs.add(warehouseItemRef);
+            entries.push({ warehouseItemRef, quantity, note: normalizeOptionalText(entry.note) ?? '' });
+        }
+
+        const itemRows = await listDocumentsByFilter<WarehouseItemDocument>('warehouseItem', {
+            _id: entries.map((entry) => entry.warehouseItemRef),
+        });
+        const itemsById = new Map(itemRows.map((item) => [item._id, item]));
+        for (let index = 0; index < entries.length; index += 1) {
+            const entry = entries[index];
+            const item = itemsById.get(entry.warehouseItemRef);
+            if (!item || item._type !== 'warehouseItem') {
+                return NextResponse.json({ error: `Baris #${index + 1}: barang gudang tidak ditemukan` }, { status: 400 });
+            }
+            if (item.active === false) {
+                return NextResponse.json({ error: `Baris #${index + 1}: barang gudang tidak aktif` }, { status: 400 });
+            }
+            if (!item.itemCode || !item.name || !item.unit || !isInventoryUnit(item.unit)) {
+                return NextResponse.json({ error: `Baris #${index + 1}: master barang gudang tidak valid` }, { status: 400 });
+            }
+            if (isTireTrackedWarehouseItem(item)) {
+                return NextResponse.json(
+                    { error: `Baris #${index + 1}: mutasi stok manual untuk ban tertracking dikelola lewat modul Ban dan penerimaan pembelian` },
+                    { status: 409 }
+                );
+            }
+        }
+
+        const latestStockMovementDates = await getLatestWarehouseStockMovementDateMap(
+            entries.map((entry) => entry.warehouseItemRef)
+        );
+        for (const entry of entries) {
+            const item = itemsById.get(entry.warehouseItemRef);
+            const latest = latestStockMovementDates.get(entry.warehouseItemRef);
+            if (item && latest && movementDate < latest) {
+                return NextResponse.json(
+                    { error: `Tanggal mutasi stok tidak boleh lebih awal dari mutasi stok terakhir ${item.itemCode} - ${item.name}` },
+                    { status: 400 }
+                );
+            }
+        }
+
+        const sourceType: StockMovementSourceType = direction === 'OUT' ? 'MANUAL_OUT' : 'MANUAL_IN';
+        const movementDocs: StockMovement[] = [];
+        const summaries: string[] = [];
+        for (const entry of entries) {
+            const warehouseItem = itemsById.get(entry.warehouseItemRef);
+            if (!warehouseItem) continue;
+            const currentStockQty = Math.max(parseInventoryQuantity(warehouseItem.currentStockQty ?? 0), 0);
+            if (direction === 'OUT' && currentStockQty < entry.quantity) {
+                return NextResponse.json(
+                    { error: `Stok ${warehouseItem.itemCode} - ${warehouseItem.name} tidak cukup: tersedia ${formatInventoryQuantity(currentStockQty)} ${warehouseItem.unit}` },
+                    { status: 409 }
+                );
+            }
+            const nextStockQty = direction === 'OUT' ? currentStockQty - entry.quantity : currentStockQty + entry.quantity;
+            const unitCostSnapshot = Math.max(parseWholeMoneyAmount(warehouseItem.defaultPurchasePrice ?? 0), 0);
+            const subtotalCost = Math.round(entry.quantity * unitCostSnapshot);
+            const movementDoc: StockMovement = {
+                _id: `stock-movement-${crypto.randomUUID()}`,
+                _type: 'stockMovement',
+                warehouseItemRef: warehouseItem._id,
+                itemCode: warehouseItem.itemCode,
+                itemName: warehouseItem.name,
+                unit: warehouseItem.unit,
+                movementDate,
+                type: direction === 'OUT' ? 'OUT' : 'IN',
+                sourceType,
+                quantity: entry.quantity,
+                balanceAfter: nextStockQty,
+                unitCostSnapshot,
+                subtotalCost,
+                costMethod: 'WAREHOUSE_DEFAULT',
+                note: entry.note,
+                createdBy: session._id,
+                createdByName: session.name,
+            };
+
+            await updateDocument(warehouseItem._id, { currentStockQty: nextStockQty }, 'warehouseItem');
+            await createDocument(movementDoc as unknown as { _type: string; [key: string]: unknown });
+            await postStockMovementJournal(session, movementDoc, unitCostSnapshot);
+            movementDocs.push(movementDoc);
+            summaries.push(
+                buildStockMovementAuditSummary({
+                    itemName: warehouseItem.name,
+                    itemCode: warehouseItem.itemCode,
+                    quantity: entry.quantity,
+                    sourceType,
+                    note: entry.note,
+                })
+            );
+        }
+
+        if (movementDocs.length === 0) {
+            return NextResponse.json({ error: 'Tidak ada mutasi stok yang tercatat' }, { status: 400 });
+        }
+
+        const batchRef = `stock-movement-batch-${crypto.randomUUID()}`;
+        await addAuditLog(
+            session,
+            'CREATE',
+            'stock-movements',
+            batchRef,
+            `Mutasi stok ${direction === 'OUT' ? 'keluar' : 'masuk'} manual batch (${movementDocs.length} barang): ${summaries.join('; ')}`
+        );
+        return NextResponse.json({ data: { count: movementDocs.length, batchRef, movements: movementDocs }, id: batchRef });
     } catch (error) {
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Mutasi stok tidak valid' },

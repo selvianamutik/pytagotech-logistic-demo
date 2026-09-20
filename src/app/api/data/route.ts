@@ -75,6 +75,7 @@ import {
     handlePurchasePaymentCreate,
     handlePurchaseReceive,
     handleStockMovementCreate,
+    handleStockMovementCreateMany,
 } from '@/lib/api/inventory-workflows';
 import {
     getMaintenanceMaterialOptions,
@@ -490,7 +491,7 @@ function shouldFallbackToBusinessDate(entity: string, action: string | undefined
     return Boolean(
         entity === 'bank-accounts' ||
         (entity === 'driver-vouchers' && (action === 'settle' || action === 'repair-issue-ledger')) ||
-        (entity === 'stock-movements' && (!action || action === 'create')) ||
+        (entity === 'stock-movements' && (!action || action === 'create' || action === 'create-many')) ||
         (entity === 'expenses' && (!action || action === 'create' || action === 'update'))
     );
 }
@@ -2053,6 +2054,10 @@ export async function POST(request: Request) {
 
         if (entity === 'purchase-payments' && (action === 'record-payment' || !action)) {
             return await handlePurchasePaymentCreate(session, data, addAuditLog);
+        }
+
+        if (entity === 'stock-movements' && action === 'create-many') {
+            return await handleStockMovementCreateMany(session, data, addAuditLog);
         }
 
         if (entity === 'stock-movements' && isCreateAction) {
