@@ -2,20 +2,20 @@
 /**
  * audit-stock-movements.mjs
  *
- * Cross-file trace of the dedicated multi-item manual stock in/out page
- * ("Input / Pengeluaran Barang"). The bulk mutation creates one stock movement
- * per row + updates currentStockQty + posts the same accounting journal as the
- * single-row modal, performs all validation UP-FRONT (active+valid item, tire
- * mapping, backdated date, stock sufficiency), writes a single CREATE audit log
- * for the whole batch, and reuses the existing stock-movements permission gate.
+ * Cross-file trace of the multi-item manual stock in/out feature launched from
+ * a modal on /inventory/items ("Input / Keluar Stok"). The bulk mutation creates
+ * one stock movement per row + updates currentStockQty + posts the same
+ * accounting journal as the single-row modal, performs all validation UP-FRONT
+ * (active+valid item, tire mapping, backdated date, stock sufficiency), writes a
+ * single CREATE audit log for the whole batch, and reuses the existing
+ * stock-movements permission gate.
  *
  * Files covered:
- *   1. src/app/api/data/route.ts                        — dispatch + fallback
- *   2. src/lib/api/inventory-workflows.ts               — the bulk handler
- *   3. src/app/(admin)/inventory/stock-movements/page.tsx — dedicated page
- *   4. src/proxy.ts                                     — route guard
- *   5. src/lib/rbac.ts                                  — sidebar entry
- *   6. src/app/(admin)/layout.tsx                       — sidebar icon
+ *   1. src/app/api/data/route.ts
+ *   2. src/lib/api/inventory-workflows.ts
+ *   3. src/app/(admin)/inventory/_components/StockMovementBulkModal.tsx
+ *   4. src/app/(admin)/inventory/items/page.tsx            — trigger + wiring
+ *   5. src/proxy.ts + src/lib/rbac.ts                      — must NOT expose a page
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -24,10 +24,10 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '..');
 const ROUTE = join(ROOT, 'src', 'app', 'api', 'data', 'route.ts');
 const HANDLER = join(ROOT, 'src', 'lib', 'api', 'inventory-workflows.ts');
-const PAGE = join(ROOT, 'src', 'app', '(admin)', 'inventory', 'stock-movements', 'page.tsx');
+const MODAL = join(ROOT, 'src', 'app', '(admin)', 'inventory', '_components', 'StockMovementBulkModal.tsx');
+const ITEMS_PAGE = join(ROOT, 'src', 'app', '(admin)', 'inventory', 'items', 'page.tsx');
 const PROXY = join(ROOT, 'src', 'proxy.ts');
 const RBAC = join(ROOT, 'src', 'lib', 'rbac.ts');
-const LAYOUT = join(ROOT, 'src', 'app', '(admin)', 'layout.tsx');
 
 let failures = 0;
 
@@ -53,14 +53,18 @@ function assertIn(src, needle, msg) {
   if (typeof src !== 'string' || !src.includes(needle)) fail(msg);
 }
 
-console.log('audit-stock-movements — cross-file trace of multi-item manual stock in/out');
+function assertAbsent(src, needle, msg) {
+  if (typeof src === 'string' && src.includes(needle)) fail(msg);
+}
+
+console.log('audit-stock-movements — cross-file trace of multi-item manual stock in/out (modal on /inventory/items)');
 
 const routeSource = requireFile('src/app/api/data/route.ts');
 const handlerSource = requireFile('src/lib/api/inventory-workflows.ts');
-const pageSource = requireFile('src/app/(admin)/inventory/stock-movements/page.tsx');
+const modalSource = requireFile('src/app/(admin)/inventory/_components/StockMovementBulkModal.tsx');
+const itemsPageSource = requireFile('src/app/(admin)/inventory/items/page.tsx');
 const proxySource = requireFile('src/proxy.ts');
 const rbacSource = requireFile('src/lib/rbac.ts');
-const layoutSource = requireFile('src/app/(admin)/layout.tsx');
 
 // ---------------------------------------------------------------- route wiring
 if (routeSource) {
@@ -172,41 +176,44 @@ if (handlerSource) {
   );
 }
 
-// ---------------------------------------------------------------- page
-if (pageSource) {
-  console.log('--- src/app/(admin)/inventory/stock-movements/page.tsx');
-  assertIn(pageSource, "'use client'", 'Page harus client component.');
-  assertIn(pageSource, "action: 'create-many'", 'Page harus mengirim action create-many.');
-  assertIn(pageSource, "entity: 'stock-movements'", 'Page harus mengirim entity stock-movements.');
-  assertIn(pageSource, 'direction,', 'Page harus mengirim direction batch.');
-  assertIn(pageSource, 'entries: validLines.map', 'Page harus mengirim banyak entries.');
-  assertIn(pageSource, "setDirection('IN')", 'Toggle arah harus mendukung Stok Masuk.');
-  assertIn(pageSource, "setDirection('OUT')", 'Toggle arah harus mendukung Stok Keluar.');
-  assertIn(pageSource, "filter: JSON.stringify({ sourceType: ['MANUAL_IN', 'MANUAL_OUT'] })", 'Riwayat harus memfilter sourceType manual saja.');
-  assertIn(pageSource, 'Stok setelah diproses', 'Setiap baris harus menampilkan stok hasil.');
-  assertIn(pageSource, 'Isi minimal satu barang mutasi stok', 'Client harus menolak tanpa baris valid.');
-  assertIn(pageSource, 'tidak cukup', 'Client harus memvalidasi stok keluar sebelum kirim.');
-  assertIn(pageSource, "hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update')", 'Page wajib menghitung canManage via permission.');
-  assertIn(pageSource, 'Simpan Mutasi', 'Tombol simpan harus ada.');
-  assertIn(pageSource, 'Riwayat Mutasi Manual Terbaru', 'Page wajib menampilkan riwayat manual.');
+// ---------------------------------------------------------------- modal
+if (modalSource) {
+  console.log('--- src/app/(admin)/inventory/_components/StockMovementBulkModal.tsx');
+  assertIn(modalSource, "'use client'", 'Modal harus client component.');
+  assertIn(modalSource, "action: 'create-many'", 'Modal harus mengirim action create-many.');
+  assertIn(modalSource, "entity: 'stock-movements'", 'Modal harus mengirim entity stock-movements.');
+  assertIn(modalSource, 'direction,', 'Modal harus mengirim direction batch.');
+  assertIn(modalSource, 'entries: validLines.map', 'Modal harus mengirim banyak entries.');
+  assertIn(modalSource, "setDirection('IN')", 'Toggle arah harus mendukung Stok Masuk.');
+  assertIn(modalSource, "setDirection('OUT')", 'Toggle arah harus mendukung Stok Keluar.');
+  assertIn(modalSource, "filter: JSON.stringify({ sourceType: ['MANUAL_IN', 'MANUAL_OUT'] })", 'Riwayat harus memfilter sourceType manual saja.');
+  assertIn(modalSource, 'Stok setelah diproses', 'Setiap baris harus menampilkan stok hasil.');
+  assertIn(modalSource, 'Isi minimal satu barang mutasi stok', 'Modal harus menolak tanpa baris valid.');
+  assertIn(modalSource, "if (!canManage) return addToast('error', 'Anda tidak punya hak mencatat mutasi stok')", 'Modal wajib menolak tanpa akses canManage.');
+  assertIn(modalSource, 'modal modal-lg', 'Modal wajib memakai kelas modal modal-lg.');
+  assertIn(modalSource, 'Simpan Mutasi', 'Tombol simpan harus ada.');
+  assertIn(modalSource, 'Mutasi Manual Terbaru', 'Modal wajib menampilkan riwayat manual.');
 }
 
-// ---------------------------------------------------------------- registration
+// ---------------------------------------------------------------- items page wiring
+if (itemsPageSource) {
+  console.log('--- src/app/(admin)/inventory/items/page.tsx');
+  assertIn(itemsPageSource, "import StockMovementBulkModal from '../_components/StockMovementBulkModal';", 'Items page wajib meng-import StockMovementBulkModal.');
+  assertIn(itemsPageSource, 'setShowBulkMovementModal(true)', 'Items page wajib membuka modal lewat state.');
+  assertIn(itemsPageSource, 'Input / Keluar Stok', 'Items page wajib menampilkan tombol Input / Keluar Stok.');
+  assertIn(itemsPageSource, 'showBulkMovementModal && (', 'Items page wajib me-render modal kondisi (mount = open).');
+  assertIn(itemsPageSource, 'items={allItems}', 'Items page harus meneruskan allItems ke modal.');
+  assertIn(itemsPageSource, 'onClose={', 'Items page wajib menutup modal lewat onClose.');
+  assertIn(itemsPageSource, 'onSaved={loadItems}', 'Items page wajib memuat ulang items setelah save.');
+}
+
+// ---------------------------------------------------------------- no standalone page
 if (proxySource) {
-  console.log('--- src/proxy.ts');
-  assertIn(proxySource, "{ path: '/inventory/stock-movements', module: 'warehouseItems' }", 'Guard /inventory/stock-movements belum didaftarkan.');
+  assertAbsent(proxySource, '/inventory/stock-movements', 'proxy.ts tidak boleh lagi punya guard /inventory/stock-movements.');
 }
 
 if (rbacSource) {
-  console.log('--- src/lib/rbac.ts');
-  assertIn(rbacSource, "href: '/inventory/stock-movements'", 'Sidebar belum menautkan /inventory/stock-movements.');
-  assertIn(rbacSource, "icon: 'ArrowLeftRight'", 'Sidebar belum memakai ikon ArrowLeftRight.');
-}
-
-if (layoutSource) {
-  console.log('--- src/app/(admin)/layout.tsx');
-  assertIn(layoutSource, 'ArrowLeftRight', 'Ikon ArrowLeftRight belum di-import/didaftarkan di ICON_MAP.');
-  assertIn(layoutSource, 'ArrowLeftRight: <ArrowLeftRight size={20} />', 'ICON_MAP belum memuat ArrowLeftRight.');
+  assertAbsent(rbacSource, '/inventory/stock-movements', 'rbac.ts tidak boleh lagi menautkan /inventory/stock-movements di sidebar.');
 }
 
 console.log('');
@@ -214,6 +221,6 @@ if (failures > 0) {
   console.error(`AUDIT FAILED — ${failures} problem(s) found`);
   process.exit(1);
 } else {
-  console.log('AUDIT PASSED — route dispatch, batch handler invariants, dedicated page wiring, and registration verified.');
+  console.log('AUDIT PASSED — route dispatch, batch handler invariants, modal wiring on /inventory/items, and sidebar/guard removal verified.');
   process.exit(0);
 }

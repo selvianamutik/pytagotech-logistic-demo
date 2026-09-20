@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownCircle, ArrowUpCircle, Edit, Eye, FileDown, Package, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, Edit, Eye, FileDown, Package, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -24,6 +24,7 @@ import { normalizeTireType, TIRE_TYPE_OPTIONS } from '@/lib/tire-types';
 import type { Supplier, WarehouseItem } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 
+import StockMovementBulkModal from '../_components/StockMovementBulkModal';
 import { useApp, useToast } from '../../layout';
 
 type ItemFormState = {
@@ -94,6 +95,7 @@ export default function WarehouseItemsPage() {
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
+  const [showBulkMovementModal, setShowBulkMovementModal] = useState(false);
   const [editItem, setEditItem] = useState<WarehouseItem | null>(null);
   const [movementItem, setMovementItem] = useState<WarehouseItem | null>(null);
   const [saving, setSaving] = useState(false);
@@ -311,6 +313,7 @@ export default function WarehouseItemsPage() {
         <div className="page-header-left"><h1 className="page-title">Barang Gudang</h1></div>
         <div className="page-actions">
           {canExportItems && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
+          {canManage && <button className="btn btn-secondary" onClick={() => setShowBulkMovementModal(true)}><ArrowLeftRight size={18} /> Input / Keluar Stok</button>}
           {canManage && <button className="btn btn-primary" onClick={openCreate}><Plus size={18} /> Tambah Barang</button>}
         </div>
       </div>
@@ -519,6 +522,15 @@ export default function WarehouseItemsPage() {
             <div className="modal-footer"><button className="btn btn-secondary" onClick={closeMovementModal} disabled={savingMovement}>Batal</button><button className="btn btn-primary" onClick={handleStockMovement} disabled={savingMovement}><Save size={16} /> {savingMovement ? 'Menyimpan...' : 'Simpan Mutasi'}</button></div>
           </div>
         </div>
+      )}
+
+      {showBulkMovementModal && (
+        <StockMovementBulkModal
+          items={allItems}
+          canManage={canManage}
+          onClose={() => setShowBulkMovementModal(false)}
+          onSaved={loadItems}
+        />
       )}
 
       {deleteId && (
