@@ -1013,11 +1013,19 @@ export async function handleStockMovementCreateMany(
         }
 
         const sourceType: StockMovementSourceType = direction === 'OUT' ? 'MANUAL_OUT' : 'MANUAL_IN';
-        const movementDocs: StockMovement[] = [];
-        const summaries: string[] = [];
+        const planned: Array<{
+            warehouseItem: WarehouseItemDocument;
+            quantity: number;
+            note: string;
+            nextStockQty: number;
+            unitCostSnapshot: number;
+            subtotalCost: number;
+        }> = [];
         for (const entry of entries) {
             const warehouseItem = itemsById.get(entry.warehouseItemRef);
-            if (!warehouseItem) continue;
+            if (!warehouseItem) {
+                return NextResponse.json({ error: 'Barang gudang tidak ditemukan' }, { status: 400 });
+            }
             const currentStockQty = Math.max(parseInventoryQuantity(warehouseItem.currentStockQty ?? 0), 0);
             if (direction === 'OUT' && currentStockQty < entry.quantity) {
                 return NextResponse.json(
@@ -1027,44 +1035,52 @@ export async function handleStockMovementCreateMany(
             }
             const nextStockQty = direction === 'OUT' ? currentStockQty - entry.quantity : currentStockQty + entry.quantity;
             const unitCostSnapshot = Math.max(parseWholeMoneyAmount(warehouseItem.defaultPurchasePrice ?? 0), 0);
-            const subtotalCost = Math.round(entry.quantity * unitCostSnapshot);
+            planned.push({
+                warehouseItem,
+                quantity: entry.quantity,
+                note: entry.note,
+                nextStockQty,
+                unitCostSnapshot,
+                subtotalCost: Math.round(entry.quantity * unitCostSnapshot),
+            });
+        }
+
+        const movementDocs: StockMovement[] = [];
+        const summaries: string[] = [];
+        for (const item of planned) {
             const movementDoc: StockMovement = {
                 _id: `stock-movement-${crypto.randomUUID()}`,
                 _type: 'stockMovement',
-                warehouseItemRef: warehouseItem._id,
-                itemCode: warehouseItem.itemCode,
-                itemName: warehouseItem.name,
-                unit: warehouseItem.unit,
+                warehouseItemRef: item.warehouseItem._id,
+                itemCode: item.warehouseItem.itemCode,
+                itemName: item.warehouseItem.name,
+                unit: item.warehouseItem.unit,
                 movementDate,
                 type: direction === 'OUT' ? 'OUT' : 'IN',
                 sourceType,
-                quantity: entry.quantity,
-                balanceAfter: nextStockQty,
-                unitCostSnapshot,
-                subtotalCost,
+                quantity: item.quantity,
+                balanceAfter: item.nextStockQty,
+                unitCostSnapshot: item.unitCostSnapshot,
+                subtotalCost: item.subtotalCost,
                 costMethod: 'WAREHOUSE_DEFAULT',
-                note: entry.note,
+                note: item.note,
                 createdBy: session._id,
                 createdByName: session.name,
             };
 
-            await updateDocument(warehouseItem._id, { currentStockQty: nextStockQty }, 'warehouseItem');
+            await updateDocument(item.warehouseItem._id, { currentStockQty: item.nextStockQty }, 'warehouseItem');
             await createDocument(movementDoc as unknown as { _type: string; [key: string]: unknown });
-            await postStockMovementJournal(session, movementDoc, unitCostSnapshot);
+            await postStockMovementJournal(session, movementDoc, item.unitCostSnapshot);
             movementDocs.push(movementDoc);
             summaries.push(
                 buildStockMovementAuditSummary({
-                    itemName: warehouseItem.name,
-                    itemCode: warehouseItem.itemCode,
-                    quantity: entry.quantity,
+                    itemName: item.warehouseItem.name,
+                    itemCode: item.warehouseItem.itemCode,
+                    quantity: item.quantity,
                     sourceType,
-                    note: entry.note,
+                    note: item.note,
                 })
             );
-        }
-
-        if (movementDocs.length === 0) {
-            return NextResponse.json({ error: 'Tidak ada mutasi stok yang tercatat' }, { status: 400 });
         }
 
         const batchRef = `stock-movement-batch-${crypto.randomUUID()}`;

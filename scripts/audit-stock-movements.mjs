@@ -144,17 +144,27 @@ if (handlerSource) {
   assertIn(fnBlock, 'tidak boleh lebih awal dari mutasi stok terakhir', 'Handler harus menolak tanggal backdated per barang.');
   assertIn(fnBlock, 'isTireTrackedWarehouseItem(item)', 'Handler harus menolak barang ban tertracking.');
   assertIn(fnBlock, 'ban tertracking dikelola lewat modul Ban', 'Pesan 409 ban tertracking tidak konsisten.');
-  assertIn(fnBlock, 'Stok ${warehouseItem.itemCode}', 'Handler harus menolak stok keluar melebihi saldo dengan pesan berisi item.');
-  assertIn(fnBlock, "await updateDocument(warehouseItem._id, { currentStockQty: nextStockQty }, 'warehouseItem')", 'Handler wajib update currentStockQty per barang.');
+  assertIn(fnBlock, 'const sourceType: StockMovementSourceType = direction === \'OUT\' ? \'MANUAL_OUT\' : \'MANUAL_IN\';', 'Handler harus menurunkan sourceType dari direction.');
+  assertIn(fnBlock, 'export async function handleStockMovementCreateMany', 'Handler handleStockMovementCreateMany tidak ada.');
+  assertIn(fnBlock, 'const planned:', 'Handler harus merencanakan semua baris (validasi + kalkulasi) sebelum menulis.');
+  assertIn(fnBlock, 'tidak cukup: tersedia', 'Handler harus menolak stok keluar melebihi saldo dengan pesan berisi item.');
+  assertIn(fnBlock, "await updateDocument(item.warehouseItem._id, { currentStockQty: item.nextStockQty }, 'warehouseItem')", 'Handler wajib update currentStockQty per barang.');
   assertIn(fnBlock, "await createDocument(movementDoc as unknown as { _type: string", 'Handler wajib createDocument satu movement per baris.');
   assertIn(fnBlock, 'const movementDoc: StockMovement = {', 'Handler wajib membangun StockMovement.');
   assertIn(fnBlock, "costMethod: 'WAREHOUSE_DEFAULT'", 'Movement wajib memakai costMethod WAREHOUSE_DEFAULT.');
-  assertIn(fnBlock, 'balanceAfter: nextStockQty', 'Movement wajib mencatat saldo setelah mutasi.');
-  assertIn(fnBlock, 'await postStockMovementJournal(session, movementDoc, unitCostSnapshot)', 'Handler wajib posting jurnal lalu memakai unitCost snapshot.');
+  assertIn(fnBlock, 'balanceAfter: item.nextStockQty', 'Movement wajib mencatat saldo setelah mutasi.');
+  assertIn(fnBlock, 'await postStockMovementJournal(session, movementDoc, item.unitCostSnapshot)', 'Handler wajib posting jurnal lalu memakai unitCost snapshot.');
   assertIn(fnBlock, "summaries.push(\n                buildStockMovementAuditSummary", 'Handler wajib mengumpulkan ringkasan audit per baris.');
   assertIn(fnBlock, "'CREATE',\n            'stock-movements',", 'Audit log batch wajib CREATE stock-movements.');
   assertIn(fnBlock, 'batchRef', 'Audit log batch wajib memakai entityRef batch.');
   assertIn(fnBlock, 'return NextResponse.json({ data: { count: movementDocs.length, batchRef, movements: movementDocs }, id: batchRef });', 'Response handler wajib berbentuk { data: { count, batchRef, movements }, id }.');
+
+  const stockCheckIndex = fnBlock.indexOf('tidak cukup: tersedia');
+  const firstWriteIndex = fnBlock.indexOf('await updateDocument(');
+  assert(
+    stockCheckIndex >= 0 && firstWriteIndex >= 0 && stockCheckIndex < firstWriteIndex,
+    'Cek ketersediaan stok harus terjadi SEBELUM penulisan pertama (tanpa partial-write saat baris belakangan gagal).'
+  );
 
   assert(
     fnStart >= 0 && fnStart < H.indexOf('export async function handlePurchasePaymentCreate'),
