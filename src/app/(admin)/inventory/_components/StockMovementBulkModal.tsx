@@ -261,7 +261,7 @@ export default function StockMovementBulkModal({ items, canManage, onClose, onSa
               </div>
 
               <div className="card" style={{ marginTop: '1rem' }}>
-                <div className="card-header"><History size={16} /><span className="card-header-title">Mutasi Manual Terbaru</span></div>
+                <div className="card-header"><History size={16} /><span className="card-header-title">Riwayat Mutasi Manual Terbaru</span></div>
                 <div className="card-body">
                   <div className="table-wrapper">
                     <table>

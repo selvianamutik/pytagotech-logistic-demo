@@ -195,7 +195,7 @@ if (modalSource) {
   assertIn(modalSource, "'Konfirmasi Simpan'", 'Tombol konfirmasi simpan pada langkah tinjau harus ada.');
   assertIn(modalSource, "setPhase('review')", 'Modal wajib punya langkah tinjau sebelum menyimpan.');
   assertIn(modalSource, 'Riwayat ini tidak dapat diubah atau dihapus', 'Langkah tinjau wajib memperingatkan riwayat tidak dapat diubah.');
-  assertIn(modalSource, 'Mutasi Manual Terbaru', 'Modal wajib menampilkan riwayat manual.');
+  assertIn(modalSource, 'Riwayat Mutasi Manual Terbaru', 'Modal wajib menampilkan riwayat manual.');
 }
 
 // ---------------------------------------------------------------- items page wiring
