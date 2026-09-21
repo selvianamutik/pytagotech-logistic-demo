@@ -2712,6 +2712,14 @@ details[open] > summary .foldable-chevron {
   color: var(--color-gray-500);
 }
 
+.text-success {
+  color: var(--color-success);
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
+
 .font-bold {
   font-weight: 700;
 }

@@ -216,7 +216,7 @@ export default function StockMovementBulkModal({ items, canManage, onClose, onSa
                           <td>{formatDate(movement.movementDate)}</td>
                           <td><span className={`badge ${movement.type === 'IN' ? 'badge-success' : 'badge-danger'}`}>{STOCK_MOVEMENT_SOURCE_LABELS[movement.sourceType] || movement.sourceType}</span></td>
                           <td>{movement.itemCode} - {movement.itemName}</td>
-                          <td>{movement.type === 'OUT' ? '-' : '+'}{formatInventoryQuantity(movement.quantity)} {movement.unit || ''}</td>
+                          <td className={movement.type === 'IN' ? 'text-success' : 'text-danger'}>{movement.type === 'IN' ? '+' : '-'}{formatInventoryQuantity(movement.quantity)} {movement.unit || ''}</td>
                           <td>{movement.note || '-'}</td>
                         </tr>
                       ))}

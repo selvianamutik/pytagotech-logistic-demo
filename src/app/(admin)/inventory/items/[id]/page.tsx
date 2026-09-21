@@ -720,7 +720,8 @@ export default function WarehouseItemDetailPage() {
                   <tbody>
                     {movements.map((movement) => {
                       const source = getMovementSourceMeta(movement);
-                      const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : formatInventoryQuantity(movement.quantity);
+                      const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : `+ ${formatInventoryQuantity(movement.quantity)}`;
+                      const qtyClass = movement.type === 'OUT' ? 'text-danger' : 'text-success';
                       const safeNote = movement.sourceType === 'MAINTENANCE_USAGE' && !canOpenVehicles
                         ? 'Pemakaian material maintenance'
                         : (movement.note || '-');
@@ -729,7 +730,7 @@ export default function WarehouseItemDetailPage() {
                           <td>{formatDate(movement.movementDate)}</td>
                           <td>{STOCK_MOVEMENT_TYPE_LABELS[movement.type]}</td>
                           <td>{source.href ? <Link href={source.href} style={{ color: 'var(--color-primary)' }}>{source.primary}</Link> : source.primary}<div className="text-muted text-xs">{source.secondary}</div></td>
-                          <td>{signedQty} {movement.unit || item.unit}</td>
+                          <td className={qtyClass}>{signedQty} {movement.unit || item.unit}</td>
                           <td>{formatInventoryQuantity(movement.balanceAfter || 0)} {movement.unit || item.unit}</td>
                           <td>{safeNote}</td>
                         </tr>
@@ -741,7 +742,8 @@ export default function WarehouseItemDetailPage() {
               <div className="mobile-record-list">
                 {movements.map((movement) => {
                   const source = getMovementSourceMeta(movement);
-                  const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : formatInventoryQuantity(movement.quantity);
+                  const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : `+ ${formatInventoryQuantity(movement.quantity)}`;
+                  const qtyClass = movement.type === 'OUT' ? 'text-danger' : 'text-success';
                   const safeNote = movement.sourceType === 'MAINTENANCE_USAGE' && !canOpenVehicles
                     ? 'Pemakaian material maintenance'
                     : (movement.note || '-');
@@ -759,7 +761,7 @@ export default function WarehouseItemDetailPage() {
                           <span className="mobile-record-value">{source.href ? <Link href={source.href} style={{ color: 'var(--color-primary)' }}>{source.primary}</Link> : source.primary}</span>
                           <div className="mobile-record-subtitle" style={{ marginTop: '0.25rem' }}>{source.secondary}</div>
                         </div>
-                        <div className="mobile-record-field"><span className="mobile-record-label">Qty</span><span className="mobile-record-value">{signedQty} {movement.unit || item.unit}</span></div>
+                        <div className="mobile-record-field"><span className="mobile-record-label">Qty</span><span className={`mobile-record-value ${qtyClass}`}>{signedQty} {movement.unit || item.unit}</span></div>
                         <div className="mobile-record-field"><span className="mobile-record-label">Saldo Setelah</span><span className="mobile-record-value">{formatInventoryQuantity(movement.balanceAfter || 0)} {movement.unit || item.unit}</span></div>
                         <div className="mobile-record-field mobile-record-field-full"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{safeNote}</span></div>
                       </div>
