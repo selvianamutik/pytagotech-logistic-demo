@@ -191,7 +191,10 @@ if (modalSource) {
   assertIn(modalSource, 'Isi minimal satu barang mutasi stok', 'Modal harus menolak tanpa baris valid.');
   assertIn(modalSource, "if (!canManage) return addToast('error', 'Anda tidak punya hak mencatat mutasi stok')", 'Modal wajib menolak tanpa akses canManage.');
   assertIn(modalSource, 'modal modal-lg', 'Modal wajib memakai kelas modal modal-lg.');
-  assertIn(modalSource, 'Simpan Mutasi', 'Tombol simpan harus ada.');
+  assertIn(modalSource, 'Tinjau &amp; Simpan', 'Tombol simpan (langkah tinjau) harus ada.');
+  assertIn(modalSource, "'Konfirmasi Simpan'", 'Tombol konfirmasi simpan pada langkah tinjau harus ada.');
+  assertIn(modalSource, "setPhase('review')", 'Modal wajib punya langkah tinjau sebelum menyimpan.');
+  assertIn(modalSource, 'Riwayat ini tidak dapat diubah atau dihapus', 'Langkah tinjau wajib memperingatkan riwayat tidak dapat diubah.');
   assertIn(modalSource, 'Mutasi Manual Terbaru', 'Modal wajib menampilkan riwayat manual.');
 }
 
