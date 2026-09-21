@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, Edit, Eye, FileDown, Package, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeftRight, Edit, Eye, FileDown, Package, Plus, Save, Search, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
-import { getBusinessDateValue } from '@/lib/business-date';
 import { exportToExcel } from '@/lib/export';
 import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import {
@@ -43,13 +42,6 @@ type ItemFormState = {
   active: boolean;
 };
 
-type MovementFormState = {
-  movementDate: string;
-  sourceType: 'MANUAL_IN' | 'MANUAL_OUT';
-  quantity: number;
-  note: string;
-};
-
 const createItemForm = (item?: Partial<WarehouseItem>): ItemFormState => ({
   itemCode: item?.itemCode || '',
   name: item?.name || '',
@@ -64,13 +56,6 @@ const createItemForm = (item?: Partial<WarehouseItem>): ItemFormState => ({
   tireSizeDefault: item?.tireSizeDefault || '',
   notes: item?.notes || '',
   active: item?.active !== false,
-});
-
-const createMovementForm = (sourceType: 'MANUAL_IN' | 'MANUAL_OUT' = 'MANUAL_IN'): MovementFormState => ({
-  movementDate: getBusinessDateValue(),
-  sourceType,
-  quantity: 0,
-  note: '',
 });
 
 function getStockBadge(item: WarehouseItem) {
@@ -94,17 +79,12 @@ export default function WarehouseItemsPage() {
   const [page, setPage] = useState(1);
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
-  const [showMovementModal, setShowMovementModal] = useState(false);
   const [showBulkMovementModal, setShowBulkMovementModal] = useState(false);
   const [editItem, setEditItem] = useState<WarehouseItem | null>(null);
-  const [movementItem, setMovementItem] = useState<WarehouseItem | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savingMovement, setSavingMovement] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemFormState>(createItemForm());
-  const [movementForm, setMovementForm] = useState<MovementFormState>(createMovementForm());
 
   const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
   const canExportItems = user ? hasPermission(user, 'warehouseItems', 'export') : false;
@@ -202,10 +182,8 @@ export default function WarehouseItemsPage() {
   };
 
   const closeModal = () => { if (!saving) { setShowModal(false); setEditItem(null); setForm(createItemForm()); } };
-  const closeMovementModal = () => { if (!savingMovement) { setShowMovementModal(false); setMovementItem(null); setMovementForm(createMovementForm()); } };
   const openCreate = () => { setEditItem(null); setForm(createItemForm()); setShowModal(true); };
   const openEdit = (item: WarehouseItem) => { setEditItem(item); setForm(createItemForm(item)); setShowModal(true); };
-  const openMovement = (item: WarehouseItem, sourceType: 'MANUAL_IN' | 'MANUAL_OUT') => { setMovementItem(item); setMovementForm(createMovementForm(sourceType)); setShowMovementModal(true); };
   const handleSave = async () => {
     if (!canManage) return addToast('error', 'Anda tidak punya hak mengubah barang gudang');
     if (!form.itemCode || !form.name || !form.unit) return addToast('error', 'Kode, nama barang, dan satuan wajib diisi');
@@ -240,49 +218,6 @@ export default function WarehouseItemsPage() {
       addToast('error', error instanceof Error ? error.message : 'Gagal menyimpan barang gudang');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleStockMovement = async () => {
-    if (!canManage || !movementItem) return addToast('error', 'Anda tidak punya hak mencatat mutasi stok');
-    if (isTireTrackedWarehouseItem(movementItem)) return addToast('error', 'Mutasi stok ban tertracking dikelola lewat modul Ban dan pembelian supplier');
-    if (!movementForm.quantity || Number(movementForm.quantity) <= 0) return addToast('error', 'Qty mutasi stok wajib diisi');
-    setSavingMovement(true);
-    try {
-      const res = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'stock-movements', data: { warehouseItemRef: movementItem._id, movementDate: movementForm.movementDate, sourceType: movementForm.sourceType, quantity: movementForm.quantity, note: movementForm.note || undefined } }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Gagal mencatat mutasi stok');
-      addToast('success', movementForm.sourceType === 'MANUAL_OUT' ? 'Stok keluar dicatat' : 'Stok masuk dicatat');
-      closeMovementModal();
-      await loadItems();
-    } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Gagal mencatat mutasi stok');
-    } finally {
-      setSavingMovement(false);
-    }
-  };
-
-  const toggleActive = async (item: WarehouseItem) => {
-    if (!canManage) return addToast('error', 'Anda tidak punya hak mengubah status barang gudang');
-    setTogglingId(item._id);
-    try {
-      const res = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'warehouse-items', action: 'update', data: { id: item._id, updates: { active: item.active === false } } }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Gagal memperbarui status barang gudang');
-      addToast('success', item.active === false ? 'Barang gudang diaktifkan' : 'Barang gudang dinonaktifkan');
-      await loadItems();
-    } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Gagal memperbarui status barang gudang');
-    } finally {
-      setTogglingId((current) => current === item._id ? null : current);
     }
   };
 
@@ -388,9 +323,6 @@ export default function WarehouseItemsPage() {
                         {canManage ? (
                           <>
                             <button className="table-action-btn" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button>
-                            {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button>}
-                            {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button>}
-                            <button className="table-action-btn" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
                             <button className="table-action-btn danger" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button>
                           </>
                         ) : null}
@@ -447,9 +379,6 @@ export default function WarehouseItemsPage() {
                   <div className="mobile-record-actions">
                     {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link> : null}
                     {canManage ? <button className="btn btn-secondary" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button> : null}
-                    {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button> : null}
-                    {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button> : null}
-                    {canManage ? <button className="btn btn-secondary" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button> : null}
                     {canManage ? <button className="btn btn-secondary" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button> : null}
                   </div>
                 </div>
@@ -503,23 +432,6 @@ export default function WarehouseItemsPage() {
               <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={3} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></div>
             </div>
             <div className="modal-footer"><button className="btn btn-secondary" onClick={closeModal} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
-          </div>
-        </div>
-      )}
-
-      {showMovementModal && movementItem && (
-        <div className="modal-overlay" onClick={closeMovementModal}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{movementForm.sourceType === 'MANUAL_OUT' ? 'Catat Stok Keluar' : 'Catat Stok Masuk'}</h3>
-              <button className="modal-close" onClick={closeMovementModal} disabled={savingMovement}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-row"><div className="form-group"><label className="form-label">Tanggal Mutasi</label><input type="date" className="form-input" value={movementForm.movementDate} onChange={(event) => setMovementForm((current) => ({ ...current, movementDate: event.target.value }))} /></div><div className="form-group"><label className="form-label">Qty</label><FormattedNumberInput min={0} maxFractionDigits={3} value={movementForm.quantity} onValueChange={(value) => setMovementForm((current) => ({ ...current, quantity: value }))} /></div></div>
-              <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={3} value={movementForm.note} onChange={(event) => setMovementForm((current) => ({ ...current, note: event.target.value }))} placeholder="Contoh: dipakai ke lapangan atau stok tambahan supplier." /></div>
-              <div className="info-banner" style={{ marginTop: '0.5rem' }}><div className="info-banner-title">Stok Saat Ini</div><div className="info-banner-text">{formatInventoryQuantity(movementItem.currentStockQty || 0)} {movementItem.unit}</div></div>
-            </div>
-            <div className="modal-footer"><button className="btn btn-secondary" onClick={closeMovementModal} disabled={savingMovement}>Batal</button><button className="btn btn-primary" onClick={handleStockMovement} disabled={savingMovement}><Save size={16} /> {savingMovement ? 'Menyimpan...' : 'Simpan Mutasi'}</button></div>
           </div>
         </div>
       )}
