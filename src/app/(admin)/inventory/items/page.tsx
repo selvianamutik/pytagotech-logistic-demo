@@ -35,6 +35,7 @@ type ItemFormState = {
   minStockQty: number;
   defaultSupplierRef: string;
   defaultPurchasePrice: number;
+  stockQty: number;
   tireTypeDefault: string;
   tireBrandDefault: string;
   tireSizeDefault: string;
@@ -51,6 +52,7 @@ const createItemForm = (item?: Partial<WarehouseItem>): ItemFormState => ({
   minStockQty: typeof item?.minStockQty === 'number' ? item.minStockQty : 0,
   defaultSupplierRef: item?.defaultSupplierRef || '',
   defaultPurchasePrice: typeof item?.defaultPurchasePrice === 'number' ? item.defaultPurchasePrice : 0,
+  stockQty: typeof item?.currentStockQty === 'number' ? item.currentStockQty : 0,
   tireTypeDefault: normalizeTireType(item?.tireTypeDefault),
   tireBrandDefault: item?.tireBrandDefault || '',
   tireSizeDefault: item?.tireSizeDefault || '',
@@ -198,6 +200,9 @@ export default function WarehouseItemsPage() {
         minStockQty: form.minStockQty,
         defaultSupplierRef: form.defaultSupplierRef || undefined,
         defaultPurchasePrice: form.defaultPurchasePrice,
+        ...(editItem
+          ? { currentStockQty: form.trackingMode === 'TIRE_ASSET' ? undefined : form.stockQty }
+          : { initialStockQty: form.trackingMode === 'TIRE_ASSET' ? undefined : form.stockQty }),
         tireTypeDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireTypeDefault : undefined,
         tireBrandDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireBrandDefault : undefined,
         tireSizeDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireSizeDefault : undefined,
@@ -410,7 +415,7 @@ export default function WarehouseItemsPage() {
               <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><input className="form-input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} /></div><div className="form-group"><label className="form-label">Mode Tracking</label><select className="form-select" value={form.trackingMode} onChange={(event) => setForm((current) => ({ ...current, trackingMode: event.target.value as ItemFormState['trackingMode'], unit: event.target.value === 'TIRE_ASSET' && current.unit !== 'PCS' && current.unit !== 'UNIT' ? 'PCS' : current.unit }))}>{WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => <option key={option} value={option}>{WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option]}</option>)}</select></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value as WarehouseItem['unit'] }))}>{INVENTORY_UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div><div className="form-group"><label className="form-label">Min. Stok</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} value={form.minStockQty} onValueChange={(value) => setForm((current) => ({ ...current, minStockQty: value }))} /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Supplier Default</label><select className="form-select" value={form.defaultSupplierRef} onChange={(event) => setForm((current) => ({ ...current, defaultSupplierRef: event.target.value }))}><option value="">-- Tidak dipilih --</option>{activeSuppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} - {supplier.name}</option>)}</select></div><div className="form-group"><label className="form-label">Harga Beli Default (Rp)</label><FormattedNumberInput allowDecimal={false} value={form.defaultPurchasePrice} onValueChange={(value) => setForm((current) => ({ ...current, defaultPurchasePrice: value }))} placeholder="Ketik harga beli default" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Status</label><select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">{editItem ? 'Stok Saat Ini' : 'Stok Awal'}</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} disabled={form.trackingMode === 'TIRE_ASSET'} value={form.stockQty} onValueChange={(value) => setForm((current) => ({ ...current, stockQty: value }))} /><div className="text-muted text-xs">{editItem ? 'Edit stok membuat mutasi penyesuaian otomatis' : 'Stok awal dicatat sebagai mutasi masuk manual'}</div></div><div className="form-group"><label className="form-label">Status</label><select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></div></div>
               {form.trackingMode === 'TIRE_ASSET' && (
                 <>
                   <div className="info-banner" style={{ marginBottom: '1rem' }}>

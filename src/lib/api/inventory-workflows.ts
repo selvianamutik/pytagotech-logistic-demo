@@ -37,11 +37,13 @@ import {
     assertIsoDate,
     computeLedgerDebitBalance,
     getLedgerAccount,
+    isPlainObject,
     normalizeOptionalText,
     normalizeText,
     type ApiSession,
 } from './data-helpers';
 import { recomputeBankLedgerBalancesForAccounts } from './bank-balance-helpers';
+import { handleGenericCreate, handleGenericUpdate } from './generic-workflows';
 import { normalizeWarehouseItemPayload } from './generic-workflow-support';
 import { getLatestWarehouseStockMovementDateMap } from './inventory-stock-support';
 import {
@@ -835,6 +837,93 @@ export async function handlePurchaseReceive(
     }
 }
 
+async function createManualStockMovementCore(
+    session: ApiSession,
+    input: {
+        warehouseItemRef: string;
+        movementDate?: string;
+        sourceType: StockMovementSourceType;
+        quantity: number;
+        note?: string;
+    },
+    addAuditLog: AuditLogFn
+) {
+    const movementDate = input.movementDate || getBusinessDateValue();
+    const note = normalizeOptionalText(input.note);
+
+    assertIsoDate(movementDate, 'Tanggal mutasi stok');
+    if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+        return { ok: false as const, error: 'Qty mutasi stok tidak valid', status: 400 };
+    }
+
+    const warehouseItem = await resolveWarehouseItemSnapshot(input.warehouseItemRef);
+    const latestStockMovementDates = await getLatestWarehouseStockMovementDateMap([warehouseItem._id]);
+    const latestStockMovementDate = latestStockMovementDates.get(warehouseItem._id);
+    if (latestStockMovementDate && movementDate < latestStockMovementDate) {
+        return {
+            ok: false as const,
+            error: 'Tanggal mutasi stok tidak boleh lebih awal dari mutasi stok terakhir barang ini',
+            status: 400,
+        };
+    }
+    if (isTireTrackedWarehouseItem(warehouseItem)) {
+        return {
+            ok: false as const,
+            error: 'Mutasi stok manual untuk ban tertracking dikelola lewat modul Ban dan penerimaan pembelian',
+            status: 409,
+        };
+    }
+    const currentStockQty = Math.max(parseInventoryQuantity(warehouseItem.currentStockQty ?? 0), 0);
+    if (input.sourceType === 'MANUAL_OUT' && currentStockQty < input.quantity) {
+        return { ok: false as const, error: 'Stok barang tidak cukup untuk dikeluarkan', status: 409 };
+    }
+    const nextStockQty = input.sourceType === 'MANUAL_OUT' ? currentStockQty - input.quantity : currentStockQty + input.quantity;
+    const unitCostSnapshot = Math.max(parseWholeMoneyAmount(warehouseItem.defaultPurchasePrice ?? 0), 0);
+    const subtotalCost = Math.round(input.quantity * unitCostSnapshot);
+    const movementDoc: StockMovement = {
+        _id: `stock-movement-${crypto.randomUUID()}`,
+        _type: 'stockMovement',
+        warehouseItemRef: warehouseItem._id,
+        itemCode: warehouseItem.itemCode,
+        itemName: warehouseItem.name,
+        unit: warehouseItem.unit,
+        movementDate,
+        type: input.sourceType === 'MANUAL_OUT' ? 'OUT' : 'IN',
+        sourceType: input.sourceType,
+        quantity: input.quantity,
+        balanceAfter: nextStockQty,
+        unitCostSnapshot,
+        subtotalCost,
+        costMethod: 'WAREHOUSE_DEFAULT',
+        note,
+        createdBy: session._id,
+        createdByName: session.name,
+    };
+
+    await updateDocument(warehouseItem._id, { currentStockQty: nextStockQty }, 'warehouseItem');
+    await createDocument(movementDoc as unknown as { _type: string; [key: string]: unknown });
+    await postStockMovementJournal(
+        session,
+        movementDoc,
+        unitCostSnapshot
+    );
+
+    await addAuditLog(
+        session,
+        'CREATE',
+        'stock-movements',
+        movementDoc._id,
+        buildStockMovementAuditSummary({
+            itemName: warehouseItem.name,
+            itemCode: warehouseItem.itemCode,
+            quantity: input.quantity,
+            sourceType: input.sourceType,
+            note,
+        })
+    );
+    return { ok: true as const, movement: movementDoc };
+}
+
 export async function handleStockMovementCreate(
     session: ApiSession,
     data: Record<string, unknown>,
@@ -842,10 +931,8 @@ export async function handleStockMovementCreate(
 ) {
     try {
         const warehouseItemRef = normalizeOptionalText(data.warehouseItemRef);
-        const movementDate = normalizeOptionalText(data.movementDate) || getBusinessDateValue();
         const sourceType = normalizeText(data.sourceType).toUpperCase() as StockMovementSourceType;
         const quantity = parseInventoryQuantity(data.quantity);
-        const note = normalizeOptionalText(data.note);
 
         if (!warehouseItemRef) {
             return NextResponse.json({ error: 'Barang gudang wajib dipilih' }, { status: 400 });
@@ -853,75 +940,18 @@ export async function handleStockMovementCreate(
         if (sourceType !== 'MANUAL_IN' && sourceType !== 'MANUAL_OUT') {
             return NextResponse.json({ error: 'Tipe mutasi stok manual tidak valid' }, { status: 400 });
         }
-        assertIsoDate(movementDate, 'Tanggal mutasi stok');
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-            return NextResponse.json({ error: 'Qty mutasi stok tidak valid' }, { status: 400 });
-        }
 
-        const warehouseItem = await resolveWarehouseItemSnapshot(warehouseItemRef);
-        const latestStockMovementDates = await getLatestWarehouseStockMovementDateMap([warehouseItem._id]);
-        const latestStockMovementDate = latestStockMovementDates.get(warehouseItem._id);
-        if (latestStockMovementDate && movementDate < latestStockMovementDate) {
-            return NextResponse.json(
-                { error: 'Tanggal mutasi stok tidak boleh lebih awal dari mutasi stok terakhir barang ini' },
-                { status: 400 }
-            );
-        }
-        if (isTireTrackedWarehouseItem(warehouseItem)) {
-            return NextResponse.json(
-                { error: 'Mutasi stok manual untuk ban tertracking dikelola lewat modul Ban dan penerimaan pembelian' },
-                { status: 409 }
-            );
-        }
-        const currentStockQty = Math.max(parseInventoryQuantity(warehouseItem.currentStockQty ?? 0), 0);
-        if (sourceType === 'MANUAL_OUT' && currentStockQty < quantity) {
-            return NextResponse.json({ error: 'Stok barang tidak cukup untuk dikeluarkan' }, { status: 409 });
-        }
-        const nextStockQty = sourceType === 'MANUAL_OUT' ? currentStockQty - quantity : currentStockQty + quantity;
-        const unitCostSnapshot = Math.max(parseWholeMoneyAmount(warehouseItem.defaultPurchasePrice ?? 0), 0);
-        const subtotalCost = Math.round(quantity * unitCostSnapshot);
-        const movementDoc: StockMovement = {
-            _id: `stock-movement-${crypto.randomUUID()}`,
-            _type: 'stockMovement',
-            warehouseItemRef: warehouseItem._id,
-            itemCode: warehouseItem.itemCode,
-            itemName: warehouseItem.name,
-            unit: warehouseItem.unit,
-            movementDate,
-            type: sourceType === 'MANUAL_OUT' ? 'OUT' : 'IN',
+        const result = await createManualStockMovementCore(session, {
+            warehouseItemRef,
+            movementDate: normalizeOptionalText(data.movementDate) || getBusinessDateValue(),
             sourceType,
             quantity,
-            balanceAfter: nextStockQty,
-            unitCostSnapshot,
-            subtotalCost,
-            costMethod: 'WAREHOUSE_DEFAULT',
-            note,
-            createdBy: session._id,
-            createdByName: session.name,
-        };
-
-        await updateDocument(warehouseItem._id, { currentStockQty: nextStockQty }, 'warehouseItem');
-        await createDocument(movementDoc as unknown as { _type: string; [key: string]: unknown });
-        await postStockMovementJournal(
-            session,
-            movementDoc,
-            unitCostSnapshot
-        );
-
-        await addAuditLog(
-            session,
-            'CREATE',
-            'stock-movements',
-            movementDoc._id,
-            buildStockMovementAuditSummary({
-                itemName: warehouseItem.name,
-                itemCode: warehouseItem.itemCode,
-                quantity,
-                sourceType,
-                note,
-            })
-        );
-        return NextResponse.json({ data: movementDoc, id: movementDoc._id });
+            note: normalizeOptionalText(data.note),
+        }, addAuditLog);
+        if (!result.ok) {
+            return NextResponse.json({ error: result.error }, { status: result.status });
+        }
+        return NextResponse.json({ data: result.movement, id: result.movement._id });
     } catch (error) {
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Mutasi stok tidak valid' },
@@ -1095,6 +1125,133 @@ export async function handleStockMovementCreateMany(
     } catch (error) {
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Mutasi stok tidak valid' },
+            { status: 400 }
+        );
+    }
+}
+
+export async function handleWarehouseItemCreate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    try {
+        const initialStockQty = parseInventoryQuantity(data.initialStockQty ?? 0);
+        const trackingMode = normalizeText(data.trackingMode).toUpperCase();
+        const cleanedData = { ...data };
+        delete cleanedData.initialStockQty;
+        delete cleanedData.currentStockQty;
+
+        if (!Number.isFinite(initialStockQty) || initialStockQty < 0) {
+            return NextResponse.json({ error: 'Stok awal barang gudang tidak valid' }, { status: 400 });
+        }
+        if (initialStockQty > 0 && trackingMode === 'TIRE_ASSET') {
+            return NextResponse.json(
+                { error: 'Stok awal tidak bisa di-set untuk barang gudang ban tertracking' },
+                { status: 409 }
+            );
+        }
+
+        const createResponse = await handleGenericCreate(session, 'warehouse-items', 'warehouseItem', cleanedData, addAuditLog);
+        const createPayload = await createResponse.json().catch(() => null) as { data?: WarehouseItem; id?: string; error?: string } | null;
+        if (!createResponse.ok) {
+            return NextResponse.json(
+                { error: createPayload?.error || 'Gagal membuat barang gudang' },
+                { status: createResponse.status || 400 }
+            );
+        }
+        const itemId = typeof createPayload?.id === 'string' ? createPayload.id : '';
+        if (!itemId) {
+            return NextResponse.json({ error: 'Gagal membuat barang gudang' }, { status: 500 });
+        }
+
+        if (initialStockQty > 0) {
+            const movement = await createManualStockMovementCore(session, {
+                warehouseItemRef: itemId,
+                sourceType: 'MANUAL_IN',
+                quantity: initialStockQty,
+                movementDate: getBusinessDateValue(),
+                note: 'Stok awal pembuatan barang gudang',
+            }, addAuditLog);
+            if (!movement.ok) {
+                return NextResponse.json({ error: movement.error }, { status: movement.status });
+            }
+        }
+
+        const freshItem = await getDocumentById<WarehouseItem>(itemId, 'warehouseItem');
+        return NextResponse.json({
+            data: freshItem ?? createPayload?.data,
+            id: itemId,
+        });
+    } catch (error) {
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Barang gudang tidak valid' },
+            { status: 400 }
+        );
+    }
+}
+
+export async function handleWarehouseItemUpdate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    try {
+        const id = typeof data.id === 'string' ? data.id : '';
+        const updates = isPlainObject(data.updates) ? data.updates : null;
+        if (!id || !updates) {
+            return NextResponse.json({ error: 'Data barang gudang tidak valid' }, { status: 400 });
+        }
+
+        const hasStockTarget = Object.prototype.hasOwnProperty.call(updates, 'currentStockQty');
+        const targetStockQty = hasStockTarget ? parseInventoryQuantity(updates.currentStockQty) : NaN;
+        const cleanedUpdates = { ...updates };
+        delete cleanedUpdates.currentStockQty;
+
+        if (hasStockTarget && (!Number.isFinite(targetStockQty) || targetStockQty < 0)) {
+            return NextResponse.json({ error: 'Stok saat ini barang gudang tidak valid' }, { status: 400 });
+        }
+
+        const existing = await getDocumentById<WarehouseItem>(id, 'warehouseItem');
+        if (!existing) {
+            return NextResponse.json({ error: 'Barang gudang tidak ditemukan' }, { status: 404 });
+        }
+        if (hasStockTarget && isTireTrackedWarehouseItem(existing)) {
+            return NextResponse.json(
+                { error: 'Stok barang gudang ban tertracking tidak bisa diubah lewat edit master. Gunakan modul Ban.' },
+                { status: 409 }
+            );
+        }
+
+        const existingStockQty = Math.max(parseInventoryQuantity(existing.currentStockQty ?? 0), 0);
+        const delta = hasStockTarget ? targetStockQty - existingStockQty : 0;
+        if (hasStockTarget && delta !== 0) {
+            const movement = await createManualStockMovementCore(session, {
+                warehouseItemRef: id,
+                sourceType: delta > 0 ? 'MANUAL_IN' : 'MANUAL_OUT',
+                quantity: Math.abs(delta),
+                movementDate: getBusinessDateValue(),
+                note: delta > 0 ? 'Penyesuaian stok naik (edit barang gudang)' : 'Penyesuaian stok turun (edit barang gudang)',
+            }, addAuditLog);
+            if (!movement.ok) {
+                return NextResponse.json({ error: movement.error }, { status: movement.status });
+            }
+        }
+
+        const updateResponse = await handleGenericUpdate(session, 'warehouse-items', { id, updates: cleanedUpdates }, addAuditLog);
+        const updatePayload = await updateResponse.json().catch(() => null) as { data?: WarehouseItem; error?: string } | null;
+        if (!updateResponse.ok) {
+            return NextResponse.json(
+                { error: updatePayload?.error || 'Gagal memperbarui barang gudang' },
+                { status: updateResponse.status || 400 }
+            );
+        }
+
+        const freshItem = await getDocumentById<WarehouseItem>(id, 'warehouseItem');
+        return NextResponse.json({ data: freshItem ?? updatePayload?.data });
+    } catch (error) {
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Barang gudang tidak valid' },
             { status: 400 }
         );
     }

@@ -76,6 +76,8 @@ import {
     handlePurchaseReceive,
     handleStockMovementCreate,
     handleStockMovementCreateMany,
+    handleWarehouseItemCreate,
+    handleWarehouseItemUpdate,
 } from '@/lib/api/inventory-workflows';
 import {
     getMaintenanceMaterialOptions,
@@ -2096,6 +2098,10 @@ export async function POST(request: Request) {
             return await handleChartOfAccountUpdate(session, data, addAuditLog);
         }
 
+        if (entity === 'warehouse-items' && action === 'update') {
+            return await handleWarehouseItemUpdate(session, data, addAuditLog);
+        }
+
         if (action === 'update') {
             return await handleGenericUpdate(session, entity, data, addAuditLog);
         }
@@ -2130,6 +2136,10 @@ export async function POST(request: Request) {
 
         if (entity === 'chart-of-accounts') {
             return await handleChartOfAccountCreate(session, data, addAuditLog);
+        }
+
+        if (entity === 'warehouse-items') {
+            return await handleWarehouseItemCreate(session, data, addAuditLog);
         }
 
         return await handleGenericCreate(session, entity, docType, data, addAuditLog);
