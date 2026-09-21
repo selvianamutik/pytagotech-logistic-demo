@@ -184,6 +184,10 @@ const specialPermissionBlock = extractBalancedBlock(
 );
 const postBlock = extractBalancedBlock('POST /api/data', 'export async function POST');
 const entityModuleMapBlock = extractBalancedBlock('ENTITY_MODULE_MAP', 'const ENTITY_MODULE_MAP');
+const accountingPeriodFallbackBlock = extractBalancedBlock(
+    'shouldFallbackToBusinessDate',
+    'function shouldFallbackToBusinessDate'
+);
 
 const documentTypeEntities = Array.from(
     documentTypesSource.matchAll(/^\s*'?([a-z0-9-]+)'?:\s*'[^']+'/gm),
@@ -594,6 +598,29 @@ assert(
         !accountingPostingSource.includes('totalExpense + Math.max(balance, 0)') &&
         !accountingPostingSource.includes("lines.push({ account: 'driver_advance', debit: shortage"),
     'Settlement uang jalan harus menutup akun bon sebesar total uang diberikan dan mencatat kekurangan sebagai kredit kas/bank, bukan debit-kredit ulang di akun bon.'
+);
+assertActionMappedToUpdate(mutationPermissionBlock, 'settle-batch');
+assertDispatch(postBlock, 'driver-vouchers', 'settle-batch', 'handleDriverVoucherBatchSettlement');
+const settleBatchPermissionBlock = extractSpecialPermissionBlock(specialPermissionBlock, 'settle-batch', 'driver-vouchers');
+assert(settleBatchPermissionBlock, 'Special permission settle-batch belum ada di hasSpecialMutationPermission.');
+assert(
+    /hasPermission\(\s*session\s*,\s*'driverVouchers'\s*,\s*'update'\s*\)/.test(settleBatchPermissionBlock),
+    'settle-batch harus memakai hasPermission(session, driverVouchers, update).'
+);
+assert(
+    accountingPeriodFallbackBlock.includes("action === 'settle-batch'"),
+    'settle-batch harus masuk fallback business date pengecekan periode akuntansi.'
+);
+const driverVoucherBatchSettleBlock = extractBalancedBlockFrom(
+    driverWorkflowSource,
+    'handleDriverVoucherBatchSettlement',
+    'export async function handleDriverVoucherBatchSettlement'
+);
+assert(
+    driverVoucherBatchSettleBlock.includes('handleDriverVoucherSettlement') &&
+        driverVoucherBatchSettleBlock.includes('settled.push') &&
+        driverVoucherBatchSettleBlock.includes('failed.push'),
+    'Penyelesaian massal harus mengulang logika settle per trip (handleDriverVoucherSettlement) dan mengumpulkan hasil selesai/gagal.'
 );
 const driverVoucherDisbursementDeleteBlock = extractBalancedBlockFrom(
     driverWorkflowSource,

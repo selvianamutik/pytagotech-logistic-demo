@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, Plus, Search, Receipt } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, Eye, Plus, Search, Receipt, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 
@@ -11,7 +11,8 @@ import { formatDate, formatCurrency, getDriverVoucherFinancialSummary } from '@/
 import { formatDriverVoucherRouteForDisplay } from '@/lib/driver-voucher-route';
 import { buildDriverVoucherSettlementDisplay, inferDriverVoucherDisbursementCount } from '@/lib/driver-voucher-detail-support';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
-import { fetchAdminListPayload } from '@/lib/api/admin-client';
+import { fetchAdminCollectionData, fetchAdminListPayload, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
+import { getBusinessDateValue } from '@/lib/business-date';
 import {
     buildFinanceDateFilter,
     FINANCE_PERIOD_MONTH_NAMES,
@@ -23,8 +24,8 @@ import {
     isFinancePeriodRangeReady,
     type FinancePeriodMode,
 } from '@/lib/finance-period';
-import type { DriverVoucher } from '@/lib/types';
-import { hasPageAccess, hasPermission } from '@/lib/rbac';
+import type { BankAccount, DriverVoucher } from '@/lib/types';
+import { hasPageAccess, hasPermission, normalizeUserRole } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
@@ -71,12 +72,151 @@ export default function DriverVouchersPage() {
     const [queueCounts, setQueueCounts] = useState({ issued: 0, draft: 0, settled: 0 });
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const canCreateVoucher = user ? hasPermission(user, 'driverVouchers', 'create') : false;
+    const normalizedRole = user ? normalizeUserRole(user.role) : null;
+    const canBatchSettle = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
+    const [selectedVouchers, setSelectedVouchers] = useState<Record<string, DriverVoucher>>({});
+    const [batchCandidates, setBatchCandidates] = useState<DriverVoucher[]>([]);
+    const [loadingBatchCandidates, setLoadingBatchCandidates] = useState(false);
+    const [showBatchSettle, setShowBatchSettle] = useState(false);
+    const [batchSettleDate, setBatchSettleDate] = useState(getBusinessDateValue());
+    const [batchSettleBankRef, setBatchSettleBankRef] = useState('');
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+    const [settlingBatch, setSettlingBatch] = useState(false);
+    const [batchResult, setBatchResult] = useState<{ settled: Array<{ id: string; bonNumber: string }>; failed: Array<{ id: string; error: string }> } | null>(null);
+    const [expandedVoucherId, setExpandedVoucherId] = useState<string | null>(null);
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]
     );
     const isPeriodReady = isFinancePeriodRangeReady(periodMode, dateRange.startDate, dateRange.endDate);
     const yearOptions = useMemo(() => getFinancePeriodYearOptions(year), [year]);
+
+    const isBatchSettleEligible = useCallback((voucher: DriverVoucher) => {
+        if (voucher.status !== 'ISSUED' || !voucher.issueBankRef) {
+            return false;
+        }
+        const { totalSpent, driverFeeAmount } = getDriverVoucherFinancialSummary(voucher);
+        return totalSpent > 0 || driverFeeAmount > 0;
+    }, []);
+
+    const selectedCount = Object.keys(selectedVouchers).length;
+
+    const toggleVoucherSelection = useCallback((voucher: DriverVoucher) => {
+        setSelectedVouchers(current => {
+            const next = { ...current };
+            if (next[voucher._id]) {
+                delete next[voucher._id];
+            } else {
+                next[voucher._id] = voucher;
+            }
+            return next;
+        });
+    }, []);
+
+    const toggleSelectAll = useCallback(() => {
+        setSelectedVouchers(current => {
+            if (batchCandidates.length > 0 && batchCandidates.every(voucher => current[voucher._id])) {
+                return {};
+            }
+            return Object.fromEntries(batchCandidates.map(voucher => [voucher._id, voucher]));
+        });
+    }, [batchCandidates]);
+
+    const allCandidatesSelected = batchCandidates.length > 0 && batchCandidates.every(voucher => selectedVouchers[voucher._id]);
+
+    const loadBatchCandidates = useCallback(async () => {
+        setLoadingBatchCandidates(true);
+        try {
+            const params = new URLSearchParams({
+                entity: 'driver-vouchers',
+                filter: JSON.stringify({ status: 'ISSUED' }),
+            });
+            const vouchers = await fetchAllAdminCollectionData<DriverVoucher>(
+                `/api/data?${params.toString()}`,
+                'Gagal memuat uang jalan trip yang bisa diselesaikan'
+            );
+            setBatchCandidates(vouchers.filter(isBatchSettleEligible));
+        } catch (error) {
+            setBatchCandidates([]);
+            addToast('error', error instanceof Error ? error.message : 'Gagal memuat uang jalan trip yang bisa diselesaikan');
+        } finally {
+            setLoadingBatchCandidates(false);
+        }
+    }, [addToast, isBatchSettleEligible]);
+
+    const openBatchSettle = useCallback(() => {
+        setBatchSettleDate(getBusinessDateValue());
+        setBatchSettleBankRef('');
+        setBatchResult(null);
+        setExpandedVoucherId(null);
+        setSelectedVouchers({});
+        setBatchCandidates([]);
+        setShowBatchSettle(true);
+        void loadBatchCandidates();
+    }, [loadBatchCandidates]);
+
+    const closeBatchSettle = useCallback(() => {
+        if (settlingBatch) return;
+        setShowBatchSettle(false);
+        if (batchResult) {
+            setSelectedVouchers({});
+        }
+    }, [batchResult, settlingBatch]);
+
+    const loadBankAccounts = useCallback(async () => {
+        if (bankAccounts.length > 0) return;
+        try {
+            const accounts = await fetchAdminCollectionData<BankAccount[]>('/api/data?entity=bank-accounts', 'Gagal memuat rekening');
+            setBankAccounts((accounts || []).filter(account => account.active !== false));
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal memuat rekening');
+        }
+    }, [addToast, bankAccounts.length]);
+
+    const handleBatchSettle = useCallback(async () => {
+        if (settlingBatch || selectedCount === 0) return;
+        if (!batchSettleDate) {
+            addToast('error', 'Pilih tanggal penyelesaian');
+            return;
+        }
+        setSettlingBatch(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'driver-vouchers',
+                    action: 'settle-batch',
+                    data: {
+                        ids: Object.keys(selectedVouchers),
+                        date: batchSettleDate,
+                        settlementBankRef: batchSettleBankRef || undefined,
+                    },
+                }),
+            });
+            const result = await res.json();
+
+            if (!res.ok) {
+                addToast('error', result.error || 'Gagal menyelesaikan bon');
+                return;
+            }
+
+            setBatchResult(result.data);
+            addToast('success', 'Penyelesaian massal selesai diproses');
+        } catch {
+            addToast('error', 'Gagal menyelesaikan bon');
+        } finally {
+            setSettlingBatch(false);
+        }
+    }, [addToast, batchSettleBankRef, batchSettleDate, selectedCount, selectedVouchers, settlingBatch]);
+
+    useEffect(() => {
+        if (bankAccounts.length === 0) return;
+        const activeBankRefSet = new Set(bankAccounts.map(account => account._id));
+        if (batchSettleBankRef && !activeBankRefSet.has(batchSettleBankRef)) {
+            setBatchSettleBankRef('');
+        }
+    }, [bankAccounts, batchSettleBankRef]);
 
     const buildVoucherQuery = useCallback((
         targetPage = page,
@@ -159,6 +299,20 @@ export default function DriverVouchersPage() {
     }, [loadVouchers]);
 
     useEffect(() => {
+        if (batchResult) {
+            void loadVouchers();
+        }
+    }, [batchResult, loadVouchers]);
+
+    const handleCloseBatchSettle = useCallback(() => {
+        const shouldRefresh = Boolean(batchResult);
+        closeBatchSettle();
+        if (shouldRefresh) {
+            void loadVouchers();
+        }
+    }, [batchResult, closeBatchSettle, loadVouchers]);
+
+    useEffect(() => {
         setPage(1);
     }, [dateFrom, dateTo, monthIndex, periodMode, search, statusFilter, year]);
 
@@ -169,6 +323,11 @@ export default function DriverVouchersPage() {
                     <h1 className="page-title">Uang Jalan Trip</h1>
                 </div>
                 <div className="page-actions">
+                    {canBatchSettle && (
+                        <button className="btn btn-secondary" onClick={openBatchSettle}>
+                            <CheckCircle size={18} /> Selesaikan Massal
+                        </button>
+                    )}
                     {canCreateVoucher && (
                         <button className="btn btn-primary" onClick={() => router.push('/driver-vouchers/new')}>
                             <Plus size={18} /> Terbitkan Uang Jalan
@@ -484,6 +643,151 @@ export default function DriverVouchersPage() {
                     />
                 )}
             </div>
+
+            {showBatchSettle && canBatchSettle && (
+                <div className="modal-overlay" onClick={() => { if (!settlingBatch) handleCloseBatchSettle(); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 640 }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Selesaikan Uang Jalan Trip</h3>
+                            <button className="modal-close" onClick={handleCloseBatchSettle} disabled={settlingBatch}><X size={20} /></button>
+                        </div>
+                        <div className="modal-body">
+                            {!batchResult ? (
+                                <>
+                                    <p className="text-muted" style={{ marginBottom: '1rem' }}>Pilih uang jalan trip yang ingin diselesaikan, lalu tentukan tanggal penyelesaian. Rekening opsional; setiap trip yang saldonya di atas nol tetap wajib memakai rekening (akan memakai rekening sumber dana trip bila tidak dipilih).</p>
+
+                                    <div className="form-group">
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.4rem' }}>
+                                            <label className="form-label" style={{ marginBottom: 0 }}>Pilih Uang Jalan Trip <span className="required">*</span></label>
+                                            {batchCandidates.length > 0 && (
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={allCandidatesSelected} onChange={toggleSelectAll} disabled={settlingBatch} />
+                                                    Pilih semua ({batchCandidates.length})
+                                                </label>
+                                            )}
+                                        </div>
+                                        <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '0.6rem', padding: '0.35rem 0', maxHeight: 260, overflowY: 'auto' }}>
+                                            {loadingBatchCandidates ? (
+                                                <div className="text-muted" style={{ padding: '0.85rem' }}>Memuat uang jalan trip...</div>
+                                            ) : batchCandidates.length === 0 ? (
+                                                <div className="text-muted" style={{ padding: '0.85rem' }}>Tidak ada uang jalan trip yang bisa diselesaikan.</div>
+                                            ) : batchCandidates.map(voucher => {
+                                                const summary = getDriverVoucherFinancialSummary(voucher);
+                                                const expanded = expandedVoucherId === voucher._id;
+                                                return (
+                                                    <div key={voucher._id} style={{ borderBottom: '1px solid var(--color-gray-100)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.85rem' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                aria-label={`Pilih ${voucher.bonNumber}`}
+                                                                checked={Boolean(selectedVouchers[voucher._id])}
+                                                                onChange={() => toggleVoucherSelection(voucher)}
+                                                                disabled={settlingBatch}
+                                                                style={{ flexShrink: 0 }}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-ghost btn-sm"
+                                                                style={{ flex: 1, justifyContent: 'space-between', padding: '0.2rem 0', borderRadius: 0 }}
+                                                                onClick={() => setExpandedVoucherId(expanded ? null : voucher._id)}
+                                                                disabled={settlingBatch}
+                                                            >
+                                                                <span style={{ fontWeight: 600 }}>{voucher.bonNumber}</span>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                    <span className="text-muted text-sm">{voucher.driverName || '-'}</span>
+                                                                    <span style={{ fontWeight: 600, color: summary.balance < 0 ? 'var(--color-danger)' : summary.balance > 0 ? 'var(--color-success)' : undefined }}>
+                                                                        {formatCurrency(summary.balance)}
+                                                                    </span>
+                                                                    {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                                </span>
+                                                            </button>
+                                                        </div>
+                                                        {expanded && (
+                                                            <div style={{ padding: '0.5rem 0.85rem 0.85rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem' }}>
+                                                                <div><span className="text-muted text-sm">Total Diberikan</span><div className="font-medium">{formatCurrency(summary.totalIssuedAmount)}</div></div>
+                                                                <div><span className="text-muted text-sm">Biaya Lain-lain</span><div className="font-medium">{formatCurrency(summary.totalSpent)}</div></div>
+                                                                <div><span className="text-muted text-sm">Upah Borongan</span><div className="font-medium">{formatCurrency(summary.driverFeeAmount)}</div></div>
+                                                                <div><span className="text-muted text-sm">Total Biaya</span><div className="font-medium">{formatCurrency(summary.totalClaimAmount)}</div></div>
+                                                                <div style={{ gridColumn: '1 / -1' }}>
+                                                                    <span className="text-muted text-sm">Rekening Sumber Dana</span>
+                                                                    <div className="font-medium">{voucher.issueBankName || 'Tidak tercatat'}</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label className="form-label">Tanggal Selesaikan Trip <span className="required">*</span></label>
+                                        <input type="date" className="form-input" value={batchSettleDate} onChange={event => setBatchSettleDate(event.target.value)} disabled={settlingBatch} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Rekening Penyelesaian</label>
+                                        <select
+                                            className="form-select"
+                                            value={batchSettleBankRef}
+                                            onChange={event => setBatchSettleBankRef(event.target.value)}
+                                            disabled={settlingBatch}
+                                            onFocus={loadBankAccounts}
+                                        >
+                                            <option value="">Pilih rekening atau kas (opsional)</option>
+                                            {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
+                                        </select>
+                                        <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Dipakai untuk semua trip yang dipilih bila diberikan; tanpa ini masing-masing trip memakai rekening sumber dananya.</div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="info-banner" style={{ marginBottom: '1rem' }}>
+                                        <div className="info-banner-text">
+                                            {batchResult.settled.length} trip selesai, {batchResult.failed.length} gagal.
+                                        </div>
+                                    </div>
+                                    {batchResult.settled.length > 0 && (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <div className="text-muted text-sm" style={{ marginBottom: '0.35rem' }}>Berhasil</div>
+                                            {batchResult.settled.map(entry => (
+                                                <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', borderBottom: '1px solid var(--color-gray-100)' }}>
+                                                    <span style={{ fontWeight: 500 }}>{entry.bonNumber || entry.id}</span>
+                                                    <span className="badge badge-green">Selesai</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {batchResult.failed.length > 0 && (
+                                        <div>
+                                            <div className="text-muted text-sm" style={{ marginBottom: '0.35rem' }}>Gagal</div>
+                                            {batchResult.failed.map(entry => (
+                                                <div key={entry.id} style={{ padding: '0.4rem 0', borderBottom: '1px solid var(--color-gray-100)' }}>
+                                                    <div style={{ fontWeight: 500 }}>{Object.values(selectedVouchers).find(v => v._id === entry.id)?.bonNumber || entry.id}</div>
+                                                    <div className="text-muted text-sm" style={{ color: 'var(--color-danger)' }}>{entry.error}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            {!batchResult ? (
+                                <>
+                                    <button className="btn btn-secondary" onClick={handleCloseBatchSettle} disabled={settlingBatch}>Batal</button>
+                                    <button className="btn btn-primary" onClick={handleBatchSettle} disabled={settlingBatch || selectedCount === 0}>
+                                        <CheckCircle size={16} /> {settlingBatch ? 'Memproses...' : `Selesaikan ${selectedCount} Trip`}
+                                    </button>
+                                </>
+                            ) : (
+                                <button className="btn btn-primary" onClick={handleCloseBatchSettle}>
+                                    Tutup
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

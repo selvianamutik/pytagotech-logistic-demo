@@ -38,6 +38,7 @@ import {
 } from '@/lib/api/accounting-privacy';
 import {
     handleBoronganPayment,
+    handleDriverVoucherBatchSettlement,
     handleDriverVoucherCreate,
     handleDriverVoucherDisbursementDelete,
     handleDriverVoucherDisbursementUpdate,
@@ -316,6 +317,7 @@ function getMutationPermissionAction(action?: string): keyof ModulePermissions {
         action === 'set-hold-quantity' ||
         action === 'release-hold' ||
         action === 'settle' ||
+        action === 'settle-batch' ||
         action === 'top-up' ||
         action === 'repair-issue-ledger' ||
         action === 'mark-paid' ||
@@ -370,6 +372,10 @@ function hasSpecialMutationPermission(session: Session, entity: string, action?:
     }
 
     if (entity === 'driver-vouchers' && action === 'settle') {
+        return hasPermission(session, 'driverVouchers', 'update');
+    }
+
+    if (entity === 'driver-vouchers' && action === 'settle-batch') {
         return hasPermission(session, 'driverVouchers', 'update');
     }
 
@@ -492,7 +498,7 @@ function shouldLoadExistingAccountingDate(entity: string, action: string | undef
 function shouldFallbackToBusinessDate(entity: string, action: string | undefined) {
     return Boolean(
         entity === 'bank-accounts' ||
-        (entity === 'driver-vouchers' && (action === 'settle' || action === 'repair-issue-ledger')) ||
+        (entity === 'driver-vouchers' && (action === 'settle' || action === 'settle-batch' || action === 'repair-issue-ledger')) ||
         (entity === 'stock-movements' && (!action || action === 'create' || action === 'create-many')) ||
         (entity === 'expenses' && (!action || action === 'create' || action === 'update'))
     );
@@ -1996,6 +2002,10 @@ export async function POST(request: Request) {
 
         if (entity === 'driver-vouchers' && action === 'settle') {
             return await handleDriverVoucherSettlement(session, data, addAuditLog);
+        }
+
+        if (entity === 'driver-vouchers' && action === 'settle-batch') {
+            return await handleDriverVoucherBatchSettlement(session, data, addAuditLog);
         }
 
         if (entity === 'driver-vouchers' && action === 'top-up') {

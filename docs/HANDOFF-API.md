@@ -194,6 +194,7 @@ Jika tidak cocok, jatuh ke **generic** (`handleGenericCreate/Update/Delete`) ata
 |--------|--------|---------|
 | `driver-vouchers` | (create) | `handleDriverVoucherCreate` |
 | `driver-vouchers` | `settle` | `handleDriverVoucherSettlement` |
+| `driver-vouchers` | `settle-batch` | `handleDriverVoucherBatchSettlement` |
 | `driver-vouchers` | `top-up` | `handleDriverVoucherTopUp` |
 | `driver-vouchers` | `repair-issue-ledger` | `handleDriverVoucherIssueRepair` |
 | `driver-voucher-items` | (create) | `handleDriverVoucherItemCreate` |

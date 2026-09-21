@@ -2176,6 +2176,78 @@ export async function handleDriverVoucherSettlement(
     return NextResponse.json({ data: updatedVoucher });
 }
 
+export async function handleDriverVoucherBatchSettlement(
+    session: Pick<ApiSession, '_id' | 'name'>,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const rawIds = Array.isArray(data.ids)
+        ? data.ids
+        : [];
+    const ids = Array.from(new Set(
+        rawIds
+            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            .map(value => value.trim())
+    ));
+    if (ids.length === 0) {
+        return NextResponse.json({ error: 'Pilih minimal 1 uang jalan trip' }, { status: 400 });
+    }
+    if (ids.length > 100) {
+        return NextResponse.json({ error: 'Maksimal 100 uang jalan trip per penyelesaian massal' }, { status: 400 });
+    }
+
+    const settledDate =
+        typeof data.date === 'string' && data.date
+            ? data.date
+            : getBusinessDateValue();
+    const settledDateError = validateIsoDateOrResponse(settledDate, 'Tanggal penyelesaian', 'Tanggal penyelesaian tidak valid');
+    if (settledDateError) {
+        return settledDateError;
+    }
+
+    const requestedSettlementBankRef =
+        typeof data.settlementBankRef === 'string' && data.settlementBankRef
+            ? data.settlementBankRef
+            : undefined;
+
+    const settled: Array<{ id: string; bonNumber: string }> = [];
+    const failed: Array<{ id: string; error: string }> = [];
+
+    for (const id of ids) {
+        try {
+            const response = await handleDriverVoucherSettlement(
+                session,
+                { id, date: settledDate, settlementBankRef: requestedSettlementBankRef },
+                addAuditLog
+            );
+            if (!response) {
+                failed.push({ id, error: 'Terjadi kesalahan saat penyelesaian uang jalan trip' });
+                continue;
+            }
+            const body = await response.json().catch(() => null);
+            if (response.ok) {
+                settled.push({ id, bonNumber: body?.data?.bonNumber || id });
+            } else {
+                failed.push({ id, error: body?.error || 'Gagal menyelesaikan uang jalan trip' });
+            }
+        } catch {
+            failed.push({ id, error: 'Terjadi kesalahan saat penyelesaian uang jalan trip' });
+        }
+    }
+
+    if (settled.length > 0) {
+        await addAuditLog(
+            session,
+            'UPDATE',
+            'driver-vouchers',
+            ids[0],
+            `Penyelesaian massal uang jalan trip: ${settled.length} selesai, ${failed.length} gagal`
+        );
+    }
+
+    return NextResponse.json({ data: { settled, failed } });
+}
+
 export async function handleDriverVoucherIssueRepair(
     session: Pick<ApiSession, '_id' | 'name'>,
     data: Record<string, unknown>,

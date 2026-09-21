@@ -195,6 +195,7 @@ UAT: [UAT_TIRE_MAINTENANCE.md](./UAT_TIRE_MAINTENANCE.md).
 | Tutup trip | `delivery-orders` | `set-trip-closure` |
 | Terbitkan uang jalan | `driver-vouchers` | create (tanpa action) |
 | Top-up / settle | `driver-vouchers` | `top-up`, `settle` |
+| Selesaikan massal | `driver-vouchers` | `settle-batch` |
 | Biaya lain trip | `driver-voucher-items` | create |
 | Approval driver | `delivery-orders` | `reject-driver-status-request` |
 
@@ -291,6 +292,8 @@ Guard UI: revisi/hapus/PPh 23 diblok jika sudah ada pembayaran, refund, atau pot
 
 `GET driver-vouchers` (paginated, `sortPreset=work-queue`).
 
+**Selesaikan massal (OWNER, FINANCE):** centang trip berstatus `ISSUED` yang siap dibereskan (punya `issueBankRef`, punya biaya lain-lain atau upah borongan) → tombol "Selesaikan Massal" → modal pilih tanggal + rekening opsional → `POST settle-batch` (vertikal ke `handleDriverVoucherBatchSettlement`) → hasil per-trip selesai/gagal ditampilkan di dalam modal.
+
 #### Detail — `driver-vouchers/[id]/page.tsx`
 
 | GET | |
@@ -310,6 +313,7 @@ Guard UI: revisi/hapus/PPh 23 diblok jika sudah ada pembayaran, refund, atau pot
 | Top-up | `driver-vouchers` | `top-up` | OWNER, OPERASIONAL |
 | Edit/hapus top-up | `driver-voucher-disbursements` | update/delete | OWNER, OPERASIONAL |
 | Selesaikan | `driver-vouchers` | `settle` | OWNER, FINANCE |
+| Selesaikan massal | `driver-vouchers` | `settle-batch` | OWNER, FINANCE |
 | Rekonsiliasi pencairan lama | `driver-vouchers` | `repair-issue-ledger` | OWNER, FINANCE |
 | Overtonase manual | `delivery-orders` | `update-manual-overtonase` | OWNER/OPS, DO belum ditutup admin |
 
