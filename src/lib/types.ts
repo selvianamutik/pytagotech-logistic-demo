@@ -439,6 +439,7 @@ export type StockMovementSourceType =
   | 'MANUAL_IN'
   | 'MANUAL_OUT'
   | 'ADJUSTMENT'
+  | 'STOCK_OPENING'
   | 'MAINTENANCE_USAGE'
   | 'TIRE_DEPLOYMENT'
   | 'TIRE_RETURN';

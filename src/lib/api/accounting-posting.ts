@@ -741,7 +741,7 @@ export async function postStockMovementJournal(
     movement: StockMovement,
     unitValue: number,
 ) {
-    const stockMovementEvents = ['MANUAL_IN', 'MANUAL_OUT', 'MAINTENANCE_USAGE'];
+    const stockMovementEvents = ['MANUAL_IN', 'MANUAL_OUT', 'STOCK_OPENING', 'MAINTENANCE_USAGE'];
     await Promise.all(
         stockMovementEvents
             .filter(event => event !== movement.sourceType)
@@ -751,6 +751,7 @@ export async function postStockMovementJournal(
     const shouldPostInventoryUsage =
         movement.sourceType === 'MANUAL_IN' ||
         movement.sourceType === 'MANUAL_OUT' ||
+        movement.sourceType === 'STOCK_OPENING' ||
         movement.sourceType === 'MAINTENANCE_USAGE';
     if (!shouldPostInventoryUsage) {
         await voidJournalEntryForSource(session, 'STOCK_MOVEMENT', movement._id, movement.sourceType);
@@ -762,10 +763,16 @@ export async function postStockMovementJournal(
         : cleanLineAmount(unitValue * cleanLineAmount(movement.quantity));
     if (amount <= 0) return;
 
-    const isStockIn = movement.type === 'IN' && movement.sourceType === 'MANUAL_IN';
+    const isStockIn =
+        movement.type === 'IN' &&
+        (movement.sourceType === 'MANUAL_IN' || movement.sourceType === 'STOCK_OPENING');
     await postJournalEntry(session, {
         entryDate: movement.movementDate,
-        memo: `${isStockIn ? 'Penyesuaian stok masuk' : 'Pemakaian stok keluar'} ${movement.itemName || movement.itemCode || movement._id}`,
+        memo: `${isStockIn
+            ? movement.sourceType === 'STOCK_OPENING'
+                ? `Stok awal ${movement.itemName || movement.itemCode || movement._id}`
+                : `Penyesuaian stok masuk ${movement.itemName || movement.itemCode || movement._id}`
+            : `Pemakaian stok keluar ${movement.itemName || movement.itemCode || movement._id}`}`,
         sourceType: 'STOCK_MOVEMENT',
         sourceRef: movement._id,
         sourceEvent: movement.sourceType,

@@ -1168,7 +1168,7 @@ export async function handleWarehouseItemCreate(
         if (initialStockQty > 0) {
             const movement = await createManualStockMovementCore(session, {
                 warehouseItemRef: itemId,
-                sourceType: 'MANUAL_IN',
+                sourceType: 'STOCK_OPENING',
                 quantity: initialStockQty,
                 movementDate: getBusinessDateValue(),
                 note: 'Stok awal pembuatan barang gudang',
