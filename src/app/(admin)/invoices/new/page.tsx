@@ -381,6 +381,11 @@ export default function NewNotaPage() {
     }, [customerRef, customers, ensureCustomerBillingRates]);
 
     useEffect(() => {
+        if (!customerRef || editNotaId) return;
+        void ensureInvoiceReferenceData().catch(() => {});
+    }, [customerRef, editNotaId, ensureInvoiceReferenceData]);
+
+    useEffect(() => {
         setRows(previous => previous.map(row => ({
             ...row,
             uangRp: Math.round(calculateFreightNotaRowAmount({
@@ -904,6 +909,16 @@ export default function NewNotaPage() {
 
     const availableDeliveryOrderOptions = deliveryOrders.flatMap(deliveryOrder => {
         if (!invoiceReferenceDataLoaded) {
+            if (customerRef) {
+                const matchesSelectedCustomer =
+                    deliveryOrder.customerRef === customerRef ||
+                    orders.some(order => order._id === deliveryOrder.orderRef && order.customerRef === customerRef) ||
+                    (deliveryOrder.shipperReferences || []).some(reference => reference.billingCustomerRef === customerRef) ||
+                    (deliveryOrder.actualDropPoints || []).some(point => point.billingCustomerRef === customerRef);
+                if (!matchesSelectedCustomer) {
+                    return [];
+                }
+            }
             const noSJList = [...new Set(
                 (deliveryOrder.shipperReferences || [])
                     .map(reference => reference.referenceNumber?.trim())
