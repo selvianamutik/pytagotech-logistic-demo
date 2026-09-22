@@ -73,6 +73,9 @@ export default function DriverVoucherDetailPage() {
     const [settlementDate, setSettlementDate] = useState(getBusinessDateValue());
     const [settlementBankRef, setSettlementBankRef] = useState('');
     const [issueBankRepairRef, setIssueBankRepairRef] = useState('');
+    const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+    const [correctingVoucher, setCorrectingVoucher] = useState(false);
+    const [correctionForm, setCorrectionForm] = useState({ driverFeeAmount: 0, initialCashGiven: 0 });
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
     const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
@@ -82,6 +85,7 @@ export default function DriverVoucherDetailPage() {
     const canTopUpVoucher = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canSettleVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
     const canRepairIssueLedger = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
+    const canCorrectVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
 
     const loadVoucherDetail = useCallback(async () => {
         setLoading(true);
@@ -169,6 +173,7 @@ export default function DriverVoucherDetailPage() {
     const linkedDoHasFinalActualWeight = (linkedDeliveryOrder?.actualTotalWeightKg || 0) > 0;
     const linkedDoFinalTripFee = linkedDeliveryOrder?.taripBorongan || driverFeeAmount;
     const linkedDoHasManualOvertonase = (linkedDeliveryOrder?.manualOvertonaseWeightKg || 0) > 0;
+    const correctionPreviewBalance = correctionForm.initialCashGiven + topUpAmount - operationalSpent - correctionForm.driverFeeAmount;
     const canManageVoucherOvertonase = Boolean(
         linkedDeliveryOrder &&
         canManageVoucherItems &&
@@ -564,6 +569,64 @@ export default function DriverVoucherDetailPage() {
         }
     };
 
+    const openCorrectionModal = () => {
+        if (!canCorrectVoucher || !voucher || isSettled) return;
+        setCorrectionForm({
+            driverFeeAmount,
+            initialCashGiven,
+        });
+        setShowCorrectionModal(true);
+    };
+
+    const closeCorrectionModal = () => {
+        if (correctingVoucher) return;
+        setShowCorrectionModal(false);
+    };
+
+    const handleCorrectCore = async () => {
+        if (!canCorrectVoucher || !voucher) return;
+        if (correctionForm.driverFeeAmount < 0) {
+            addToast('error', 'Upah borongan tidak boleh negatif');
+            return;
+        }
+        if (correctionForm.initialCashGiven <= 0) {
+            addToast('error', 'Nominal uang jalan awal harus lebih dari 0');
+            return;
+        }
+
+        setCorrectingVoucher(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'driver-vouchers',
+                    action: 'correct-core',
+                    data: {
+                        id: voucher._id,
+                        driverFeeAmount: correctionForm.driverFeeAmount,
+                        initialCashGiven: correctionForm.initialCashGiven,
+                    },
+                }),
+            });
+            const result = await res.json();
+
+            if (!res.ok) {
+                addToast('error', result.error || 'Gagal mengoreksi bon');
+                return;
+            }
+
+            setVoucher(result.data);
+            void loadVoucherDetail();
+            setShowCorrectionModal(false);
+            addToast('success', 'Bon berhasil dikoreksi');
+        } catch {
+            addToast('error', 'Gagal mengoreksi bon');
+        } finally {
+            setCorrectingVoucher(false);
+        }
+    };
+
     const openSettleModal = () => {
         if (!canSettleVoucher || !voucher) return;
         setSettlementDate(getBusinessDateValue());
@@ -679,6 +742,7 @@ export default function DriverVoucherDetailPage() {
                         </Link>
                     )}
                     {!isSettled && canTopUpVoucher && <button className="btn btn-secondary btn-sm" onClick={openTopUpModal}><Plus size={15} /> Tambah Uang Jalan</button>}
+                    {!isSettled && canCorrectVoucher && <button className="btn btn-secondary btn-sm" onClick={openCorrectionModal}><Pencil size={15} /> Koreksi Bon</button>}
                     {!isSettled && canSettleVoucher && (items.length > 0 || driverFeeAmount > 0) && <button className="btn btn-primary" onClick={openSettleModal}><CheckCircle size={16} /> Selesaikan Trip</button>}
                     <button className="btn btn-secondary btn-sm" onClick={handlePrint}><Printer size={15} /> Print</button>
                 </div>
@@ -1210,6 +1274,48 @@ export default function DriverVoucherDetailPage() {
                             <button className="btn btn-secondary" onClick={() => setShowSettleModal(false)} disabled={settling}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSettle} disabled={settling}><CheckCircle size={16} /> {settling ? 'Memproses...' : settlementDisplay.primaryActionLabel}</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {showCorrectionModal && canCorrectVoucher && (
+                <div className="modal-overlay" onClick={closeCorrectionModal}>
+                    <div className="modal" onClick={event => event.stopPropagation()}>
+                        <div className="modal-header"><h3 className="modal-title">Koreksi Bon</h3><button className="modal-close" onClick={closeCorrectionModal} disabled={correctingVoucher}><X size={20} /></button></div>
+                        <div className="modal-body">
+                            <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.75rem', padding: '0.85rem 1rem', marginBottom: '1rem', border: '1px solid var(--color-gray-200)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+                                    <div>
+                                        <div className="text-muted text-sm">Uang Jalan Awal</div>
+                                        <div className="font-semibold">{formatCurrency(initialCashGiven)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted text-sm">Upah Borongan</div>
+                                        <div className="font-semibold">{formatCurrency(driverFeeAmount)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted text-sm">Total Uang Diberikan</div>
+                                        <div className="font-semibold">{formatCurrency(totalIssuedAmount)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Uang Jalan Awal (Bon Pertama) <span className="required">*</span></label>
+                                <FormattedNumberInput allowDecimal={false} value={correctionForm.initialCashGiven} onValueChange={value => setCorrectionForm(prev => ({ ...prev, initialCashGiven: value }))} placeholder="Ketik nominal uang jalan awal" />
+                                <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Mengubah nilai ini akan membalik pencairan bank lama lalu membuat pencairan baru dengan nilai terkoreksi.</div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Upah Borongan <span className="required">*</span></label>
+                                <FormattedNumberInput allowDecimal={false} value={correctionForm.driverFeeAmount} onValueChange={value => setCorrectionForm(prev => ({ ...prev, driverFeeAmount: value }))} placeholder="Ketik upah borongan" />
+                                <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Nilai ini ikut disinkronkan ke Surat Jalan agar perhitungan upah final tetap konsisten.</div>
+                            </div>
+                            <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '0.6rem', padding: '0.85rem 1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Uang Jalan Awal Baru</span><strong>{formatCurrency(correctionForm.initialCashGiven)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Borongan Baru</span><strong>{formatCurrency(correctionForm.driverFeeAmount)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Penyelesaian Jika Sekarang</span><strong style={{ color: correctionPreviewBalance < 0 ? 'var(--color-danger)' : 'inherit' }}>{formatCurrency(correctionPreviewBalance)}</strong></div>
+                            </div>
+                        </div>
+                        <div className="modal-footer"><button className="btn btn-secondary" onClick={closeCorrectionModal} disabled={correctingVoucher}>Batal</button><button className="btn btn-primary" onClick={handleCorrectCore} disabled={correctingVoucher}><Save size={16} /> {correctingVoucher ? 'Memproses...' : 'Simpan Koreksi'}</button></div>
                     </div>
                 </div>
             )}

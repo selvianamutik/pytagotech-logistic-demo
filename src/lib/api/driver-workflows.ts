@@ -2351,3 +2351,186 @@ export async function handleDriverVoucherIssueRepair(
     await addAuditLog(session, 'UPDATE', 'driver-vouchers', voucherId, `Rekonsiliasi pencairan bon: ${voucher.bonNumber}`);
     return NextResponse.json({ data: updatedVoucher });
 }
+
+export async function handleDriverVoucherCoreCorrection(
+    session: Pick<ApiSession, '_id' | 'name'>,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const voucherId = typeof data.id === 'string' ? data.id : '';
+    if (!voucherId) {
+        return NextResponse.json({ error: 'Data koreksi bon tidak lengkap' }, { status: 400 });
+    }
+
+    const hasFee = data.driverFeeAmount !== undefined && data.driverFeeAmount !== null && data.driverFeeAmount !== '';
+    const hasCash = data.initialCashGiven !== undefined && data.initialCashGiven !== null && data.initialCashGiven !== '';
+    const correctedDriverFeeAmount = hasFee ? normalizeCurrencyNumber(data.driverFeeAmount) : undefined;
+    const correctedInitialCash = hasCash ? normalizeCurrencyNumber(data.initialCashGiven) : undefined;
+
+    if (hasFee && (!Number.isFinite(correctedDriverFeeAmount) || (correctedDriverFeeAmount ?? 0) < 0)) {
+        return NextResponse.json({ error: 'Upah borongan koreksi tidak valid' }, { status: 400 });
+    }
+    if (hasCash && (!Number.isFinite(correctedInitialCash) || (correctedInitialCash ?? 0) <= 0)) {
+        return NextResponse.json({ error: 'Nominal uang jalan awal koreksi harus lebih dari 0' }, { status: 400 });
+    }
+    if (!hasFee && !hasCash) {
+        return NextResponse.json({ error: 'Tidak ada nilai yang dikoreksi' }, { status: 400 });
+    }
+
+    const state = await getDriverVoucherState(voucherId);
+    if ('error' in state) return state.error;
+    if (state.voucher.status === 'SETTLED') {
+        return NextResponse.json({ error: 'Bon yang sudah selesai tidak bisa dikoreksi' }, { status: 409 });
+    }
+    const cancelledTripError = await rejectIfVoucherDeliveryOrderCancelled(state.voucher, 'Koreksi bon');
+    if (cancelledTripError) return cancelledTripError;
+
+    const previousDriverFeeAmount = normalizeNumber(state.voucher.driverFeeAmount || 0, { maxFractionDigits: 0 });
+    const previousInitialCash = getDriverVoucherInitialCash(state.voucher);
+    const nextDriverFeeAmount = hasFee ? (correctedDriverFeeAmount ?? 0) : previousDriverFeeAmount;
+    const nextInitialCash = hasCash ? (correctedInitialCash ?? 0) : previousInitialCash;
+
+    const hasFeeChange = nextDriverFeeAmount !== previousDriverFeeAmount;
+    const hasCashChange = nextInitialCash !== previousInitialCash;
+    if (!hasFeeChange && !hasCashChange) {
+        return NextResponse.json({ error: 'Nilai koreksi sama dengan kondisi saat ini' }, { status: 409 });
+    }
+
+    const initialDisbursement = state.disbursements.find(disbursement => disbursement.kind === 'INITIAL');
+    let reversalTransactionId: string | undefined;
+    let newTransactionId = initialDisbursement?.bankTransactionRef;
+    let initialBank: BankAccountSummary | null = null;
+
+    if (hasCashChange) {
+        if (!initialDisbursement || !initialDisbursement.bankAccountRef || !initialDisbursement.bankTransactionRef) {
+            return NextResponse.json(
+                { error: 'Riwayat bank bon awal belum lengkap. Gunakan Rekonsiliasi pencairan bon untuk melengkapi rekening sumber.' },
+                { status: 409 }
+            );
+        }
+        if (previousInitialCash <= 0) {
+            return NextResponse.json({ error: 'Nominal uang jalan awal bon tidak valid' }, { status: 409 });
+        }
+        initialBank = await getDocumentById<BankAccountSummary>(initialDisbursement.bankAccountRef, 'bankAccount');
+        if (!initialBank) {
+            return NextResponse.json({ error: 'Rekening historis bon awal tidak ditemukan' }, { status: 404 });
+        }
+
+        const oldBankBalanceAfterReversal = readLedgerBalance(initialBank.currentBalance) + previousInitialCash;
+        const newBankFinalBalance = oldBankBalanceAfterReversal - nextInitialCash;
+        if (newBankFinalBalance < 0) {
+            return NextResponse.json(
+                { error: `Saldo ${initialBank.bankName} tidak cukup untuk koreksi uang jalan bon. Saldo tersedia ${formatAuditMoney(oldBankBalanceAfterReversal)}` },
+                { status: 409 }
+            );
+        }
+
+        reversalTransactionId = `driver-voucher-core-correct-reversal-${voucherId}-${crypto.randomUUID()}`;
+        newTransactionId = `driver-voucher-core-correct-${voucherId}-${crypto.randomUUID()}`;
+
+        await createDocument({
+            _id: reversalTransactionId,
+            _type: 'bankTransaction',
+            bankAccountRef: initialDisbursement.bankAccountRef,
+            bankAccountName: initialBank.bankName,
+            bankAccountNumber: initialBank.accountNumber,
+            type: 'CREDIT',
+            amount: previousInitialCash,
+            date: getBusinessDateValue(),
+            description: `Koreksi uang jalan bon ${state.voucher.bonNumber}`,
+            balanceAfter: oldBankBalanceAfterReversal,
+            relatedVoucherRef: voucherId,
+            reversesBankTransactionRef: initialDisbursement.bankTransactionRef,
+        });
+        await createDocument({
+            _id: newTransactionId,
+            _type: 'bankTransaction',
+            bankAccountRef: initialDisbursement.bankAccountRef,
+            bankAccountName: initialBank.bankName,
+            bankAccountNumber: initialBank.accountNumber,
+            type: 'DEBIT',
+            amount: nextInitialCash,
+            date: state.voucher.issuedDate,
+            description: `Koreksi uang jalan bon ${state.voucher.bonNumber}`,
+            balanceAfter: newBankFinalBalance,
+            relatedVoucherRef: voucherId,
+            replacesBankTransactionRef: initialDisbursement.bankTransactionRef,
+        });
+        // Bank balance update via recompute to ensure consistency
+        await recomputeBankLedgerBalancesForAccounts([initialDisbursement.bankAccountRef]);
+    }
+
+    const nextIssuedAmount = Math.max(
+        state.disbursements.reduce((sum, existing) => {
+            const rowAmount = existing._id === initialDisbursement?._id
+                ? nextInitialCash
+                : normalizeNumber(existing.amount || 0, { maxFractionDigits: 0 });
+            return sum + rowAmount;
+        }, 0),
+        nextInitialCash
+    );
+    const totals = computeDriverVoucherTotals(
+        nextIssuedAmount,
+        state.items.reduce((sum, item) => sum + normalizeNumber(item.amount || 0, { maxFractionDigits: 0 }), 0),
+        nextDriverFeeAmount
+    );
+
+    // Keep the linked DO taripBorongan snapshot in sync when upah is corrected
+    if (hasFeeChange) {
+        const deliveryOrderRef = normalizeOptionalText(state.voucher.deliveryOrderRef);
+        if (deliveryOrderRef) {
+            await updateDocument(deliveryOrderRef, { taripBorongan: nextDriverFeeAmount }, 'deliveryOrder');
+        }
+    }
+
+    const voucherPatch: Record<string, unknown> = {
+        driverFeeAmount: nextDriverFeeAmount,
+        totalSpent: totals.totalSpent,
+        totalClaimAmount: totals.totalClaimAmount,
+        balance: totals.balance,
+    };
+    if (hasCashChange) {
+        voucherPatch.cashGiven = nextInitialCash;
+        voucherPatch.initialCashGiven = nextInitialCash;
+        voucherPatch.totalIssuedAmount = nextIssuedAmount;
+    }
+    await updateDocument(voucherId, voucherPatch, 'driverVoucher');
+
+    if (hasCashChange && initialDisbursement && initialBank) {
+        await updateDocument(initialDisbursement._id, {
+            date: state.voucher.issuedDate,
+            amount: nextInitialCash,
+            bankTransactionRef: newTransactionId,
+            updatedAt: new Date().toISOString(),
+            updatedBy: session._id,
+            updatedByName: session.name,
+            replacedBankTransactionRef: initialDisbursement.bankTransactionRef,
+            adjustmentBankTransactionRef: reversalTransactionId,
+        }, 'driverVoucherDisbursement');
+
+        const updatedVoucher = {
+            ...state.voucher,
+            ...voucherPatch,
+        };
+        await voidJournalEntryForSource(session, 'DRIVER_VOUCHER', voucherId, 'ISSUE');
+        await postDriverVoucherIssueJournal(session, updatedVoucher, initialBank);
+    }
+
+    const updatedVoucher = {
+        ...state.voucher,
+        ...voucherPatch,
+    };
+
+    const auditParts: string[] = [];
+    if (hasCashChange) auditParts.push(`uang jalan awal ${formatAuditMoney(previousInitialCash)} menjadi ${formatAuditMoney(nextInitialCash)}`);
+    if (hasFeeChange) auditParts.push(`upah borongan ${formatAuditMoney(previousDriverFeeAmount)} menjadi ${formatAuditMoney(nextDriverFeeAmount)}`);
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'driver-vouchers',
+        voucherId,
+        `Koreksi bon ${state.voucher.bonNumber}: ${auditParts.join(', ')}`
+    );
+
+    return NextResponse.json({ data: updatedVoucher });
+}

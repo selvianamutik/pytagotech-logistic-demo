@@ -39,6 +39,7 @@ import {
 import {
     handleBoronganPayment,
     handleDriverVoucherBatchSettlement,
+    handleDriverVoucherCoreCorrection,
     handleDriverVoucherCreate,
     handleDriverVoucherDisbursementDelete,
     handleDriverVoucherDisbursementUpdate,
@@ -387,6 +388,10 @@ function hasSpecialMutationPermission(session: Session, entity: string, action?:
         return hasPermission(session, 'driverVouchers', 'update');
     }
 
+    if (entity === 'driver-vouchers' && action === 'correct-core') {
+        return hasPermission(session, 'driverVouchers', 'update');
+    }
+
     if (entity === 'purchases' && action === 'receive') {
         return hasPermission(session, 'purchases', 'update');
     }
@@ -491,7 +496,8 @@ function shouldLoadExistingAccountingDate(entity: string, action: string | undef
         action === 'update-tax-invoice' ||
         (entity === 'payments' && action === 'update') ||
         (entity === 'driver-voucher-disbursements' && (action === 'update' || action === 'delete')) ||
-        (entity === 'driver-voucher-items' && (action === 'update' || action === 'delete'))
+        (entity === 'driver-voucher-items' && (action === 'update' || action === 'delete')) ||
+        (entity === 'driver-vouchers' && action === 'correct-core')
     );
 }
 
@@ -2014,6 +2020,10 @@ export async function POST(request: Request) {
 
         if (entity === 'driver-vouchers' && action === 'repair-issue-ledger') {
             return await handleDriverVoucherIssueRepair(session, data, addAuditLog);
+        }
+
+        if (entity === 'driver-vouchers' && action === 'correct-core') {
+            return await handleDriverVoucherCoreCorrection(session, data, addAuditLog);
         }
 
         if (entity === 'driver-voucher-disbursements' && action === 'update') {
