@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useApp, useToast } from '../layout';
 import { CheckCircle, Printer, FileDown, Truck, Save, MapPin, Radio, Edit, Wallet, Plus, Trash2, X, ChevronDown } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
+import Combobox from '@/components/Combobox';
 import AuditTrailCard from './AuditTrailCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import SplitDecimalNumberInput from '@/components/SplitDecimalNumberInput';
@@ -7323,27 +7324,23 @@ export default function TripDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Asal Area Trip</label>
-                                    <select
-                                        className="form-select"
+                                    <Combobox
                                         value={tripCashIssueForm.tripOriginArea}
-                                        onChange={event => handleTripCashIssueOriginChange(event.target.value)}
+                                        onChange={handleTripCashIssueOriginChange}
+                                        options={tripCashIssueOriginAreaOptions}
+                                        placeholder="Asal area trip — ketik atau pilih"
                                         disabled={issuingTripCash}
-                                    >
-                                        <option value="">Pilih asal area</option>
-                                        {tripCashIssueOriginAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                    </select>
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tujuan Area Trip</label>
-                                    <select
-                                        className="form-select"
+                                    <Combobox
                                         value={tripCashIssueForm.tripDestinationArea}
-                                        onChange={event => handleTripCashIssueDestinationChange(event.target.value)}
+                                        onChange={handleTripCashIssueDestinationChange}
+                                        options={tripCashIssueDestinationAreaOptions}
+                                        placeholder="Tujuan area trip — ketik atau pilih"
                                         disabled={issuingTripCash || !tripCashIssueForm.tripOriginArea}
-                                    >
-                                        <option value="">Pilih tujuan area</option>
-                                        {tripCashIssueDestinationAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                    </select>
+                                    />
                                 </div>
                             </div>
 
@@ -7357,9 +7354,13 @@ export default function TripDetailPage() {
                                         placeholder="Isi upah borongan"
                                         disabled={issuingTripCash || Boolean(tripCashIssueMatchedRate)}
                                     />
-                                    {tripCashIssueMatchedRate && (
+                                    {tripCashIssueMatchedRate ? (
                                         <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                                             {formatTripRouteRateLabel(tripCashIssueMatchedRate)} | {formatCurrency(tripCashIssueMatchedRate.rate)}
+                                        </div>
+                                    ) : (
+                                        <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
+                                            Rute tidak ada di master biaya rute trip, isi upah borongan manual.
                                         </div>
                                     )}
                                 </div>
