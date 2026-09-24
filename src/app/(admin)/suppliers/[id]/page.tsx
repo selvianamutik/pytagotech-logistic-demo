@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { CreditCard, Edit, Package, Plus, Receipt, Save, X } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
@@ -25,7 +26,7 @@ import {
   type SupplierRelatedItem,
 } from '@/lib/supplier-purchase-support';
 import type { Purchase, PurchaseItem, PurchasePayment, Supplier, SupplierItemPrice, WarehouseItem } from '@/lib/types';
-import { formatCurrency, formatDate, formatQuantity } from '@/lib/utils';
+import { formatCurrency, formatDate, formatQuantity, formatSupplierTerm } from '@/lib/utils';
 
 import { useApp, useToast } from '../../layout';
 
@@ -147,12 +148,12 @@ export default function SupplierDetailPage() {
   const [savingPrice, setSavingPrice] = useState(false);
   const [form, setForm] = useState<SupplierFormState>(createDefaultForm());
   const [priceForm, setPriceForm] = useState<SupplierItemPriceFormState>(createDefaultSupplierItemPriceForm());
-  const canManage = user ? hasPermission(user.role, 'suppliers', 'create') || hasPermission(user.role, 'suppliers', 'update') : false;
-  const canCreateSupplierPrice = user ? hasPermission(user.role, 'suppliers', 'create') : false;
-  const canUpdateSupplierPrice = user ? hasPermission(user.role, 'suppliers', 'update') : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-  const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenBankAccounts = user ? hasPageAccess(user.role, 'bankAccounts') : false;
+  const canManage = user ? hasPermission(user, 'suppliers', 'create') || hasPermission(user, 'suppliers', 'update') : false;
+  const canCreateSupplierPrice = user ? hasPermission(user, 'suppliers', 'create') : false;
+  const canUpdateSupplierPrice = user ? hasPermission(user, 'suppliers', 'update') : false;
+  const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+  const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenBankAccounts = user ? hasPageAccess(user, 'bankAccounts') : false;
   const today = getBusinessDateValue();
 
   const loadSupplierDetail = useCallback(async () => {
@@ -510,7 +511,7 @@ export default function SupplierDetailPage() {
             </div>
             <div className="detail-row">
               <span className="detail-label">Termin Default</span>
-              <span className="detail-value">{supplier.defaultTermDays || 0} hari</span>
+              <span className="detail-value">{formatSupplierTerm(supplier.defaultTermDays)}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Status</span>
@@ -798,7 +799,7 @@ export default function SupplierDetailPage() {
                       <div className="mobile-record-header">
                         <div>
                           <div className="mobile-record-title">{price.supplierItemName || price.itemName || '-'}</div>
-                          <div className="mobile-record-subtitle">{price.itemCode || '-'}{price.supplierSku ? ` | ${price.supplierSku}` : ''}</div>
+                          <div className="mobile-record-subtitle">{price.warehouseItemRef && canOpenItems ? <Link href={`/inventory/items/${price.warehouseItemRef}`} style={{ color: 'var(--color-primary)' }}>{price.itemCode || '-'}</Link> : (price.itemCode || '-')}{price.supplierSku ? ` | ${price.supplierSku}` : ''}</div>
                         </div>
                         <span className={`badge ${SUPPLIER_PRICE_STATUS_BADGES[priceStatus]}`}>
                           {SUPPLIER_PRICE_STATUS_LABELS[priceStatus]}
@@ -968,17 +969,14 @@ export default function SupplierDetailPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Barang Gudang</label>
-                  <select
+                  <Combobox
                     className="form-select"
                     value={priceForm.warehouseItemRef}
-                    onChange={(event) => setPriceForm((current) => ({ ...current, warehouseItemRef: event.target.value }))}
+                    onChange={(v: string) => setPriceForm((current) => ({ ...current, warehouseItemRef: v }))}
                     disabled={Boolean(editingPrice) || savingPrice}
-                  >
-                    <option value="">Pilih barang</option>
-                    {activeWarehouseItems.map((item) => (
-                      <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Pilih barang"
+                    options={activeWarehouseItems.map((item) => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Harga dari Supplier (Rp)</label>
@@ -1024,10 +1022,7 @@ export default function SupplierDetailPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Status Harga</label>
-                <select className="form-select" value={priceForm.active ? 'active' : 'inactive'} onChange={(event) => setPriceForm((current) => ({ ...current, active: event.target.value === 'active' }))}>
-                  <option value="active">Bisa dipakai</option>
-                  <option value="inactive">Jangan dipakai</option>
-                </select>
+                <Combobox className="form-select" value={priceForm.active ? 'active' : 'inactive'} onChange={(v: string) => setPriceForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Bisa dipakai' }, { value: 'inactive', label: 'Jangan dipakai' }]} />
               </div>
             </div>
             <div className="modal-footer">
@@ -1077,10 +1072,7 @@ export default function SupplierDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Status</label>
-                  <select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}>
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Nonaktif</option>
-                  </select>
+                  <Combobox className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(v: string) => setForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} />
                 </div>
               </div>
               <div className="form-group">

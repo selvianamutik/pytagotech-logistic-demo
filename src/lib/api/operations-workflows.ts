@@ -20,6 +20,7 @@ import {
 import { normalizeOptionalTireType } from '@/lib/tire-types';
 import type {
     Driver,
+    IncidentExpenseRoute,
     IncidentSettlementLine,
     InventoryUnit,
     Maintenance,
@@ -37,6 +38,8 @@ import {
     type ApiSession,
 } from './data-helpers';
 import { postStockMovementJournal } from './accounting-posting';
+import { assertAccountingPeriodOpen } from './accounting-period-lock';
+import { handleExpenseCreate } from './finance-workflows';
 import { hasPermission } from '@/lib/rbac';
 import { handleGenericCreate } from './generic-workflows';
 import { getLatestWarehouseStockMovementDateMap } from './inventory-stock-support';
@@ -186,10 +189,10 @@ function normalizeIncidentDirectMaterials(value: unknown): IncidentDirectMateria
             }
             const row = entry as Record<string, unknown>;
             const linkedWarehouseItemRef = normalizeOptionalText(row.linkedWarehouseItemRef || row.warehouseItemRef);
-            const leftoverWarehouseItemRef = normalizeOptionalText(row.leftoverWarehouseItemRef);
             const itemName = normalizeOptionalText(row.itemName);
             const quantity = parseInventoryQuantity(row.quantity);
             const leftoverQty = parseInventoryQuantity(row.leftoverQty);
+            const leftoverWarehouseItemRef = normalizeOptionalText(row.leftoverWarehouseItemRef) || (leftoverQty > 0 ? linkedWarehouseItemRef : undefined);
             const unitCost = parseWholeMoneyAmount(row.unitCost);
             const hasMaterialSignal = Boolean(
                 linkedWarehouseItemRef ||
@@ -216,7 +219,7 @@ function normalizeIncidentDirectMaterials(value: unknown): IncidentDirectMateria
                 throw new Error(`Nama barang beli lokal pada baris #${index + 1} wajib diisi`);
             }
             if (leftoverQty > 0 && !leftoverWarehouseItemRef) {
-                throw new Error(`Barang gudang tujuan sisa pada baris #${index + 1} wajib dipilih`);
+                throw new Error(`Pilih Acuan Barang pada baris #${index + 1} agar sisa masuk ke barang gudang yang sama`);
             }
             const rawUnit = row.unit || row.itemUnit;
             const unit = isInventoryUnit(rawUnit) ? rawUnit : 'PCS';
@@ -235,6 +238,54 @@ function normalizeIncidentDirectMaterials(value: unknown): IncidentDirectMateria
             } satisfies IncidentDirectMaterialInput;
         })
         .filter((row): row is IncidentDirectMaterialInput => Boolean(row));
+}
+
+type IncidentInlinePurchaseInput = {
+    category: 'REPAIR' | 'SPAREPART';
+    amount: number;
+    expenseCategoryRef: string;
+    expenseRoute: IncidentExpenseRoute;
+    bankAccountRef?: string;
+    description?: string;
+    payeeName?: string;
+    note?: string;
+};
+
+function normalizeIncidentInlinePurchase(value: unknown): IncidentInlinePurchaseInput {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Data pembelian beli lokal tidak valid');
+    }
+    const row = value as Record<string, unknown>;
+    const category = normalizeOptionalText(row.category)?.toUpperCase();
+    if (category !== 'REPAIR' && category !== 'SPAREPART') {
+        throw new Error('Kategori beli lokal hanya perbaikan atau sparepart');
+    }
+    const amount = Math.max(normalizeCurrencyNumber(row.amount, { maxFractionDigits: 0 }), 0);
+    if (!amount) {
+        throw new Error('Total pembelian beli lokal wajib lebih besar dari 0');
+    }
+    const expenseCategoryRef = normalizeOptionalText(row.expenseCategoryRef);
+    if (!expenseCategoryRef) {
+        throw new Error('Kategori pengeluaran wajib dipilih');
+    }
+    const expenseRoute = normalizeOptionalText(row.expenseRoute)?.toUpperCase();
+    if (expenseRoute !== 'DRIVER_VOUCHER' && expenseRoute !== 'COMPANY_EXPENSE') {
+        throw new Error('Sumber pembayaran beli lokal wajib dipilih');
+    }
+    const bankAccountRef = normalizeOptionalText(row.bankAccountRef);
+    if (expenseRoute === 'COMPANY_EXPENSE' && !bankAccountRef) {
+        throw new Error('Rekening / kas pembayaran wajib dipilih untuk pengeluaran perusahaan');
+    }
+    return {
+        category,
+        amount,
+        expenseCategoryRef,
+        expenseRoute,
+        bankAccountRef: expenseRoute === 'COMPANY_EXPENSE' ? bankAccountRef : undefined,
+        description: normalizeOptionalText(row.description),
+        payeeName: normalizeOptionalText(row.payeeName),
+        note: normalizeOptionalText(row.note),
+    };
 }
 
 async function loadStandardWarehouseItemForIncident(itemRef: string) {
@@ -333,8 +384,8 @@ function getAllowedIncidentSettlementTargetStatuses(line: Pick<IncidentSettlemen
     }
     if (line.status === 'APPROVED') {
         return line.lineType === 'RECOVERY'
-            ? ['DRAFT', 'VOID', 'POSTED']
-            : ['DRAFT', 'VOID'];
+            ? ['VOID', 'POSTED']
+            : ['VOID'];
     }
     return [];
 }
@@ -658,7 +709,7 @@ export async function handleIncidentSettlementLineCreate(
             incidentRef,
             incidentNumber: incident.incidentNumber,
             ...normalized,
-            status: 'DRAFT' as const,
+            status: 'APPROVED' as const,
             createdAt: now,
             createdBy: session._id,
             createdByName: session.name,
@@ -722,9 +773,9 @@ export async function handleIncidentSettlementLineUpdate(
     if (!requireIncidentSettlementRevision(revision, existing._rev)) {
         return NextResponse.json({ error: 'Detail insiden berubah karena ada update lain. Refresh lalu coba lagi.' }, { status: 409 });
     }
-    if (existing.status !== 'DRAFT') {
+    if (existing.status !== 'DRAFT' && existing.status !== 'APPROVED') {
         return NextResponse.json(
-            { error: 'Hanya detail insiden draft yang boleh diedit. Turunkan status ke draft dulu jika perlu revisi.' },
+            { error: 'Hanya detail insiden draft atau approved yang boleh diedit. Detail yang sudah diposting atau ditolak tidak bisa diubah langsung.' },
             { status: 409 }
         );
     }
@@ -811,8 +862,8 @@ export async function handleIncidentSettlementLineDelete(
     if (!requireIncidentSettlementRevision(revision, existing._rev)) {
         return NextResponse.json({ error: 'Detail insiden berubah karena ada update lain. Refresh lalu coba lagi.' }, { status: 409 });
     }
-    if (existing.status !== 'DRAFT' || existing.linkedExpenseRef) {
-        return NextResponse.json({ error: 'Hanya detail insiden draft yang belum terposting yang boleh dihapus' }, { status: 409 });
+    if ((existing.status !== 'DRAFT' && existing.status !== 'APPROVED') || existing.linkedExpenseRef) {
+        return NextResponse.json({ error: 'Hanya detail insiden draft atau approved yang belum terposting yang boleh dihapus' }, { status: 409 });
     }
 
     const now = new Date().toISOString();
@@ -1001,7 +1052,7 @@ async function loadIncidentSettlementFollowUpContext(
     return { line, incident };
 }
 
-async function readCreateResponse<T extends { _id?: string }>(response: NextResponse) {
+async function readCreateResponse<T extends { _id?: string }>(response: Response) {
     if (!response.ok) {
         return { response };
     }
@@ -1020,7 +1071,7 @@ export async function handleIncidentMaintenanceHandlingCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'maintenance', 'create')) {
+    if (!hasPermission(session, 'maintenance', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses mencatat penanganan maintenance insiden' }, { status: 403 });
     }
 
@@ -1114,30 +1165,175 @@ export async function handleIncidentMaintenanceHandlingCreate(
     if (sourceMode === 'DIRECT_PURCHASE') {
         const settlementLineRef = normalizeOptionalText(data.settlementLineRef || data.incidentSettlementLineRef);
         const settlementLineRevision = normalizeOptionalText(data.settlementLineRevision);
-        if (!settlementLineRef) {
-            return NextResponse.json({ error: 'Detail biaya insiden wajib dipilih untuk beli lokal' }, { status: 400 });
+        if (settlementLineRef) {
+            const line = await getDocumentById<IncidentSettlementLine>(settlementLineRef, 'incidentSettlementLine');
+            if (!line) {
+                return NextResponse.json({ error: 'Detail biaya insiden tidak ditemukan' }, { status: 404 });
+            }
+            if (line.incidentRef !== incident._id) {
+                return NextResponse.json({ error: 'Detail biaya tidak cocok dengan insiden ini' }, { status: 409 });
+            }
+            if (!requireIncidentSettlementRevision(settlementLineRevision, line._rev)) {
+                return NextResponse.json({ error: 'Detail biaya insiden berubah karena ada update lain. Refresh lalu coba lagi.' }, { status: 409 });
+            }
+            const lineError = buildIncidentSettlementFollowUpError(line);
+            if (lineError) {
+                return NextResponse.json({ error: lineError }, { status: 409 });
+            }
+if (!INCIDENT_MATERIAL_HANDLING_CATEGORIES.has(line.category)) {
+                    return NextResponse.json({ error: 'Beli lokal lewat maintenance insiden hanya untuk perbaikan atau sparepart. Ban tetap lewat modul Ban.' }, { status: 409 });
+                }
+            if (line.linkedMaintenanceRef) {
+                return NextResponse.json({ error: 'Detail biaya insiden ini sudah tertaut ke maintenance' }, { status: 409 });
+            }
+            linkedLine = line;
+        } else {
+            if (!hasPermission(session, 'expenses', 'create')) {
+                return NextResponse.json({ error: 'Tidak punya akses mencatat pengeluaran untuk beli lokal' }, { status: 403 });
+            }
+
+            let inlinePurchase: IncidentInlinePurchaseInput;
+            try {
+                inlinePurchase = normalizeIncidentInlinePurchase(data.inlinePurchase);
+            } catch (error) {
+                return NextResponse.json(
+                    { error: error instanceof Error ? error.message : 'Data pembelian beli lokal tidak valid' },
+                    { status: 400 }
+                );
+            }
+
+            const preflightAllocatedTotal = directMaterialInputs.reduce((sum, input) => {
+                const usedSubtotal = Math.round(Math.max(input.quantity, 0) * Math.max(input.unitCost, 0));
+                const receiptSubtotal = Math.round(Math.max(input.leftoverQty, 0) * Math.max(input.unitCost, 0));
+                return sum + usedSubtotal + receiptSubtotal;
+            }, 0);
+            if (inlinePurchase.category === 'SPAREPART' && preflightAllocatedTotal <= 0) {
+                return NextResponse.json({ error: 'Sparepart beli lokal wajib mencatat barang dipakai atau sisa masuk gudang' }, { status: 400 });
+            }
+            if (preflightAllocatedTotal > inlinePurchase.amount) {
+                return NextResponse.json({ error: 'Total material dipakai dan sisa masuk gudang tidak boleh melebihi total pembelian beli lokal' }, { status: 400 });
+            }
+
+            const preflightItemRefs = Array.from(new Set(
+                directMaterialInputs
+                    .flatMap(input => [input.linkedWarehouseItemRef, input.leftoverWarehouseItemRef])
+                    .filter((value): value is string => Boolean(value))
+            ));
+            try {
+                const preflightItems = await Promise.all(
+                    preflightItemRefs.map(itemRef => loadStandardWarehouseItemForIncident(itemRef))
+                );
+                const preflightItemById = new Map(preflightItems.map(item => [item._id, item]));
+                const latestStockMovementDates = await getLatestWarehouseStockMovementDateMap(
+                    directMaterialInputs.map(input => input.leftoverWarehouseItemRef).filter((value): value is string => Boolean(value))
+                );
+                for (const input of directMaterialInputs) {
+                    if (!input.leftoverWarehouseItemRef || input.leftoverQty <= 0) continue;
+                    const latestStockMovementDate = latestStockMovementDates.get(input.leftoverWarehouseItemRef);
+                    if (latestStockMovementDate && completedDate < latestStockMovementDate) {
+                        const itemCode = preflightItemById.get(input.leftoverWarehouseItemRef)?.itemCode || '';
+                        throw new Error(`Tanggal sisa masuk gudang tidak boleh lebih awal dari mutasi stok terakhir ${itemCode}`.trim());
+                    }
+                }
+            } catch (error) {
+                return NextResponse.json(
+                    { error: error instanceof Error ? error.message : 'Barang gudang untuk beli lokal tidak valid' },
+                    { status: 400 }
+                );
+            }
+
+            let createdLine: IncidentSettlementLine;
+            try {
+                await assertAccountingPeriodOpen(completedDate, 'Pembelian beli lokal');
+                const normalized = await normalizeIncidentSettlementLinePayload({
+                    lineType: 'COST',
+                    category: inlinePurchase.category,
+                    date: completedDate,
+                    amount: inlinePurchase.amount,
+                    description: inlinePurchase.description
+                        || `Pembelian lokal ${vendor || inlinePurchase.payeeName || incidentLabel}`,
+                    payeeName: vendor || inlinePurchase.payeeName,
+                    note: inlinePurchase.note,
+                });
+                const inlineNow = new Date().toISOString();
+                createdLine = {
+                    _id: crypto.randomUUID(),
+                    _type: 'incidentSettlementLine' as const,
+                    incidentRef: incident._id,
+                    incidentNumber: incident.incidentNumber,
+                    ...normalized,
+                    status: 'APPROVED' as const,
+                    createdAt: inlineNow,
+                    createdBy: session._id,
+                    createdByName: session.name,
+                    updatedAt: inlineNow,
+                    updatedBy: session._id,
+                    updatedByName: session.name,
+                } as IncidentSettlementLine;
+                validateIncidentSettlementLineBusinessRules(createdLine);
+                await createDocument(createdLine as unknown as { _type: string; [key: string]: unknown });
+                await createDocument({
+                    _id: crypto.randomUUID(),
+                    _type: 'incidentActionLog',
+                    incidentRef: incident._id,
+                    timestamp: inlineNow,
+                    note: `Detail biaya beli lokal ditambahkan: ${formatIncidentSettlementLabel(createdLine)}`,
+                    userRef: session._id,
+                    userName: session.name,
+                });
+                await addAuditLog(session, 'CREATE', 'incident-settlement-lines', createdLine._id, `Created incident settlement line ${formatIncidentSettlementLabel(createdLine)}`);
+            } catch (error) {
+                return NextResponse.json(
+                    { error: error instanceof Error ? error.message : 'Gagal membuat detail biaya beli lokal' },
+                    { status: 400 }
+                );
+            }
+
+            const persistedLine = await getDocumentById<IncidentSettlementLine>(createdLine._id, 'incidentSettlementLine');
+            if (!persistedLine) {
+                return NextResponse.json({ error: 'Detail biaya beli lokal gagal dibuat. Coba lagi.' }, { status: 500 });
+            }
+
+            const expenseResponse = await handleExpenseCreate(session, {
+                categoryRef: inlinePurchase.expenseCategoryRef,
+                date: completedDate,
+                amount: inlinePurchase.amount,
+                description: persistedLine.description,
+                note: inlinePurchase.note,
+                bankAccountRef: inlinePurchase.bankAccountRef,
+                incidentExpenseRoute: inlinePurchase.expenseRoute,
+                relatedIncidentRef: incident._id,
+                relatedIncidentSettlementLineRef: persistedLine._id,
+                relatedIncidentSettlementLineRevision: persistedLine._rev,
+            }, addAuditLog);
+            if (!expenseResponse) {
+                await updateDocument(persistedLine._id, {
+                    status: 'VOID',
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: session._id,
+                    updatedByName: session.name,
+                }, 'incidentSettlementLine');
+                return NextResponse.json({ error: 'Gagal memposting pengeluaran beli lokal. Coba lagi.' }, { status: 500 });
+            }
+            const expenseResult = await readCreateResponse<{ _id?: string }>(expenseResponse);
+            if (!expenseResult.id) {
+                await updateDocument(persistedLine._id, {
+                    status: 'VOID',
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: session._id,
+                    updatedByName: session.name,
+                }, 'incidentSettlementLine');
+                return expenseResult.response ?? NextResponse.json({ error: 'Gagal memposting pengeluaran beli lokal. Coba lagi.' }, { status: 500 });
+            }
+
+            linkedLine = {
+                ...persistedLine,
+                status: 'POSTED',
+                linkedExpenseRef: expenseResult.id,
+                linkedExpenseAmount: inlinePurchase.amount,
+                linkedExpenseRoute: inlinePurchase.expenseRoute,
+            };
         }
-        const line = await getDocumentById<IncidentSettlementLine>(settlementLineRef, 'incidentSettlementLine');
-        if (!line) {
-            return NextResponse.json({ error: 'Detail biaya insiden tidak ditemukan' }, { status: 404 });
-        }
-        if (line.incidentRef !== incident._id) {
-            return NextResponse.json({ error: 'Detail biaya tidak cocok dengan insiden ini' }, { status: 409 });
-        }
-        if (!requireIncidentSettlementRevision(settlementLineRevision, line._rev)) {
-            return NextResponse.json({ error: 'Detail biaya insiden berubah karena ada update lain. Refresh lalu coba lagi.' }, { status: 409 });
-        }
-        const lineError = buildIncidentSettlementFollowUpError(line);
-        if (lineError) {
-            return NextResponse.json({ error: lineError }, { status: 409 });
-        }
-        if (!INCIDENT_MATERIAL_HANDLING_CATEGORIES.has(line.category)) {
-            return NextResponse.json({ error: 'Beli lokal lewat maintenance insiden hanya untuk perbaikan atau sparepart. Ban tetap lewat modul Ban.' }, { status: 409 });
-        }
-        if (line.linkedMaintenanceRef) {
-            return NextResponse.json({ error: 'Detail biaya insiden ini sudah tertaut ke maintenance' }, { status: 409 });
-        }
-        linkedLine = line;
     }
 
     try {
@@ -1455,7 +1651,7 @@ export async function handleIncidentSettlementLineTireFollowUpCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'tires', 'create')) {
+    if (!hasPermission(session, 'tires', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses mencatat aset ban' }, { status: 403 });
     }
 
@@ -1555,7 +1751,7 @@ export async function handleIncidentSettlementLineMaintenanceFollowUpCreate(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (!hasPermission(session.role, 'maintenance', 'create')) {
+    if (!hasPermission(session, 'maintenance', 'create')) {
         return NextResponse.json({ error: 'Tidak punya akses menjadwalkan maintenance' }, { status: 403 });
     }
 
@@ -1724,7 +1920,7 @@ export async function handleDriverDelete(
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
 ) {
-    if (session.role !== 'OWNER') {
+    if (!hasPermission(session, 'drivers', 'delete')) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -1836,7 +2032,7 @@ export async function handleDriverUpdate(
             });
         }
 
-        await addAuditLog(session, 'UPDATE', 'drivers', id, `Updated drivers: ${JSON.stringify(normalizedUpdates).slice(0, 200)}`);
+await addAuditLog(session, 'UPDATE', 'drivers', id, `Perbarui supir ${nextDriverName || id}`);
         return NextResponse.json({
             data: updated,
             meta: {
@@ -1891,7 +2087,7 @@ export async function handleDriverUpdate(
         }
     }
 
-    await addAuditLog(session, 'UPDATE', 'drivers', id, `Updated drivers: ${JSON.stringify(normalizedUpdates).slice(0, 200)}`);
+    await addAuditLog(session, 'UPDATE', 'drivers', id, `Nonaktifkan supir ${nextDriverName || id}`);
     for (const deliveryOrder of trackedDeliveryOrders) {
         await addAuditLog(
             session,

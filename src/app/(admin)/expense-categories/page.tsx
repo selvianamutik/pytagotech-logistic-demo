@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Edit, Plus, Save, Tags, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import {
     EXPENSE_CATEGORY_SCOPE_OPTIONS,
     getExpenseCategoryScopeLabel,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/expense-category-scope';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { ExpenseCategory } from '@/lib/types';
+import { hasPermission } from '@/lib/rbac';
 
 import { useApp, useToast } from '../layout';
 
@@ -33,7 +35,7 @@ export default function ExpenseCategoriesPage() {
     const [scope, setScope] = useState<ExpenseCategoryScope>('GENERAL');
     const [allowManual, setAllowManual] = useState(true);
     const [active, setActive] = useState(true);
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'expenseCategories', 'update') : false;
     const activeCount = totalItems - inactiveCount;
 
     const loadCategories = useCallback(async () => {
@@ -238,7 +240,7 @@ export default function ExpenseCategoriesPage() {
                                                 <td><span className={`badge ${isManualExpenseCategory(category) ? 'badge-success' : 'badge-gray'}`}>{isManualExpenseCategory(category) ? 'Ya' : 'Tidak'}</span></td>
                                                 <td><span className={`badge ${category.active !== false ? 'badge-success' : 'badge-gray'}`}>{category.active !== false ? 'Aktif' : 'Non-Aktif'}</span></td>
                                                 <td>{isOwner ? (
-                                                    <div className="table-actions">
+                                                    <div className="table-actions-col">
                                                         <button className="table-action-btn" onClick={() => openEdit(category)}><Edit size={14} /> Edit</button>
                                                         <button className="table-action-btn danger" onClick={() => setDeleteId(category._id)}><Trash2 size={14} /> Hapus</button>
                                                     </div>
@@ -277,16 +279,11 @@ export default function ExpenseCategoriesPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Jenis</label>
-                                    <select className="form-select" value={scope} onChange={event => handleScopeChange(event.target.value as ExpenseCategoryScope)} disabled={saving}>
-                                        {EXPENSE_CATEGORY_SCOPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
+                                    <Combobox className="form-select" value={scope} onChange={(v: string) => handleScopeChange(v as ExpenseCategoryScope)} options={EXPENSE_CATEGORY_SCOPE_OPTIONS} disabled={saving} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={active ? 'active' : 'inactive'} onChange={event => setActive(event.target.value === 'active')} disabled={saving}>
-                                        <option value="active">Aktif</option>
-                                        <option value="inactive">Nonaktif</option>
-                                    </select>
+                                    <Combobox className="form-select" value={active ? 'active' : 'inactive'} onChange={(v: string) => setActive(v === 'active')} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} disabled={saving} />
                                 </div>
                             </div>
                             <label className="checkbox-card" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>

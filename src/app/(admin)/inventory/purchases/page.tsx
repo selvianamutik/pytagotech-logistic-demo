@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileDown, Plus, Receipt, Search } from 'lucide-react';
+import { FileDown, Plus, Receipt, Search, Eye } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
 import { exportToExcel } from '@/lib/export';
@@ -74,10 +75,10 @@ export default function PurchasesPage() {
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const canCreatePurchase = user ? hasPermission(user.role, 'purchases', 'create') : false;
-  const canExportPurchases = user ? hasPermission(user.role, 'purchases', 'export') : false;
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenStockReport = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+  const canCreatePurchase = user ? hasPermission(user, 'purchases', 'create') : false;
+  const canExportPurchases = user ? hasPermission(user, 'purchases', 'export') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenStockReport = user ? hasPageAccess(user, 'warehouseItems') : false;
   const today = getBusinessDateValue();
   const dateRange = useMemo(
     () => getInventoryReportDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
@@ -243,24 +244,13 @@ export default function PurchasesPage() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
-            <select className="form-select purchase-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="">Semua Status</option>
-              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <select className="form-select purchase-status-filter" value={periodMode} onChange={(event) => setPeriodMode(event.target.value as InventoryReportPeriodMode)}>
-              <option value="month">Bulanan</option>
-              <option value="year">Tahunan</option>
-              <option value="custom">Rentang Tanggal</option>
-            </select>
+            <Combobox className="form-select purchase-status-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} placeholder="Semua Status" options={STATUS_OPTIONS} />
+            <Combobox className="form-select purchase-status-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as InventoryReportPeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
             {periodMode === 'month' && (
-              <select className="form-select purchase-status-filter" value={monthIndex} onChange={(event) => setMonthIndex(Number(event.target.value))}>
-                {INVENTORY_REPORT_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-              </select>
+              <Combobox className="form-select purchase-status-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={INVENTORY_REPORT_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
             )}
             {periodMode !== 'custom' && (
-              <select className="form-select purchase-status-filter" value={year} onChange={(event) => setYear(Number(event.target.value) || defaultPeriod.year)}>
-                {yearOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <Combobox className="form-select purchase-status-filter" value={String(year)} onChange={(v: string) => setYear(Number(v) || defaultPeriod.year)} options={yearOptions.map((option) => String(option))} />
             )}
             {periodMode === 'custom' && (
               <>
@@ -305,7 +295,7 @@ export default function PurchasesPage() {
                   <td>{formatCurrency(Number(purchase.totalAmount || 0))}</td>
                   <td>{formatCurrency(Number(purchase.outstandingAmount || 0))}</td>
                   <td><PurchaseLifecycleBadges purchase={purchase} /></td>
-                  <td><Link href={`/inventory/purchases/${purchase._id}`} className="table-action-btn">Lihat Detail</Link></td>
+                  <td><Link href={`/inventory/purchases/${purchase._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link></td>
                 </tr>
               ))}
             </tbody>
@@ -338,7 +328,7 @@ export default function PurchasesPage() {
                   <div className="mobile-record-field"><span className="mobile-record-label">Sisa Tagihan</span><span className="mobile-record-value">{formatCurrency(Number(purchase.outstandingAmount || 0))}</span></div>
                   <div className="mobile-record-field mobile-record-field-full"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{purchase.notes || '-'}</span></div>
                 </div>
-                <div className="mobile-record-actions"><Link href={`/inventory/purchases/${purchase._id}`} className="btn btn-secondary">Lihat Detail</Link></div>
+                <div className="mobile-record-actions"><Link href={`/inventory/purchases/${purchase._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link></div>
               </div>
             ))}
           </div>

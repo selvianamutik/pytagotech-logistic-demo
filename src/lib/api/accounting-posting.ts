@@ -169,13 +169,15 @@ async function resolveAccount(systemKey: AccountingSystemKey) {
     return account;
 }
 
-async function buildJournalNumber(entryDate: string, existing?: JournalEntry | null) {
-    if (existing?.entryNumber) return existing.entryNumber;
+/**
+ * Build journal number after collision - starts from lastAttemptedSequence + 1
+ * to avoid reusing a number that just caused a collision.
+ */
+async function buildJournalNumberAfterCollision(entryDate: string, lastAttemptedSequence: number) {
     const monthPrefix = entryDate.replace(/-/g, '').slice(0, 6);
-    // PERF: Filter by month prefix at query level to avoid fetching all entries
-    // Use date filter to limit scope to current month entries only
     const monthStart = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-01`;
-    const monthEnd = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-31`;
+    const lastDay = new Date(Number(monthPrefix.slice(0, 4)), Number(monthPrefix.slice(4, 6)), 0).getDate();
+    const monthEnd = `${monthPrefix.slice(0, 4)}-${monthPrefix.slice(4, 6)}-${String(lastDay).padStart(2, '0')}`;
     const monthEntries = await listDocumentsByFilter<JournalEntry>('journalEntry', {
         entryDate__gte: monthStart,
         entryDate__lte: monthEnd,
@@ -186,7 +188,13 @@ async function buildJournalNumber(entryDate: string, existing?: JournalEntry | n
         const sequence = Number.parseInt(entryNumber.slice(`JRN-${monthPrefix}-`.length), 10);
         return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
     }, 0);
-    return formatJournalNumber(entryDate, maxSequence + 1);
+    // After collision, MUST start from max+1 to avoid stale reads
+    return formatJournalNumber(entryDate, Math.max(maxSequence + 1, lastAttemptedSequence + 1));
+}
+
+async function buildJournalNumber(entryDate: string, existing?: JournalEntry | null) {
+    if (existing?.entryNumber) return existing.entryNumber;
+    return buildJournalNumberAfterCollision(entryDate, 0);
 }
 
 function isDuplicateJournalNumberError(error: unknown) {
@@ -196,10 +204,21 @@ function isDuplicateJournalNumberError(error: unknown) {
 
 async function createJournalEntryWithRetry(entryDoc: JournalEntry, entryDate: string) {
     let lastError: unknown = null;
+    let lastAttemptedSequence = 0;
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
+        // After collision, rebuild from collision point to avoid stale reads
+        const entryNumber = attempt === 0
+            ? await buildJournalNumber(entryDate)
+            : await buildJournalNumberAfterCollision(entryDate, lastAttemptedSequence);
+
+        // Track sequence for next retry
+        const match = entryNumber.match(/JRN-\d{6}-(\d+)/);
+        lastAttemptedSequence = match ? Number.parseInt(match[1], 10) : lastAttemptedSequence + 1;
+
         const nextEntry = {
             ...entryDoc,
-            entryNumber: await buildJournalNumber(entryDate),
+            entryNumber,
         };
         try {
             await createDocument(nextEntry as unknown as { _type: string; [key: string]: unknown });
@@ -210,6 +229,7 @@ async function createJournalEntryWithRetry(entryDoc: JournalEntry, entryDate: st
                 throw error;
             }
             clearRelationalReadCache();
+            // After collision, rebuild number from current max to avoid stale reads
         }
     }
 
@@ -721,7 +741,7 @@ export async function postStockMovementJournal(
     movement: StockMovement,
     unitValue: number,
 ) {
-    const stockMovementEvents = ['MANUAL_IN', 'MANUAL_OUT', 'MAINTENANCE_USAGE'];
+    const stockMovementEvents = ['MANUAL_IN', 'MANUAL_OUT', 'STOCK_OPENING', 'MAINTENANCE_USAGE'];
     await Promise.all(
         stockMovementEvents
             .filter(event => event !== movement.sourceType)
@@ -731,6 +751,7 @@ export async function postStockMovementJournal(
     const shouldPostInventoryUsage =
         movement.sourceType === 'MANUAL_IN' ||
         movement.sourceType === 'MANUAL_OUT' ||
+        movement.sourceType === 'STOCK_OPENING' ||
         movement.sourceType === 'MAINTENANCE_USAGE';
     if (!shouldPostInventoryUsage) {
         await voidJournalEntryForSource(session, 'STOCK_MOVEMENT', movement._id, movement.sourceType);
@@ -742,10 +763,16 @@ export async function postStockMovementJournal(
         : cleanLineAmount(unitValue * cleanLineAmount(movement.quantity));
     if (amount <= 0) return;
 
-    const isStockIn = movement.type === 'IN' && movement.sourceType === 'MANUAL_IN';
+    const isStockIn =
+        movement.type === 'IN' &&
+        (movement.sourceType === 'MANUAL_IN' || movement.sourceType === 'STOCK_OPENING');
     await postJournalEntry(session, {
         entryDate: movement.movementDate,
-        memo: `${isStockIn ? 'Penyesuaian stok masuk' : 'Pemakaian stok keluar'} ${movement.itemName || movement.itemCode || movement._id}`,
+        memo: `${isStockIn
+            ? movement.sourceType === 'STOCK_OPENING'
+                ? `Stok awal ${movement.itemName || movement.itemCode || movement._id}`
+                : `Penyesuaian stok masuk ${movement.itemName || movement.itemCode || movement._id}`
+            : `Pemakaian stok keluar ${movement.itemName || movement.itemCode || movement._id}`}`,
         sourceType: 'STOCK_MOVEMENT',
         sourceRef: movement._id,
         sourceEvent: movement.sourceType,

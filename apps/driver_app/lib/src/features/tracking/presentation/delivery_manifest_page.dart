@@ -561,7 +561,10 @@ class _DeliveryManifestPageState extends State<DeliveryManifestPage>
           const CustomerProductOption(id: '', customerRef: '', name: ''),
     );
     if (selectedProduct.id.isEmpty) {
-      return currentItem.copyWith(customerProductRef: '');
+      return currentItem.copyWith(
+        customerProductRef: '',
+        isManualInput: true,
+      );
     }
 
     final currentQty = currentItem.qtyKoliValue;
@@ -590,6 +593,7 @@ class _DeliveryManifestPageState extends State<DeliveryManifestPage>
     return currentItem.copyWith(
       customerProductRef: selectedProduct.id,
       description: (selectedProduct.description ?? selectedProduct.name).trim(),
+      isManualInput: false,
       qtyKoli: _formatNumber(nextQty, fractionDigits: 0),
       weightInputValue: _formatNumber(
         nextWeightValue,
@@ -1266,6 +1270,7 @@ class _ManifestItemDraft {
     required this.weightInputUnit,
     required this.volumeInputValue,
     required this.volumeInputUnit,
+    this.isManualInput = false,
   });
 
   final String id;
@@ -1277,6 +1282,7 @@ class _ManifestItemDraft {
   final String weightInputUnit;
   final String volumeInputValue;
   final String volumeInputUnit;
+  final bool isManualInput;
 
   factory _ManifestItemDraft.create() {
     return const _ManifestItemDraft(
@@ -1300,6 +1306,8 @@ class _ManifestItemDraft {
       sourceCargoItemId: item.id,
       customerProductRef: (item.customerProductRef ?? '').trim(),
       description: item.description,
+      isManualInput: (item.customerProductRef ?? '').trim().isEmpty &&
+          item.description.trim().isNotEmpty,
       qtyKoli: _formatDraftNumber(item.qtyKoli, fractionDigits: 0),
       weightInputValue: _formatDraftNumber(
         item.weightInputValue ?? item.weightKg,
@@ -1320,6 +1328,7 @@ class _ManifestItemDraft {
       sourceCargoItemId: sourceCargoItemId,
       customerProductRef: customerProductRef,
       description: description,
+      isManualInput: isManualInput,
       qtyKoli: qtyKoli,
       weightInputValue: weightInputValue,
       weightInputUnit: weightInputUnit,
@@ -1362,12 +1371,14 @@ class _ManifestItemDraft {
     String? weightInputUnit,
     String? volumeInputValue,
     String? volumeInputUnit,
+    bool? isManualInput,
   }) {
     return _ManifestItemDraft(
       id: id,
       sourceCargoItemId: sourceCargoItemId,
       customerProductRef: customerProductRef ?? this.customerProductRef,
       description: description ?? this.description,
+      isManualInput: isManualInput ?? this.isManualInput,
       qtyKoli: qtyKoli ?? this.qtyKoli,
       weightInputValue: weightInputValue ?? this.weightInputValue,
       weightInputUnit: weightInputUnit ?? this.weightInputUnit,
@@ -1884,11 +1895,13 @@ class _CustomerProductSelectorField extends StatelessWidget {
     required this.value,
     required this.customerProducts,
     required this.onChanged,
+    this.isManualInput = false,
   });
 
   final String value;
   final List<CustomerProductOption> customerProducts;
   final ValueChanged<String?> onChanged;
+  final bool isManualInput;
 
   @override
   Widget build(BuildContext context) {
@@ -1909,26 +1922,32 @@ class _CustomerProductSelectorField extends StatelessWidget {
       );
     }
 
+    final displayLabel = isManualInput
+        ? 'Tambah manual'
+        : (selectedProduct?.displayLabel ?? 'Pilih master barang');
+
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => _openPicker(context),
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: 'Barang Customer',
-          helperText: selectedProduct == null
+          helperText: isManualInput
+              ? 'Barang dicatat manual, tidak dari master.'
+              : selectedProduct == null
               ? 'Pilih dari master barang atau isi manual.'
               : _customerProductSubtitle(selectedProduct),
           helperMaxLines: 3,
           suffixIcon: const Icon(Icons.expand_more_rounded),
         ),
         child: Text(
-          selectedProduct?.displayLabel ?? 'Pilih master barang',
+          displayLabel,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: selectedProduct == null
-                ? Theme.of(context).hintColor
-                : Theme.of(context).colorScheme.onSurface,
+            color: isManualInput || selectedProduct != null
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).hintColor,
           ),
         ),
       ),
@@ -1954,6 +1973,8 @@ class _CustomerProductSelectorField extends StatelessWidget {
     onChanged(selectedId);
   }
 }
+
+const _manualCustomerProductValue = '__manual__';
 
 class _CustomerProductPickerSheet extends StatefulWidget {
   const _CustomerProductPickerSheet({
@@ -2057,14 +2078,15 @@ class _CustomerProductPickerSheetState
                             borderRadius: BorderRadius.circular(14),
                           ),
                           leading: const Icon(Icons.edit_note_rounded),
-                          title: const Text('Tanpa master barang'),
+                          title: const Text('Tambah manual'),
                           subtitle: const Text(
                             'Isi deskripsi, koli, berat, dan volume manual.',
                           ),
                           trailing: selectedId.isEmpty
                               ? const Icon(Icons.check_rounded)
                               : null,
-                          onTap: () => Navigator.of(context).pop(''),
+                          onTap: () =>
+                              Navigator.of(context).pop(_manualCustomerProductValue),
                         );
                       }
 
@@ -2481,6 +2503,7 @@ class _ManifestItemCard extends StatelessWidget {
             key: ValueKey('productSelector-${item.id}'),
             value: item.customerProductRef,
             customerProducts: customerProductOptions,
+            isManualInput: item.isManualInput,
             onChanged: onProductSelected,
           ),
           const SizedBox(height: 12),

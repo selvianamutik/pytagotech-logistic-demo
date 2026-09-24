@@ -1,5 +1,6 @@
 import type { ApiSession } from '@/lib/api/data-helpers';
 import { registerApiReadCacheInvalidator } from '@/lib/api/read-cache';
+import { buildAuditEntityLabel, getAuditLabelFields, resolveAuditEntityDocType } from '@/lib/audit-labels';
 import { addDaysToDateValue, getBusinessCalendarDateParts, getBusinessDateValue } from '@/lib/business-date';
 import { getDocumentById, listDocumentFieldsByFilter, listDocuments, listDocumentsByFilter } from '@/lib/repositories/document-store';
 import {
@@ -46,6 +47,12 @@ import { getDriverVoucherFinancialSummary, getDriverVoucherIssuedAmount, getRece
 
 function parseWholeMoneyLike(value: unknown) {
     return Math.max(parseFormattedNumberish(value ?? 0, { maxFractionDigits: 0 }), 0);
+}
+
+function dedupeById<T extends { _id: string }>(rows: T[]) {
+    const seen = new Map<string, T>();
+    for (const row of rows) seen.set(row._id, row);
+    return [...seen.values()];
 }
 
 async function getDocumentCount(docType: string, filterObj: Record<string, unknown> = {}) {
@@ -451,6 +458,7 @@ function buildAuditLogFilterCacheKey(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     return JSON.stringify({
         search: params.search?.trim().toLowerCase() || '',
@@ -460,6 +468,7 @@ function buildAuditLogFilterCacheKey(params: {
         period: normalizeAuditLogPeriod(params.period),
         entityRefs: normalizeStringList([params.entityRef, ...(params.entityRefs ?? [])]).sort(),
         entityTypes: normalizeStringList([params.entityType, ...(params.entityTypes ?? [])]).sort(),
+        actorUserName: params.actorUserName?.trim() || '',
     });
 }
 
@@ -473,6 +482,7 @@ async function getFilteredAuditLogs(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     const cacheKey = buildAuditLogFilterCacheKey(params);
     if (AUDIT_LOG_FILTER_CACHE_TTL_MS > 0) {
@@ -557,6 +567,10 @@ async function getFilteredAuditLogs(params: {
             return false;
         }
 
+        if (params.actorUserName && (log.actorUserName || '') !== params.actorUserName) {
+            return false;
+        }
+
         if (!matchesAuditLogPeriod(log, period, today)) {
             return false;
         }
@@ -587,6 +601,89 @@ async function getFilteredAuditLogs(params: {
     return sorted;
 }
 
+const MAX_AUDIT_ENRICH_SLICE = 200;
+
+async function enrichAuditLogLabels(items: AuditLog[]): Promise<AuditLog[]> {
+    if (items.length === 0 || items.length > MAX_AUDIT_ENRICH_SLICE) {
+        return items;
+    }
+
+    const refsByDocType = new Map<string, string[]>();
+    for (const log of items) {
+        const entityType = typeof log.entityType === 'string' ? log.entityType : '';
+        const entityRef = typeof log.entityRef === 'string' ? log.entityRef : '';
+        if (!entityType || !entityRef) {
+            continue;
+        }
+        const docType = resolveAuditEntityDocType(entityType);
+        if (!docType || docType === 'auditLog') {
+            continue;
+        }
+        if (getAuditLabelFields(docType).length === 0) {
+            continue;
+        }
+        const refs = refsByDocType.get(docType) ?? [];
+        if (!refs.includes(entityRef)) {
+            refs.push(entityRef);
+        }
+        refsByDocType.set(docType, refs);
+    }
+    if (refsByDocType.size === 0) {
+        return items;
+    }
+
+    const labelsById = new Map<string, string>();
+    await Promise.all(
+        Array.from(refsByDocType.entries()).map(async ([docType, refs]) => {
+            try {
+                const fields = getAuditLabelFields(docType);
+                const docs = await listDocumentFieldsByFilter<Record<string, unknown> & { _id?: string }>(
+                    docType,
+                    fields,
+                    {
+                        _id: refs,
+                    }
+                );
+                for (const doc of docs) {
+                    const docId = typeof doc._id === 'string' ? doc._id : '';
+                    if (!docId) {
+                        continue;
+                    }
+                    const label = buildAuditEntityLabel(doc, docType);
+                    if (label) {
+                        labelsById.set(docId, label);
+                    }
+                }
+            } catch {
+                // Ignore per-docType enrichment failures; fall back to raw entityRef.
+            }
+        })
+    );
+    if (labelsById.size === 0) {
+        return items;
+    }
+
+    return items.map(log => {
+        const entityRef = typeof log.entityRef === 'string' ? log.entityRef : '';
+        if (!entityRef) {
+            return log;
+        }
+        const label = labelsById.get(entityRef);
+        if (!label) {
+            return log;
+        }
+        const next: AuditLog = {
+            ...log,
+            entityLabel: label,
+        };
+        const summary = log.changesSummary;
+        if (typeof summary === 'string' && summary.includes(entityRef)) {
+            next.changesSummary = summary.split(entityRef).join(label);
+        }
+        return next;
+    });
+}
+
 export async function getAuditLogList(params: {
     search?: string;
     searchFields?: string[];
@@ -599,6 +696,7 @@ export async function getAuditLogList(params: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
     countOnly?: boolean;
 }) {
     const filtered = await getFilteredAuditLogs(params);
@@ -613,8 +711,9 @@ export async function getAuditLogList(params: {
     }
 
     const offset = Math.max(params.page - 1, 0) * Math.max(params.pageSize, 1);
+    const items = await enrichAuditLogLabels(filtered.slice(offset, offset + params.pageSize));
     return {
-        items: filtered.slice(offset, offset + params.pageSize),
+        items,
         total,
     };
 }
@@ -627,6 +726,7 @@ export async function getAuditLogsSummary(params?: {
     entityRefs?: string[];
     entityType?: string | null;
     entityTypes?: string[];
+    actorUserName?: string | null;
 }) {
     const logs = await getFilteredAuditLogs({
         search: params?.search,
@@ -636,6 +736,7 @@ export async function getAuditLogsSummary(params?: {
         entityRefs: params?.entityRefs,
         entityType: params?.entityType,
         entityTypes: params?.entityTypes,
+        actorUserName: params?.actorUserName,
     });
 
     const loginLogs = logs.filter(log => log.action === 'LOGIN' || log.action === 'LOGOUT').length;
@@ -646,11 +747,21 @@ export async function getAuditLogsSummary(params?: {
             .filter(Boolean)
     ).size;
 
+    const allActorLogs = await getFilteredAuditLogs({
+        period: 'all',
+    });
+    const actorNames = [...new Set(
+        allActorLogs
+            .map(log => log.actorUserName)
+            .filter((name): name is string => Boolean(name) && name !== 'User tidak diketahui')
+    )].sort();
+
     return {
         totalLogs: logs.length,
         loginLogs,
         mutationLogs,
         actorCount,
+        actorNames,
         period: normalizeAuditLogPeriod(params?.period),
     };
 }
@@ -959,7 +1070,7 @@ export function applyDerivedDriverVoucherLedger<
 
 function getSignedBankTransactionDelta(type: BankTransaction['type'] | undefined, amount: unknown) {
     const numericAmount = parseWholeMoneyLike(amount);
-    if (type === 'DEBIT' || type === 'TRANSFER_OUT') {
+    if (type === 'DEBIT' || type === 'TRANSFER_OUT' || type === 'ADJUSTMENT_DEBIT') {
         return -numericAmount;
     }
     return numericAmount;
@@ -981,12 +1092,19 @@ export function applyDerivedBankAccountBalances<
         return acc;
     }, {});
 
+    const countsByAccount = transactionRows.reduce<Record<string, number>>((acc, tx) => {
+        if (!tx.bankAccountRef) return acc;
+        acc[tx.bankAccountRef] = (acc[tx.bankAccountRef] || 0) + 1;
+        return acc;
+    }, {});
+
     return accounts.map(account => {
         const initialBalance = parseFormattedNumberish(account.initialBalance ?? 0, { maxFractionDigits: 0 });
         return {
             ...account,
             initialBalance,
             currentBalance: initialBalance + (deltasByAccount[account._id] || 0),
+            transactionCount: countsByAccount[account._id] || 0,
         };
     });
 }
@@ -1650,10 +1768,10 @@ export async function getCustomerOverpaymentById(id: string) {
     const notaIds = notas.map(item => item._id).filter(Boolean);
     const [receiptPayments, invoicePayments, receiptRefunds, invoiceRefunds, invoiceAdjustments] = await Promise.all([
         receiptIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
             : Promise.resolve([]),
         notaIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
             : Promise.resolve([]),
         receiptIds.length > 0
             ? listDocumentsByFilter<CustomerOverpaymentRefund>('customerOverpaymentRefund', {
@@ -1673,7 +1791,7 @@ export async function getCustomerOverpaymentById(id: string) {
             })
             : Promise.resolve([]),
     ]);
-    const payments = [...receiptPayments, ...invoicePayments];
+    const payments = dedupeById([...receiptPayments, ...invoicePayments]);
     const refunds = [...receiptRefunds, ...invoiceRefunds];
     const activeInvoiceAdjustments = invoiceAdjustments.filter(row => row.status !== 'VOID' && row.invoiceRef);
 
@@ -1724,10 +1842,10 @@ export async function getCustomerOverpaymentList(params: {
     const notaIds = notas.map(item => item._id).filter(Boolean);
     const [receiptPayments, invoicePayments, receiptRefunds, invoiceRefunds, invoiceAdjustments] = await Promise.all([
         receiptIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { receiptRef: receiptIds })
             : Promise.resolve([]),
         notaIds.length > 0
-            ? listDocumentsByFilter<Pick<Payment, 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
+            ? listDocumentsByFilter<Pick<Payment, '_id' | 'invoiceRef' | 'receiptRef' | 'amount'>>('payment', { invoiceRef: notaIds })
             : Promise.resolve([]),
         receiptIds.length > 0
             ? listDocumentsByFilter<CustomerOverpaymentRefund>('customerOverpaymentRefund', {
@@ -1747,7 +1865,7 @@ export async function getCustomerOverpaymentList(params: {
             })
             : Promise.resolve([]),
     ]);
-    const payments = [...receiptPayments, ...invoicePayments];
+    const payments = dedupeById([...receiptPayments, ...invoicePayments]);
     const refunds = [...receiptRefunds, ...invoiceRefunds];
     const activeInvoiceAdjustments = invoiceAdjustments.filter(row => row.status !== 'VOID' && row.invoiceRef);
 
@@ -1840,11 +1958,11 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
     }
 
     const canViewOrders = hasPageAccess(session.role, 'orders');
-    const canViewDeliveryOrders = hasPermission(session.role, 'deliveryOrders', 'view');
-    const canViewInvoices = hasPermission(session.role, 'invoices', 'view');
-    const canViewTripCash = hasPermission(session.role, 'driverVouchers', 'view');
-    const canViewFleet = hasPermission(session.role, 'incidents', 'view') || hasPermission(session.role, 'maintenance', 'view');
-    const canSeeBorongan = hasPermission(session.role, 'driverBorongans', 'view');
+    const canViewDeliveryOrders = hasPermission(session, 'deliveryOrders', 'view');
+    const canViewInvoices = hasPermission(session, 'invoices', 'view');
+    const canViewTripCash = hasPermission(session, 'driverVouchers', 'view');
+    const canViewFleet = hasPermission(session, 'incidents', 'view') || hasPermission(session, 'maintenance', 'view');
+    const canSeeBorongan = hasPermission(session, 'driverBorongans', 'view');
     const [
         orderStats,
         doStats,
@@ -1997,7 +2115,7 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
         (sum, voucher) => sum + getDriverVoucherIssuedAmount(voucher),
         0
     );
-    const canSeeFinancialTotals = session.role === 'OWNER' || session.role === 'FINANCE';
+    const canSeeFinancialTotals = hasPermission(session, 'reports', 'view');
 
     const summary = {
         orderStats,

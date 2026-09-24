@@ -185,6 +185,7 @@ class DriverAppSession {
     required this.driverName,
     required this.email,
     required this.role,
+    this.accountName = '',
     this.driverRef,
     this.token,
     this.refreshToken,
@@ -193,6 +194,9 @@ class DriverAppSession {
 
   final String driverId;
   final String driverName;
+
+  /// Nama akun login (app_users.name). Bisa diubah driver sendiri.
+  final String accountName;
   final String email;
   final String role;
   final String? driverRef;
@@ -203,6 +207,7 @@ class DriverAppSession {
   Map<String, dynamic> toJson() => {
     'driverId': driverId,
     'driverName': driverName,
+    'accountName': accountName,
     'email': email,
     'role': role,
     'driverRef': driverRef,
@@ -218,6 +223,7 @@ class DriverAppSession {
       driverId: json['driverId']?.toString() ?? json['_id']?.toString() ?? '',
       driverName:
           json['driverName']?.toString() ?? json['name']?.toString() ?? '',
+      accountName: json['accountName']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? 'DRIVER',
       driverRef: json['driverRef']?.toString(),
@@ -237,6 +243,7 @@ class DriverAppSession {
       driverId: user['_id']?.toString() ?? user['driverId']?.toString() ?? '',
       driverName:
           user['driverName']?.toString() ?? user['name']?.toString() ?? '',
+      accountName: user['name']?.toString() ?? '',
       email: user['email']?.toString() ?? '',
       role: user['role']?.toString() ?? 'DRIVER',
       driverRef: user['driverRef']?.toString(),
@@ -249,11 +256,13 @@ class DriverAppSession {
   DriverAppSession copyWith({
     String? token,
     String? refreshToken,
+    String? accountName,
     DriverAccessNotice? accessNotice,
   }) {
     return DriverAppSession(
       driverId: driverId,
       driverName: driverName,
+      accountName: accountName ?? this.accountName,
       email: email,
       role: role,
       driverRef: driverRef,

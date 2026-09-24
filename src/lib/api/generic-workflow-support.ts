@@ -63,6 +63,13 @@ function parseStrictNumericInput(
     return normalized;
 }
 
+function normalizeKontanTermValue(value: unknown) {
+    if (typeof value === 'string' && /^\s*kontan\s*$/i.test(value)) {
+        return 0;
+    }
+    return value;
+}
+
 export function normalizeCustomerDoPrefix(value: unknown) {
     const prefix = normalizeOptionalText(value)
         ?.toUpperCase()
@@ -145,7 +152,7 @@ export async function normalizeSupplierPayload(data: Record<string, unknown>, ex
 
     const defaultTermDays =
         Object.prototype.hasOwnProperty.call(data, 'defaultTermDays') || !existing
-            ? parseStrictNumericInput(data.defaultTermDays ?? 0, 'Termin default supplier tidak valid', {
+            ? parseStrictNumericInput(normalizeKontanTermValue(data.defaultTermDays) ?? 0, 'Termin default supplier tidak valid', {
                 allowDecimal: false,
                 maxFractionDigits: 0,
             })

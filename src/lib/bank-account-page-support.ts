@@ -18,6 +18,16 @@ export type BankTransferFormState = {
   date: string;
 };
 
+export type BankAdjustmentDirection = "in" | "out";
+
+export type BankAdjustmentFormState = {
+  bankAccountRef: string;
+  direction: BankAdjustmentDirection;
+  amount: number;
+  date: string;
+  description: string;
+};
+
 export const BANK_PRESETS: Record<
   string,
   { label: string; color: string; gradient: string }
@@ -110,6 +120,16 @@ export function createDefaultBankTransferForm(): BankTransferFormState {
     toAccountRef: "",
     amount: 0,
     date: getBusinessDateValue(),
+  };
+}
+
+export function createDefaultBankAdjustmentForm(accountRef = ""): BankAdjustmentFormState {
+  return {
+    bankAccountRef: accountRef,
+    direction: "in",
+    amount: 0,
+    date: getBusinessDateValue(),
+    description: "",
   };
 }
 

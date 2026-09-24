@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Save, Search, Trash2, Wrench, X } from 'lucide-react';
+import { Plus, Save, Search, Trash2, Wrench, X, Eye, Check, SkipForward, Truck } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAdminCollectionData } from '@/lib/api/admin-client';
 import {
@@ -74,11 +75,11 @@ export default function MaintenancePage() {
         oldTireUsagePercent: null as number | null,
         oldTireDestination: 'WAREHOUSE' as 'WAREHOUSE' | 'SCRAPPED',
     });
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
-    const canUpdateMaintenance = user ? hasPermission(user.role, 'maintenance', 'update') : false;
-    const canViewMaintenanceCost = user?.role === 'OWNER';
-    const canOpenWarehouseItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-    const canViewBankAccounts = user ? hasPermission(user.role, 'bankAccounts', 'view') : false;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
+    const canUpdateMaintenance = user ? hasPermission(user, 'maintenance', 'update') : false;
+    const canViewMaintenanceCost = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canViewBankAccounts = user ? hasPermission(user, 'bankAccounts', 'view') : false;
 
     useEffect(() => {
         setPage(1);
@@ -626,14 +627,8 @@ export default function MaintenancePage() {
                 <div className="table-toolbar">
                     <div className="table-toolbar-left">
                         <div className="table-search"><Search size={16} className="table-search-icon" /><input placeholder="Cari kendaraan atau tipe servis..." value={search} onChange={e => setSearch(e.target.value)} /></div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)}>
-                            <option value="">Semua Kendaraan</option>
-                            {vehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber} - {vehicle.brandModel}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(MAINTENANCE_STATUS_MAP).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-                        </select>
+                        <Combobox className="form-select" value={vehicleFilter} onChange={(v: string) => setVehicleFilter(v)} options={vehicles.map(vehicle => ({ value: vehicle._id, label: `${vehicle.plateNumber} - ${vehicle.brandModel}` }))} placeholder="Semua Kendaraan" />
+                        <Combobox className="form-select" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} options={Object.entries(MAINTENANCE_STATUS_MAP).map(([key, meta]) => ({ value: key, label: meta.label }))} placeholder="Semua Status" />
                     </div>
                 </div>
 
@@ -663,14 +658,15 @@ export default function MaintenancePage() {
                                                 <td>{renderMaterialUsage(item)}</td>
                                                 {canViewMaintenanceCost && <td>{item.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(item)) : '-'}</td>}
                                                 <td>
-                                                    <div className="table-actions">
+                                                    <div className="table-actions-col">
+                                                        <Link href={`/fleet/maintenance/${item._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link>
                                                         {canUpdateMaintenance && item.status === 'SCHEDULED' && (
                                                             <>
-                                                                <button className="table-action-btn" onClick={() => void openCompleteModal(item)} disabled={updatingId === item._id || savingCompletion}>Selesai</button>
-                                                                <button className="table-action-btn" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : 'Lewati'}</button>
+                                                                <button className="table-action-btn" onClick={() => void openCompleteModal(item)} disabled={updatingId === item._id || savingCompletion}><Check size={14} /> Selesai</button>
+                                                                <button className="table-action-btn" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : (<><SkipForward size={14} /> Lewati</>)}</button>
                                                             </>
                                                         )}
-                                                        {item.status !== 'SCHEDULED' && <Link href={`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`} className="table-action-btn">Lihat Unit</Link>}
+                                                        {item.status !== 'SCHEDULED' && <Link href={`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`} className="table-action-btn"><Truck size={14} /> Lihat Unit</Link>}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -688,7 +684,7 @@ export default function MaintenancePage() {
                             return (
                                 <div key={item._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
-                                        <div><div className="mobile-record-title">{item.vehiclePlate || '-'}</div><div className="mobile-record-subtitle">{item.type}</div></div>
+                                        <div><div className="mobile-record-title">{item.vehicleRef ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</div><div className="mobile-record-subtitle">{item.type}</div></div>
                                         <span className={`badge badge-${MAINTENANCE_STATUS_MAP[item.status]?.color}`}><span className="badge-dot" /> {MAINTENANCE_STATUS_MAP[item.status]?.label}</span>
                                     </div>
                                     <div className="mobile-record-meta">
@@ -699,11 +695,12 @@ export default function MaintenancePage() {
                                         {item.notes && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan Jadwal</span><span className="mobile-record-value">{item.notes}</span></div>}
                                     </div>
                                     <div className="mobile-record-actions">
-                                        <button className="btn btn-secondary" onClick={() => window.location.assign(`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`)}>Lihat Unit</button>
+                                        <Link className="btn btn-secondary" href={`/fleet/maintenance/${item._id}`}><Eye size={14} /> Detail</Link>
+                                        <button className="btn btn-secondary" onClick={() => window.location.assign(`/fleet/vehicles/${item.vehicleRef}?tab=maintenance`)}><Truck size={14} /> Lihat Unit</button>
                                         {canUpdateMaintenance && item.status === 'SCHEDULED' && (
                                             <>
-                                                <button className="btn btn-secondary" onClick={() => void openCompleteModal(item)} disabled={savingCompletion}>Selesai</button>
-                                                <button className="btn btn-secondary" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : 'Lewati'}</button>
+                                                <button className="btn btn-secondary" onClick={() => void openCompleteModal(item)} disabled={savingCompletion}><Check size={14} /> Selesai</button>
+                                                <button className="btn btn-secondary" onClick={() => void skipMaintenance(item._id)} disabled={updatingId === item._id}>{updatingId === item._id ? 'Menyimpan...' : (<><SkipForward size={14} /> Lewati</>)}</button>
                                             </>
                                         )}
                                     </div>
@@ -728,7 +725,7 @@ export default function MaintenancePage() {
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header"><h3 className="modal-title">Jadwalkan Maintenance</h3><button className="modal-close" onClick={closeScheduleModal} disabled={savingSchedule}><X size={20} /></button></div>
                         <div className="modal-body">
-                            <div className="form-group"><label className="form-label">Kendaraan <span className="required">*</span></label><select className="form-select" value={form.vehicleRef} onChange={e => setForm({ ...form, vehicleRef: e.target.value })} disabled={savingSchedule}><option value="">Pilih</option>{vehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber} - {vehicle.brandModel}</option>)}</select></div>
+                            <div className="form-group"><label className="form-label">Kendaraan <span className="required">*</span></label><Combobox className="form-select" value={form.vehicleRef} onChange={(v: string) => setForm({ ...form, vehicleRef: v })} options={vehicles.map(vehicle => ({ value: vehicle._id, label: `${vehicle.plateNumber} - ${vehicle.brandModel}` }))} placeholder="Pilih" disabled={savingSchedule} /></div>
                             {selectedVehicle && (
                                 <div style={{ padding: '0.85rem 1rem', borderRadius: '0.75rem', background: 'var(--color-gray-50)', border: '1px solid var(--color-gray-200)', marginBottom: '1rem' }}>
                                     <div className="text-muted text-sm">Unit yang dipilih</div>
@@ -736,8 +733,8 @@ export default function MaintenancePage() {
                                     <div className="text-muted text-sm" style={{ marginTop: '0.25rem' }}>Odometer terakhir {selectedVehicle.lastOdometer ? `${formatQuantity(selectedVehicle.lastOdometer, 0)} km` : 'belum diisi'}.</div>
                                 </div>
                             )}
-                            <div className="form-group"><label className="form-label">Tipe Servis <span className="required">*</span></label><select className="form-select" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} disabled={savingSchedule}><option value="">Pilih</option><option>Servis Berkala</option><option>Ganti Oli</option><option>Ganti Rem</option><option>Ganti Ban / Tire Maintenance</option><option>Ganti Ban</option><option>Spooring</option><option>Lainnya</option></select></div>
-                            <div className="form-group"><label className="form-label">Jadwal Berdasarkan</label><select className="form-select" value={form.scheduleType} onChange={e => setForm(prev => ({ ...prev, scheduleType: e.target.value as 'DATE' | 'ODOMETER', plannedDate: prev.plannedDate || getTodayDate(), plannedOdometer: prev.plannedOdometer || selectedVehicle?.lastOdometer || 0 }))} disabled={savingSchedule}><option value="DATE">Tanggal</option><option value="ODOMETER">Odometer</option></select></div>
+                            <div className="form-group"><label className="form-label">Tipe Servis <span className="required">*</span></label><Combobox className="form-select" value={form.type} onChange={(v: string) => setForm({ ...form, type: v })} options={['Servis Berkala', 'Ganti Oli', 'Ganti Rem', 'Ganti Ban / Tire Maintenance', 'Ganti Ban', 'Spooring', 'Lainnya']} placeholder="Pilih" disabled={savingSchedule} /></div>
+                            <div className="form-group"><label className="form-label">Jadwal Berdasarkan</label><Combobox className="form-select" value={form.scheduleType} onChange={(v: string) => setForm(prev => ({ ...prev, scheduleType: v as 'DATE' | 'ODOMETER', plannedDate: prev.plannedDate || getTodayDate(), plannedOdometer: prev.plannedOdometer || selectedVehicle?.lastOdometer || 0 }))} options={[{ value: 'DATE', label: 'Tanggal' }, { value: 'ODOMETER', label: 'Odometer' }]} disabled={savingSchedule} /></div>
                             {form.scheduleType === 'DATE'
                                 ? <div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={form.plannedDate} onChange={e => setForm({ ...form, plannedDate: e.target.value })} disabled={savingSchedule} /></div>
                                 : <div className="form-group"><label className="form-label">Odometer (km)</label><FormattedNumberInput allowDecimal={false} value={form.plannedOdometer} onValueChange={value => setForm({ ...form, plannedOdometer: value })} disabled={savingSchedule} /></div>}
@@ -770,12 +767,7 @@ export default function MaintenancePage() {
                                     <div className="form-group"><label className="form-label">Ongkos Jasa / Tukang</label><FormattedNumberInput allowDecimal={false} value={completeForm.laborCost} onValueChange={(value) => setCompleteForm(current => ({ ...current, laborCost: value }))} disabled={savingCompletion} zeroAsEmpty /></div>
                                     <div className="form-group">
                                         <label className="form-label">Kas / Bank Pembayaran Jasa</label>
-                                        <select className="form-select" value={completeForm.laborBankAccountRef} onChange={event => setCompleteForm(current => ({ ...current, laborBankAccountRef: event.target.value }))} disabled={savingCompletion || loadingBankAccounts || completeForm.laborCost <= 0}>
-                                            <option value="">{completeForm.laborCost > 0 ? 'Belum dibayar / hutang biaya' : 'Isi ongkos jasa dulu'}</option>
-                                            {bankAccounts.map(account => (
-                                                <option key={account._id} value={account._id}>{account.bankName} {account.accountNumber ? `- ${account.accountNumber}` : ''}</option>
-                                            ))}
-                                        </select>
+                                        <Combobox className="form-select" value={completeForm.laborBankAccountRef} onChange={(v: string) => setCompleteForm(current => ({ ...current, laborBankAccountRef: v }))} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName}${account.accountNumber ? ` - ${account.accountNumber}` : ''}` }))} placeholder={completeForm.laborCost > 0 ? 'Belum dibayar / hutang biaya' : 'Isi ongkos jasa dulu'} disabled={savingCompletion || loadingBankAccounts || completeForm.laborCost <= 0} />
                                     </div>
                                 </div>
                             )}
@@ -791,76 +783,61 @@ export default function MaintenancePage() {
                                             <div className="form-row">
                                                 <div className="form-group">
                                                     <label className="form-label">Slot Ban</label>
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={tireMaintenanceForm.slotCode}
-                                                        onChange={event => setTireMaintenanceForm(current => ({ ...current, slotCode: event.target.value, oldTireUsagePercent: null }))}
+                                                        onChange={(v: string) => setTireMaintenanceForm(current => ({ ...current, slotCode: v, oldTireUsagePercent: null }))}
+                                                        options={tireSlotOptions.map(option => ({ value: option.value, label: option.label }))}
+                                                        placeholder={selectedCompleteVehicle ? 'Pilih slot' : 'Pilih kendaraan dulu'}
                                                         disabled={savingCompletion || !selectedCompleteVehicle}
-                                                    >
-                                                        {!selectedCompleteVehicle && <option value="">Pilih kendaraan dulu</option>}
-                                                        {tireSlotOptions.map(option => (
-                                                            <option key={option.value} value={option.value}>{option.label}</option>
-                                                        ))}
-                                                    </select>
+                                                    />
                                                 </div>
                                                 <div className="form-group">
                                                     <label className="form-label">Sumber Ban</label>
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={tireMaintenanceForm.tireSource}
-                                                        onChange={event => setTireMaintenanceForm(current => ({
+                                                        onChange={(v: string) => setTireMaintenanceForm(current => ({
                                                             ...current,
-                                                            tireSource: event.target.value as 'WAREHOUSE' | 'UNIT',
+                                                            tireSource: v as 'WAREHOUSE' | 'UNIT',
                                                             sourceVehicleRef: '',
                                                             tireEventRef: '',
                                                             sourceTireUsagePercent: null,
                                                         }))}
+                                                        options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'UNIT', label: 'Unit Lain' }]}
                                                         disabled={savingCompletion || !selectedCompleteVehicle}
-                                                    >
-                                                        <option value="WAREHOUSE">Gudang Ban</option>
-                                                        <option value="UNIT">Unit Lain</option>
-                                                    </select>
+                                                    />
                                                 </div>
                                                 {tireMaintenanceForm.tireSource === 'UNIT' && (
                                                     <div className="form-group">
                                                         <label className="form-label">Unit Sumber</label>
-                                                        <select
+                                                        <Combobox
                                                             className="form-select"
                                                             value={tireMaintenanceForm.sourceVehicleRef}
-                                                            onChange={event => setTireMaintenanceForm(current => ({
+                                                            onChange={(v: string) => setTireMaintenanceForm(current => ({
                                                                 ...current,
-                                                                sourceVehicleRef: event.target.value,
+                                                                sourceVehicleRef: v,
                                                                 tireEventRef: '',
                                                                 sourceTireUsagePercent: null,
                                                             }))}
+                                                            options={maintenanceSourceUnitOptions.map(option => ({ value: option.value, label: `${option.label} (${option.tireCount} ban)` }))}
+                                                            placeholder={selectedCompleteVehicle ? 'Pilih unit sumber' : 'Pilih kendaraan dulu'}
                                                             disabled={savingCompletion || !selectedCompleteVehicle}
-                                                        >
-                                                            <option value="">{selectedCompleteVehicle ? 'Pilih unit sumber' : 'Pilih kendaraan dulu'}</option>
-                                                            {maintenanceSourceUnitOptions.map(option => (
-                                                                <option key={option.value} value={option.value}>
-                                                                    {option.label} ({option.tireCount} ban)
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                        />
                                                     </div>
                                                 )}
                                             </div>
                                             <div className="form-row">
                                                 <div className="form-group">
                                                     <label className="form-label">{tireMaintenanceForm.tireSource === 'WAREHOUSE' ? 'Ban dari Gudang' : 'Ban dari Unit'}</label>
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={tireMaintenanceForm.tireEventRef}
-                                                        onChange={event => setTireMaintenanceForm(current => ({ ...current, tireEventRef: event.target.value }))}
+                                                        onChange={(v: string) => setTireMaintenanceForm(current => ({ ...current, tireEventRef: v }))}
+                                                        options={availableReplacementTires.map(tire => ({ value: tire._id, label: `${tire.tireCodeLabel} - ${tire.tireBrand} ${tire.tireSize} (${tire.placementLabel})` }))}
+                                                        placeholder={selectedCompleteVehicle ? (tireMaintenanceForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : tireMaintenanceForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu') : 'Pilih kendaraan dulu'}
                                                         disabled={savingCompletion || !selectedCompleteVehicle || (tireMaintenanceForm.tireSource === 'UNIT' && !tireMaintenanceForm.sourceVehicleRef)}
-                                                    >
-                                                        <option value="">{selectedCompleteVehicle ? (tireMaintenanceForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : tireMaintenanceForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu') : 'Pilih kendaraan dulu'}</option>
-                                                        {availableReplacementTires.map(tire => (
-                                                            <option key={tire._id} value={tire._id}>
-                                                                {tire.tireCodeLabel} - {tire.tireBrand} {tire.tireSize} ({tire.placementLabel})
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                    />
                                                 </div>
                                             </div>
                                             {requiresMaintenanceSourceUsagePercent && (
@@ -897,15 +874,13 @@ export default function MaintenancePage() {
                                                     </div>
                                                     <div className="form-group">
                                                         <label className="form-label">Ban Lama Dipindahkan Ke</label>
-                                                        <select
+                                                        <Combobox
                                                             className="form-select"
                                                             value={tireMaintenanceForm.oldTireDestination}
-                                                            onChange={event => setTireMaintenanceForm(current => ({ ...current, oldTireDestination: event.target.value as 'WAREHOUSE' | 'SCRAPPED' }))}
+                                                            onChange={(v: string) => setTireMaintenanceForm(current => ({ ...current, oldTireDestination: v as 'WAREHOUSE' | 'SCRAPPED' }))}
+                                                            options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'SCRAPPED', label: 'Afkir' }]}
                                                             disabled={savingCompletion}
-                                                        >
-                                                            <option value="WAREHOUSE">Gudang Ban</option>
-                                                            <option value="SCRAPPED">Afkir</option>
-                                                        </select>
+                                                        />
                                                     </div>
                                                 </div>
                                             )}
@@ -990,12 +965,7 @@ export default function MaintenancePage() {
                                                     </div>
                                                     <div className="form-group">
                                                         <label className="form-label">Kas / Bank Pembayaran Teknisi</label>
-                                                        <select className="form-select" value={completeForm.laborBankAccountRef} onChange={event => setCompleteForm(current => ({ ...current, laborBankAccountRef: event.target.value }))} disabled={savingCompletion || loadingBankAccounts || completeForm.laborCost <= 0}>
-                                                            <option value="">{completeForm.laborCost > 0 ? 'Belum dibayar / hutang biaya' : 'Isi biaya teknisi dulu'}</option>
-                                                            {bankAccounts.map(account => (
-                                                                <option key={account._id} value={account._id}>{account.bankName} {account.accountNumber ? `- ${account.accountNumber}` : ''}</option>
-                                                            ))}
-                                                        </select>
+                                                        <Combobox className="form-select" value={completeForm.laborBankAccountRef} onChange={(v: string) => setCompleteForm(current => ({ ...current, laborBankAccountRef: v }))} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName}${account.accountNumber ? ` - ${account.accountNumber}` : ''}` }))} placeholder={completeForm.laborCost > 0 ? 'Belum dibayar / hutang biaya' : 'Isi biaya teknisi dulu'} disabled={savingCompletion || loadingBankAccounts || completeForm.laborCost <= 0} />
                                                     </div>
                                                 </div>
                                             </div>
@@ -1037,7 +1007,7 @@ export default function MaintenancePage() {
                                                             <button type="button" className="btn btn-secondary" onClick={() => removeCompletionLine(index)} disabled={savingCompletion}><Trash2 size={14} /> Hapus</button>
                                                         </div>
                                                         <div className="form-row">
-                                                            <div className="form-group"><label className="form-label">Barang Gudang</label><select className="form-select" value={line.warehouseItemRef} onChange={event => updateCompletionLine(index, { warehouseItemRef: event.target.value })} disabled={savingCompletion}><option value="">Pilih barang</option>{materialOptions.map((option) => <option key={option._id} value={option._id}>{option.itemCode} - {option.name}</option>)}</select></div>
+                                                            <div className="form-group"><label className="form-label">Barang Gudang</label><Combobox className="form-select" value={line.warehouseItemRef} onChange={(v: string) => updateCompletionLine(index, { warehouseItemRef: v })} options={materialOptions.map((option) => ({ value: option._id, label: `${option.itemCode} - ${option.name}` }))} placeholder="Pilih barang" disabled={savingCompletion} /></div>
                                                             <div className="form-group"><label className="form-label">Qty Pakai</label><FormattedNumberInput value={line.quantity} onValueChange={(value) => updateCompletionLine(index, { quantity: value })} maxFractionDigits={3} disabled={savingCompletion} zeroAsEmpty /></div>
                                                         </div>
                                                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>

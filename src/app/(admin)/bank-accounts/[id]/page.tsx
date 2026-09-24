@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowRightLeft, FileDown, Printer, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowRightLeft, CircleDollarSign, Edit, FileDown, Plus, Printer, Trash2, TrendingDown, TrendingUp, Wrench } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { useApp, useToast } from '../../layout';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
@@ -21,6 +22,11 @@ import {
 } from '@/lib/bank-transaction-links';
 import { exportToExcel } from '@/lib/export';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
+import FormattedNumberInput from '@/components/FormattedNumberInput';
+import {
+    createDefaultBankAdjustmentForm,
+    type BankAdjustmentFormState,
+} from '@/lib/bank-account-page-support';
 import { escapePrintHtml, fetchCompanyProfile, openBrandedPrint, openPrintWindow } from '@/lib/print';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import {
@@ -128,15 +134,24 @@ export default function BankAccountDetailPage() {
     const [loading, setLoading] = useState(true);
     const [loadNotice, setLoadNotice] = useState<AdminLoadNotice | null>(null);
     const [transactionsLoading, setTransactionsLoading] = useState(true);
-    const canExportBankAccount = user ? hasPermission(user.role, 'bankAccounts', 'export') : false;
-    const canPrintBankAccount = user ? hasPermission(user.role, 'bankAccounts', 'print') : false;
-    const canOpenInvoices = user ? hasPageAccess(user.role, 'invoices') : false;
-    const canOpenDriverVouchers = user ? hasPageAccess(user.role, 'driverVouchers') : false;
-    const canOpenDriverBorongans = user ? hasPageAccess(user.role, 'driverBorongans') : false;
-    const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-    const canOpenIncidents = user ? hasPageAccess(user.role, 'incidents') : false;
-    const canOpenMaintenance = user ? hasPageAccess(user.role, 'maintenance') : false;
-    const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
+    const canExportBankAccount = user ? hasPermission(user, 'bankAccounts', 'export') : false;
+    const canPrintBankAccount = user ? hasPermission(user, 'bankAccounts', 'print') : false;
+    const canOpenInvoices = user ? hasPageAccess(user, 'invoices') : false;
+    const canOpenDriverVouchers = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenDriverBorongans = user ? hasPageAccess(user, 'driverBorongans') : false;
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenIncidents = user ? hasPageAccess(user, 'incidents') : false;
+    const canOpenMaintenance = user ? hasPageAccess(user, 'maintenance') : false;
+    const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+    const canManageBankAccount = user ? hasPermission(user, 'bankAccounts', 'update') : false;
+    const [showAdjust, setShowAdjust] = useState(false);
+    const [adjusting, setAdjusting] = useState(false);
+    const [adjustReview, setAdjustReview] = useState(false);
+    const [adjustEditId, setAdjustEditId] = useState<string | null>(null);
+    const [adjustForm, setAdjustForm] = useState<BankAdjustmentFormState>(() => createDefaultBankAdjustmentForm(accountId));
+    const [adjustDeleteConfirm, setAdjustDeleteConfirm] = useState<BankTransaction | null>(null);
+    const [adjustDeleting, setAdjustDeleting] = useState(false);
+    const [adjustEditOriginalDelta, setAdjustEditOriginalDelta] = useState(0);
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]
@@ -324,6 +339,8 @@ export default function BankAccountDetailPage() {
         DEBIT: { label: 'Keluar', badge: 'badge-danger', sign: '-', icon: <TrendingDown size={14} /> },
         TRANSFER_IN: { label: 'Transfer Masuk', badge: 'badge-success', sign: '+', icon: <ArrowRightLeft size={14} /> },
         TRANSFER_OUT: { label: 'Transfer Keluar', badge: 'badge-danger', sign: '-', icon: <ArrowRightLeft size={14} /> },
+        ADJUSTMENT: { label: 'Tambah Saldo', badge: 'badge-success', sign: '+', icon: <Wrench size={14} /> },
+        ADJUSTMENT_DEBIT: { label: 'Kurangi Saldo', badge: 'badge-danger', sign: '-', icon: <Wrench size={14} /> },
     };
 
     const handleExportExcel = async () => {
@@ -357,6 +374,108 @@ export default function BankAccountDetailPage() {
         }
     };
 
+    const openAdjustNew = () => {
+        setAdjustEditId(null);
+        setAdjustForm(createDefaultBankAdjustmentForm(accountId));
+        setAdjustEditOriginalDelta(0);
+        setAdjustReview(false);
+        setShowAdjust(true);
+    };
+
+    const openAdjustEdit = (transaction: BankTransaction) => {
+        const amt = parseWholeMoneyLike(transaction.amount);
+        const origDelta = transaction.type === 'ADJUSTMENT_DEBIT' ? -amt : amt;
+        setAdjustEditId(transaction._id);
+        setAdjustForm({
+            bankAccountRef: accountId,
+            direction: transaction.type === 'ADJUSTMENT_DEBIT' ? 'out' : 'in',
+            amount: amt,
+            date: transaction.date || getBusinessDateValue(),
+            description: transaction.description || '',
+        });
+        setAdjustEditOriginalDelta(origDelta);
+        setAdjustReview(false);
+        setShowAdjust(true);
+    };
+
+    const closeAdjust = () => {
+        if (!adjusting) {
+            setShowAdjust(false);
+            setAdjustReview(false);
+            setAdjustEditId(null);
+        }
+    };
+
+    const handleAdjustSubmit = async () => {
+        if (!adjustForm.amount || adjustForm.amount <= 0) {
+            addToast('error', 'Nominal penyesuaian tidak valid');
+            return;
+        }
+        if (!adjustForm.date) {
+            addToast('error', 'Tanggal penyesuaian wajib diisi');
+            return;
+        }
+        setAdjusting(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'bank-transactions',
+                    action: adjustEditId ? 'adjust-update' : 'adjust',
+                    data: adjustEditId ? { id: adjustEditId, ...adjustForm } : adjustForm,
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                addToast('error', result.error || 'Penyesuaian saldo gagal');
+                return;
+            }
+            addToast('success', adjustEditId ? 'Penyesuaian saldo berhasil diperbarui' : 'Saldo berhasil disesuaikan');
+            closeAdjust();
+            window.location.reload();
+        } catch {
+            addToast('error', 'Penyesuaian saldo gagal');
+        } finally {
+            setAdjusting(false);
+        }
+    };
+
+    const handleAdjustDelete = async () => {
+        if (!adjustDeleteConfirm) {
+            return;
+        }
+        setAdjustDeleting(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'bank-transactions',
+                    action: 'adjust-delete',
+                    data: { id: adjustDeleteConfirm._id },
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                addToast('error', result.error || 'Hapus penyesuaian saldo gagal');
+                return;
+            }
+            addToast('success', 'Penyesuaian saldo berhasil dihapus');
+            setAdjustDeleteConfirm(null);
+            window.location.reload();
+        } catch {
+            addToast('error', 'Hapus penyesuaian saldo gagal');
+        } finally {
+            setAdjustDeleting(false);
+        }
+    };
+
+    const isActiveAdjustment = (transaction: BankTransaction) =>
+        (transaction.type === 'ADJUSTMENT' || transaction.type === 'ADJUSTMENT_DEBIT') &&
+        !transaction.reversesBankTransactionRef &&
+        !transaction.replacedByBankTransactionRef;
+
     if (loading) {
         return <div><div className="skeleton skeleton-title" /><div className="skeleton skeleton-card" style={{ height: 120 }} /><div className="skeleton skeleton-card" style={{ height: 300 }} /></div>;
     }
@@ -373,6 +492,8 @@ export default function BankAccountDetailPage() {
     const isInvoiceAccount = invoiceBankAccountRefs.includes(account._id);
     const isDefaultInvoiceAccount = company?.invoiceSettings?.defaultInvoiceBankAccountRef === account._id;
     const currentBalance = parseWholeMoneyLike(account.currentBalance);
+    const adjustNewDelta = adjustForm.direction === 'in' ? adjustForm.amount : -adjustForm.amount;
+    const adjustPreviewAfterBalance = currentBalance - adjustEditOriginalDelta + adjustNewDelta;
     const totalIn = parseWholeMoneyLike(transactionSummary.totalIn);
     const totalOut = parseWholeMoneyLike(transactionSummary.totalOut);
     const totalTransactions = transactionSummary.totalTransactions || transactionTotal;
@@ -451,6 +572,7 @@ export default function BankAccountDetailPage() {
                     </div>
                 </div>
                 <div className="page-actions bank-detail-actions">
+                    {canManageBankAccount && <button className="btn btn-secondary btn-sm" onClick={openAdjustNew}><CircleDollarSign size={15} /> Tambah Saldo</button>}
                     {canExportBankAccount && <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}><FileDown size={15} /> Excel</button>}
                     {canPrintBankAccount && <button className="btn btn-secondary btn-sm" onClick={handlePrint}><Printer size={15} /> Print</button>}
                 </div>
@@ -495,21 +617,12 @@ export default function BankAccountDetailPage() {
                 </div>
                 <div className="table-toolbar">
                     <div className="table-toolbar-left finance-filter-toolbar">
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as FinancePeriodMode)}>
-                            <option value="all">Semua Tanggal</option>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as FinancePeriodMode)} options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'all' && periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => ({ value: String(option), label: String(option) }))} />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -542,7 +655,7 @@ export default function BankAccountDetailPage() {
                 <div className="table-wrapper table-desktop-only" style={{ overflowX: 'auto' }}>
                     <table className="bank-transaction-table">
                         <thead>
-                            <tr><th>Tanggal</th><th>Tipe</th><th>Deskripsi</th><th style={{ textAlign: 'right' }}>Jumlah</th><th style={{ textAlign: 'right' }}>Saldo Setelah</th></tr>
+                            <tr><th>Tanggal</th><th>Tipe</th><th>Deskripsi</th><th style={{ textAlign: 'right' }}>Jumlah</th><th style={{ textAlign: 'right' }}>Saldo Setelah</th>{canManageBankAccount && <th style={{ textAlign: 'center' }}>Aksi</th>}</tr>
                         </thead>
                         <tbody suppressHydrationWarning>
                             {transactionsLoading ? (
@@ -556,7 +669,7 @@ export default function BankAccountDetailPage() {
                                     </tr>
                                 ))
                             ) : transactions.length === 0 ? (
-                                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+                                <tr><td colSpan={canManageBankAccount ? 6 : 5} style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
                                     <div style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.3 }}>-</div>
                                     <div>Belum ada transaksi</div>
                                 </td></tr>
@@ -608,6 +721,20 @@ export default function BankAccountDetailPage() {
                                             {cfg.sign}{fmt(amount)}
                                         </td>
                                         <td style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>{fmt(balanceAfter)}</td>
+                                        {canManageBankAccount && (
+                                            <td style={{ textAlign: 'center' }}>
+                                                {isActiveAdjustment(tx) && (
+                                                    <div className="table-actions-col">
+                                                        <button className="table-action-btn" title="Perbarui penyesuaian" onClick={() => openAdjustEdit(tx)}>
+                                                            <Edit size={14} /> Perbarui
+                                                        </button>
+                                                        <button className="table-action-btn danger" title="Hapus penyesuaian" onClick={() => setAdjustDeleteConfirm(tx)}>
+                                                            <Trash2 size={14} /> Hapus
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        )}
                                     </tr>
                                 );
                             })}
@@ -675,6 +802,16 @@ export default function BankAccountDetailPage() {
                                         <span className="mobile-record-value">{fmt(balanceAfter)}</span>
                                     </div>
                                 </div>
+                                {canManageBankAccount && isActiveAdjustment(tx) && (
+                                    <div className="mobile-record-actions">
+                                        <button className="table-action-btn" title="Perbarui penyesuaian" onClick={() => openAdjustEdit(tx)}>
+                                            <Edit size={14} /> Perbarui
+                                        </button>
+                                        <button className="table-action-btn danger" title="Hapus penyesuaian" onClick={() => setAdjustDeleteConfirm(tx)}>
+                                            <Trash2 size={14} /> Hapus
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -691,6 +828,186 @@ export default function BankAccountDetailPage() {
                     }
                 />
             </div>
+
+            {canManageBankAccount && account && showAdjust && (
+                <div className="modal-overlay" onClick={() => { if (!adjusting) closeAdjust(); }}>
+                    <div
+                        className="modal"
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ maxWidth: 500 }}
+                    >
+                        <div className="modal-header">
+                            <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <CircleDollarSign size={18} /> {adjustReview ? 'Konfirmasi Penyesuaian Saldo' : (adjustEditId ? 'Perbarui Penyesuaian Saldo' : 'Tambah Saldo')}
+                            </h3>
+                            <button className="modal-close" onClick={closeAdjust} disabled={adjusting}>
+                                x
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {adjustReview ? (
+                                <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: 12, padding: '1rem 1.1rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.75rem' }}>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Rekening / Kas</label>
+                                        <div className="font-medium">{account.bankName} - {account.accountNumber}</div>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Jenis Penyesuaian</label>
+                                        <div className="font-medium">
+                                            {adjustForm.direction === 'in' ? 'Tambah saldo (+)' : 'Kurangi saldo (-)'}
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Nominal (Rp)</label>
+                                        <div className="font-medium">{fmt(adjustForm.amount)}</div>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Tanggal</label>
+                                        <div className="font-medium">{adjustForm.date || '-'}</div>
+                                    </div>
+                                    {adjustForm.description && (
+                                        <div className="form-group" style={{ margin: 0 }}>
+                                            <label className="form-label">Keterangan</label>
+                                            <div className="font-medium">{adjustForm.description}</div>
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                        <div>Saldo saat ini</div>
+                                        <div className="font-medium">{fmt(currentBalance)}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                        <div>Penyesuaian</div>
+                                        <div className="font-medium" style={{ color: adjustForm.direction === 'in' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                            {fmt(adjustForm.direction === 'in' ? adjustForm.amount : -adjustForm.amount)}
+                                        </div>
+                                    </div>
+                                    {adjustEditId && adjustEditOriginalDelta !== 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                            <div>Penyesuaian sebelumnya</div>
+                                            <div className="font-medium" style={{ color: adjustEditOriginalDelta > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                                                {fmt(-adjustEditOriginalDelta)}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', borderTop: '1px solid var(--color-gray-200)', paddingTop: '0.75rem', fontWeight: 700 }}>
+                                        <div>Saldo setelah penyesuaian</div>
+                                        <div>{fmt(adjustPreviewAfterBalance)}</div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Rekening / Kas</label>
+                                        <div className="font-medium">{account.bankName} - {account.accountNumber}</div>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Jenis Penyesuaian</label>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                className={adjustForm.direction === 'in' ? 'btn btn-success' : 'btn btn-secondary'}
+                                                disabled={adjusting}
+                                                onClick={() => setAdjustForm({ ...adjustForm, direction: 'in' })}
+                                            >
+                                                Tambah saldo (+)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={adjustForm.direction === 'out' ? 'btn btn-danger' : 'btn btn-secondary'}
+                                                disabled={adjusting}
+                                                onClick={() => setAdjustForm({ ...adjustForm, direction: 'out' })}
+                                            >
+                                                Kurangi saldo (-)
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label className="form-label">Nominal (Rp) *</label>
+                                            <FormattedNumberInput
+                                                allowDecimal={false}
+                                                value={adjustForm.amount}
+                                                disabled={adjusting}
+                                                onValueChange={(value) => setAdjustForm({ ...adjustForm, amount: value })}
+                                                placeholder="Ketik nominal penyesuaian"
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Tanggal *</label>
+                                            <input
+                                                className="form-input"
+                                                type="date"
+                                                value={adjustForm.date}
+                                                disabled={adjusting}
+                                                onChange={(event) => setAdjustForm({ ...adjustForm, date: event.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Keterangan</label>
+                                        <input
+                                            className="form-input"
+                                            type="text"
+                                            value={adjustForm.description}
+                                            disabled={adjusting}
+                                            onChange={(event) => setAdjustForm({ ...adjustForm, description: event.target.value })}
+                                            placeholder="Contoh: koreksi saldo awal, penyesuaian bank"
+                                        />
+                                    </div>
+                                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                        Saldo saat ini: {fmt(currentBalance)} · Setelah penyesuaian: {fmt(adjustPreviewAfterBalance)}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                    if (adjustReview) {
+                                        setAdjustReview(false);
+                                    } else {
+                                        closeAdjust();
+                                    }
+                                }}
+                                disabled={adjusting}
+                            >
+                                {adjustReview ? 'Kembali' : 'Batal'}
+                            </button>
+                            {adjustReview ? (
+                                <button className="btn btn-primary" onClick={handleAdjustSubmit} disabled={adjusting || !adjustForm.amount || adjustForm.amount <= 0}>
+                                    <CircleDollarSign size={16} /> {adjusting ? 'Menyimpan...' : 'Simpan Penyesuaian'}
+                                </button>
+                            ) : (
+                                <button className="btn btn-primary" onClick={() => setAdjustReview(true)} disabled={!adjustForm.amount || adjustForm.amount <= 0 || !adjustForm.date}>
+                                    Lanjutkan
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {canManageBankAccount && adjustDeleteConfirm && (
+                <div className="modal-overlay" onClick={() => { if (!adjustDeleting) setAdjustDeleteConfirm(null); }}>
+                    <div className="modal" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Hapus Penyesuaian Saldo?</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p>
+                                Penyesuaian <strong>{fmt(adjustDeleteConfirm.amount)}</strong> pada {account.bankName} ({fmtDate(adjustDeleteConfirm.date)}) akan dihapus permanen dan saldo rekening diperbarui.
+                            </p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setAdjustDeleteConfirm(null)} disabled={adjustDeleting}>Batal</button>
+                            <button className="btn btn-danger" onClick={handleAdjustDelete} disabled={adjustDeleting}>
+                                <Trash2 size={16} /> {adjustDeleting ? 'Menghapus...' : 'Hapus Penyesuaian'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp, useToast } from '../../layout';
 import { Plus, Search, Disc3, CheckCircle, Warehouse, History, Wrench } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { getBusinessDateValue } from '@/lib/business-date';
@@ -107,10 +108,10 @@ export default function TiresPage() {
     const [openedEditParam, setOpenedEditParam] = useState('');
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const [vehicleCategoryFilter, setVehicleCategoryFilter] = useState('');
-    const canCreateTires = user ? hasPermission(user.role, 'tires', 'create') : false;
-    const canManageTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-    const canOpenItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+    const canCreateTires = user ? hasPermission(user, 'tires', 'create') : false;
+    const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+    const canOpenItems = user ? hasPageAccess(user, 'warehouseItems') : false;
     const linkedWarehouseItemLocked = Boolean(editTarget?.linkedWarehouseItemRef || editTarget?.sourcePurchaseRef);
 
     useEffect(() => {
@@ -803,14 +804,8 @@ export default function TiresPage() {
                             <Search size={16} className="table-search-icon" />
                             <input type="text" placeholder="Cari kode ban, plat, lokasi, merk..." value={search} onChange={e => setSearch(e.target.value)} />
                         </div>
-                        <select className="form-select" style={{ width: 'auto' }} value={filterVehicle} onChange={e => setFilterVehicle(e.target.value)}>
-                            <option value="">Semua Kendaraan</option>
-                            {vehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'all' | TireAssetStatus)}>
-                            <option value="all">Semua Status</option>
-                            {BAN_LIST_STATUS_FILTER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
+                        <Combobox className="form-select" value={filterVehicle} onChange={(v: string) => setFilterVehicle(v)} options={vehicles.map(vehicle => ({ value: vehicle._id, label: vehicle.plateNumber }))} placeholder="Semua Kendaraan" />
+                        <Combobox className="form-select" value={filterStatus} onChange={(v: string) => setFilterStatus(v as 'all' | TireAssetStatus)} options={[{ value: 'all', label: 'Semua Status' }, ...BAN_LIST_STATUS_FILTER_OPTIONS.map(option => ({ value: option.value, label: option.label }))]} />
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">
@@ -949,7 +944,24 @@ export default function TiresPage() {
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Sumber</span>
                                         <span className="mobile-record-value">
-                                            {event.sourcePurchaseNumber || event.linkedWarehouseItemCode || '-'}
+                                            {event.sourcePurchaseNumber ? (
+                                                <span style={{ display: 'grid', gap: '0.2rem' }}>
+                                                    <span className="text-sm">
+                                                        {canOpenPurchases ? (
+                                                            <Link href={`/inventory/purchases/${event.sourcePurchaseRef}`} style={{ color: 'var(--color-primary)' }}>
+                                                                {event.sourcePurchaseNumber}
+                                                            </Link>
+                                                        ) : event.sourcePurchaseNumber}
+                                                    </span>
+                                                    <span className="text-muted text-sm">
+                                                        {canOpenItems && event.linkedWarehouseItemRef ? (
+                                                            <Link href={`/inventory/items/${event.linkedWarehouseItemRef}`} style={{ color: 'var(--color-primary)' }}>
+                                                                {event.linkedWarehouseItemCode || event.linkedWarehouseItemName || '-'}
+                                                            </Link>
+                                                        ) : (event.linkedWarehouseItemCode || event.linkedWarehouseItemName || '-')}
+                                                    </span>
+                                                </span>
+                                            ) : (event.linkedWarehouseItemCode || '-')}
                                         </span>
                                     </div>
                                     {event.notes && (
@@ -997,9 +1009,7 @@ export default function TiresPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Jenis Ban</label>
-                                    <select className="form-select" value={form.tireType} onChange={e => updateForm('tireType', e.target.value as TireFormState['tireType'])} disabled={saving}>
-                                        {TIRE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                                    </select>
+                                    <Combobox className="form-select" value={form.tireType} onChange={(v: string) => updateForm('tireType', v as TireFormState['tireType'])} options={[...TIRE_TYPES]} disabled={saving} />
                                 </div>
                             </div>
 
@@ -1007,11 +1017,11 @@ export default function TiresPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Lokasi Awal Ban</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={form.holderType}
-                                            onChange={e => {
-                                                const nextHolderType = e.target.value as TireHolderType;
+                                            onChange={(v: string) => {
+                                                const nextHolderType = v as TireHolderType;
                                                 setForm(prev => ({
                                                     ...prev,
                                                     holderType: nextHolderType,
@@ -1022,11 +1032,9 @@ export default function TiresPage() {
                                                     externalPlateNumber: '',
                                                 }));
                                             }}
+                                            options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'INTERNAL_VEHICLE', label: 'Unit' }]}
                                             disabled={saving}
-                                        >
-                                            <option value="WAREHOUSE">Gudang Ban</option>
-                                            <option value="INTERNAL_VEHICLE">Unit</option>
-                                        </select>
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Status Awal</label>
@@ -1042,19 +1050,14 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Master Barang Gudang</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={form.linkedWarehouseItemRef}
-                                        onChange={e => updateLinkedWarehouseItemRef(e.target.value)}
+                                        onChange={(v: string) => updateLinkedWarehouseItemRef(v)}
+                                        options={trackedTireItems.map(item => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))}
+                                        placeholder="Pilih master barang gudang"
                                         disabled={saving || linkedWarehouseItemLocked}
-                                    >
-                                        <option value="">Pilih master barang gudang</option>
-                                        {trackedTireItems.map(item => (
-                                            <option key={item._id} value={item._id}>
-                                                {item.itemCode} - {item.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                     <div className="text-muted text-xs" style={{ marginTop: '0.35rem' }}>
                                         {form.holderType === 'INTERNAL_VEHICLE'
                                             ? 'Wajib. Ban unit harus terhubung ke master barang ban tertracking agar histori aset dan sumber inventory tetap satu.'
@@ -1113,11 +1116,11 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Lokasi Saat Ini</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={form.holderType}
-                                        onChange={e => {
-                                            const nextHolderType = e.target.value as TireHolderType;
+                                        onChange={(v: string) => {
+                                            const nextHolderType = v as TireHolderType;
                                             const nextStatus = nextHolderType === 'WAREHOUSE'
                                                 ? 'IN_WAREHOUSE'
                                                 : (form.status === 'IN_WAREHOUSE' || form.status === 'LOANED_OUT' ? 'IN_USE' : form.status);
@@ -1131,22 +1134,17 @@ export default function TiresPage() {
                                                 externalPlateNumber: '',
                                             }));
                                         }}
+                                        options={CATAT_BAN_HOLDER_TYPE_OPTIONS.map(option => ({ value: option.value, label: option.value === 'WAREHOUSE' ? 'Gudang Ban' : 'Unit' }))}
                                         disabled={saving}
-                                    >
-                                        {CATAT_BAN_HOLDER_TYPE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.value === 'WAREHOUSE' ? 'Gudang Ban' : 'Unit'}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={form.status}
-                                        onChange={e => {
-                                            const nextStatus = e.target.value as TireAssetStatus;
+                                        onChange={(v: string) => {
+                                            const nextStatus = v as TireAssetStatus;
                                             setForm(prev => ({
                                                 ...prev,
                                                 status: nextStatus,
@@ -1162,10 +1160,9 @@ export default function TiresPage() {
                                                 externalPlateNumber: '',
                                             }));
                                         }}
+                                        options={CATAT_BAN_STATUS_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
                                         disabled={saving}
-                                    >
-                                        {CATAT_BAN_STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
+                                    />
                                 </div>
                             </div>
                             ) : (
@@ -1192,11 +1189,11 @@ export default function TiresPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Kategori Armada</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={vehicleCategoryFilter}
-                                            onChange={e => {
-                                                const nextCategory = e.target.value;
+                                            onChange={(v: string) => {
+                                                const nextCategory = v;
                                                 setVehicleCategoryFilter(nextCategory);
                                                 if (nextCategory && form.vehicleRef) {
                                                     const currentVehicle = vehicles.find(vehicle => vehicle._id === form.vehicleRef) || null;
@@ -1205,31 +1202,27 @@ export default function TiresPage() {
                                                     }
                                                 }
                                             }}
+                                            options={vehicleCategoryOptions.map(option => ({ value: option.value, label: `${option.label} (${option.vehicleCount} unit)` }))}
+                                            placeholder="Semua kategori"
                                             disabled={saving}
-                                        >
-                                            <option value="">Semua kategori</option>
-                                            {vehicleCategoryOptions.map(option => (
-                                                <option key={option.value} value={option.value}>{option.label} ({option.vehicleCount} unit)</option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Kendaraan</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={form.vehicleRef}
-                                            onChange={e => {
-                                                const nextVehicle = selectableVehicles.find(vehicle => vehicle._id === e.target.value) || null;
+                                            onChange={(v: string) => {
+                                                const nextVehicle = selectableVehicles.find(vehicle => vehicle._id === v) || null;
                                                 if (nextVehicle) {
                                                     setVehicleCategoryFilter(getVehicleCategoryValue(nextVehicle));
                                                 }
-                                                setForm(prev => ({ ...prev, vehicleRef: e.target.value, slotCode: '' }));
+                                                setForm(prev => ({ ...prev, vehicleRef: v, slotCode: '' }));
                                             }}
+                                            options={selectableVehicles.map(vehicle => ({ value: vehicle._id, label: `${vehicle.plateNumber} - ${vehicle.brandModel}` }))}
+                                            placeholder="Pilih kendaraan"
                                             disabled={saving}
-                                        >
-                                            <option value="">Pilih kendaraan</option>
-                                            {selectableVehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber} - {vehicle.brandModel}</option>)}
-                                        </select>
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -1238,20 +1231,14 @@ export default function TiresPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Slot Ban</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={form.slotCode}
-                                            onChange={e => updateForm('slotCode', e.target.value)}
+                                            onChange={(v: string) => updateForm('slotCode', v)}
+                                            options={visibleSlotOptions.map(option => ({ value: option.value, label: option.label }))}
+                                            placeholder={!selectedVehicle ? 'Pilih kendaraan dulu' : visibleSlotOptions.length === 0 ? 'Tidak ada slot kosong' : 'Pilih slot'}
                                             disabled={saving || !selectedVehicle || slotOptions.length === 0}
-                                        >
-                                            {!selectedVehicle && <option value="">Pilih kendaraan dulu</option>}
-                                            {selectedVehicle && visibleSlotOptions.length === 0 && <option value="">Tidak ada slot kosong</option>}
-                                            {visibleSlotOptions.map(option => (
-                                                <option key={option.value} value={option.value} disabled={option.disabled}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        />
                                         <div style={{ fontSize: '0.76rem', color: 'var(--color-gray-600)', marginTop: '0.4rem' }}>
                                             {selectedVehicle
                                                 ? `${occupiedSlotCount}/${slotOptions.length} slot terisi, ${availableSlotCount} slot tersedia.`
@@ -1360,28 +1347,25 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kategori Armada</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={installForm.vehicleCategory}
-                                        onChange={e => setInstallForm(prev => ({ ...prev, vehicleCategory: e.target.value, vehicleRef: '', slotCode: '' }))}
+                                        onChange={(v: string) => setInstallForm(prev => ({ ...prev, vehicleCategory: v, vehicleRef: '', slotCode: '' }))}
+                                        options={installVehicleCategoryOptions.map(option => ({ value: option.value, label: `${option.label} (${option.vehicleCount} unit)` }))}
+                                        placeholder="Semua kategori"
                                         disabled={saving}
-                                    >
-                                        <option value="">Semua kategori</option>
-                                        {installVehicleCategoryOptions.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label} ({option.vehicleCount} unit)</option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Kendaraan</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={installForm.vehicleRef}
-                                        onChange={e => {
-                                            const nextVehicle = installSelectableVehicles.find(vehicle => vehicle._id === e.target.value) || null;
+                                        onChange={(v: string) => {
+                                            const nextVehicle = installSelectableVehicles.find(vehicle => vehicle._id === v) || null;
                                             setInstallForm(prev => ({
                                                 ...prev,
-                                                vehicleRef: e.target.value,
+                                                vehicleRef: v,
                                                 vehicleCategory: nextVehicle ? getVehicleCategoryValue(nextVehicle) : prev.vehicleCategory,
                                                 slotCode: '',
                                                 sourceVehicleRef: '',
@@ -1389,56 +1373,46 @@ export default function TiresPage() {
                                                 sourceTireUsagePercent: null,
                                             }));
                                         }}
+                                        options={installSelectableVehicles.map(vehicle => ({ value: vehicle._id, label: `${vehicle.plateNumber} - ${vehicle.brandModel}` }))}
+                                        placeholder="Pilih kendaraan"
                                         disabled={saving}
-                                    >
-                                        <option value="">Pilih kendaraan</option>
-                                        {installSelectableVehicles.map(vehicle => (
-                                            <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber} - {vehicle.brandModel}</option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Sumber Ban</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={installForm.tireSource}
-                                        onChange={e => setInstallForm(prev => ({
+                                        onChange={(v: string) => setInstallForm(prev => ({
                                             ...prev,
-                                            tireSource: e.target.value as TireInstallFormState['tireSource'],
+                                            tireSource: v as TireInstallFormState['tireSource'],
                                             sourceVehicleRef: '',
                                             tireEventRef: '',
                                             sourceTireUsagePercent: null,
                                         }))}
+                                        options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'UNIT', label: 'Unit Lain' }]}
                                         disabled={saving || !installSelectedVehicle}
-                                    >
-                                        <option value="WAREHOUSE">Gudang Ban</option>
-                                        <option value="UNIT">Unit Lain</option>
-                                    </select>
+                                    />
                                 </div>
                                 {installForm.tireSource === 'UNIT' && (
                                     <div className="form-group">
                                         <label className="form-label">Unit Sumber</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={installForm.sourceVehicleRef}
-                                            onChange={e => setInstallForm(prev => ({
+                                            onChange={(v: string) => setInstallForm(prev => ({
                                                 ...prev,
-                                                sourceVehicleRef: e.target.value,
+                                                sourceVehicleRef: v,
                                                 tireEventRef: '',
                                                 sourceTireUsagePercent: null,
                                             }))}
+                                            options={installSourceUnitOptions.map(option => ({ value: option.value, label: `${option.label} (${option.tireCount} ban)` }))}
+                                            placeholder={installSelectedVehicle ? 'Pilih unit sumber' : 'Pilih kendaraan tujuan dulu'}
                                             disabled={saving || !installSelectedVehicle}
-                                        >
-                                            <option value="">{installSelectedVehicle ? 'Pilih unit sumber' : 'Pilih kendaraan tujuan dulu'}</option>
-                                            {installSourceUnitOptions.map(option => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label} ({option.tireCount} ban)
-                                                </option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -1446,14 +1420,7 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">{installForm.tireSource === 'WAREHOUSE' ? 'Ban dari Gudang' : 'Ban dari Unit'}</label>
-                                    <select className="form-select" value={installForm.tireEventRef} onChange={e => updateInstallForm('tireEventRef', e.target.value)} disabled={saving || !installSelectedVehicle || (installForm.tireSource === 'UNIT' && !installForm.sourceVehicleRef)}>
-                                        <option value="">{installSelectedVehicle ? (installForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : installForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu') : 'Pilih kendaraan dulu'}</option>
-                                        {availableInstallTires.map(event => (
-                                            <option key={event._id} value={event._id}>
-                                                {event.tireCodeLabel} - {event.tireBrand} {event.tireSize} ({event.placementLabel})
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <Combobox className="form-select" value={installForm.tireEventRef} onChange={(v: string) => updateInstallForm('tireEventRef', v)} options={availableInstallTires.map(event => ({ value: event._id, label: `${event.tireCodeLabel} - ${event.tireBrand} ${event.tireSize} (${event.placementLabel})` }))} placeholder={installSelectedVehicle ? (installForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : installForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu') : 'Pilih kendaraan dulu'} disabled={saving || !installSelectedVehicle || (installForm.tireSource === 'UNIT' && !installForm.sourceVehicleRef)} />
                                     {installSelectedVehicle && availableInstallTires.length === 0 && (
                                         <div style={{ fontSize: '0.76rem', color: 'var(--color-gray-600)', marginTop: '0.4rem' }}>
                                             {installForm.tireSource === 'WAREHOUSE'
@@ -1469,12 +1436,7 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Slot Ban</label>
-                                    <select className="form-select" value={installForm.slotCode} onChange={e => updateInstallForm('slotCode', e.target.value)} disabled={saving || !installSelectedVehicle}>
-                                        {!installSelectedVehicle && <option value="">Pilih kendaraan dulu</option>}
-                                        {installSlotOptions.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
-                                        ))}
-                                    </select>
+                                    <Combobox className="form-select" value={installForm.slotCode} onChange={(v: string) => updateInstallForm('slotCode', v)} options={installSlotOptions.map(option => ({ value: option.value, label: option.label }))} placeholder={installSelectedVehicle ? 'Pilih slot' : 'Pilih kendaraan dulu'} disabled={saving || !installSelectedVehicle} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tanggal Pasang</label>
@@ -1485,10 +1447,7 @@ export default function TiresPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Ban Lama Dipindahkan Ke</label>
-                                    <select className="form-select" value={installForm.oldTireDestination} onChange={e => updateInstallForm('oldTireDestination', e.target.value as TireInstallFormState['oldTireDestination'])} disabled={saving || !oldTireInInstallSlot}>
-                                        <option value="WAREHOUSE">Gudang Ban</option>
-                                        <option value="SCRAPPED">Afkir</option>
-                                    </select>
+                                    <Combobox className="form-select" value={installForm.oldTireDestination} onChange={(v: string) => updateInstallForm('oldTireDestination', v as TireInstallFormState['oldTireDestination'])} options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'SCRAPPED', label: 'Afkir' }]} disabled={saving || !oldTireInInstallSlot} />
                                 </div>
                             </div>
 

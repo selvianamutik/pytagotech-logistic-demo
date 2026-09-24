@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useToast } from '../../layout';
+import { useApp, useToast } from '../../layout';
 import { Plus, Search, Eye, AlertTriangle, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { fetchAdminCollectionData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -19,6 +20,7 @@ import {
 } from '@/lib/fleet-queue-page-support';
 import { formatDateTime, formatInternalDeliveryOrderNumber, formatQuantity, formatShipperDeliveryOrderNumber, getShipperReferenceCount, INCIDENT_STATUS_MAP, URGENCY_MAP, INCIDENT_TYPE_MAP } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
+import { hasPageAccess } from '@/lib/rbac';
 import type { Incident, Vehicle, DeliveryOrder, IncidentSettlementLine } from '@/lib/types';
 
 function isDriverSubmittedDraftLine(line: IncidentSettlementLine) {
@@ -33,6 +35,10 @@ export default function IncidentsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { addToast } = useToast();
+    const { user } = useApp();
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDrivers = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenDeliveryOrders = user ? hasPageAccess(user, 'trips') : false;
     const [items, setItems] = useState<Incident[]>([]);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [dos, setDos] = useState<DeliveryOrder[]>([]);
@@ -319,14 +325,8 @@ export default function IncidentsPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari nomor, kendaraan, supir, no. DO internal, lokasi..." value={search} onChange={e => setSearch(e.target.value)} />
                         </div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)}>
-                            <option value="">Semua Kendaraan</option>
-                            {vehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber} - {vehicle.brandModel}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(INCIDENT_STATUS_MAP).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-                        </select>
+                        <Combobox className="form-select" value={vehicleFilter} onChange={(v: string) => setVehicleFilter(v)} options={vehicles.map(vehicle => ({ value: vehicle._id, label: `${vehicle.plateNumber} - ${vehicle.brandModel}` }))} placeholder="Semua Kendaraan" />
+                        <Combobox className="form-select" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} options={Object.entries(INCIDENT_STATUS_MAP).map(([key, meta]) => ({ value: key, label: meta.label }))} placeholder="Semua Status" />
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">
@@ -341,9 +341,9 @@ export default function IncidentsPage() {
                                         <tr key={item._id}>
                                             <td><Link href={`/fleet/incidents/${item._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{item.incidentNumber}</Link></td>
                                             <td className="text-muted" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(item.dateTime)}</td>
-                                            <td>{item.vehicleRef ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
-                                            <td>{item.driverName || '-'}</td>
-                                            <td>{item.relatedDONumber || '-'}</td>
+                                            <td>{item.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
+                                            <td>{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: 'var(--color-primary)' }}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</td>
+                                            <td>{item.relatedDeliveryOrderRef && canOpenDeliveryOrders ? <Link href={`/delivery-orders/${item.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{item.relatedDONumber || '-'}</Link> : (item.relatedDONumber || '-')}</td>
                                             <td>{INCIDENT_TYPE_MAP[item.incidentType] || item.incidentType}</td>
                                             <td>{item.locationText}</td>
                                             <td><span className={`badge badge-${URGENCY_MAP[item.urgency]?.color}`}>{URGENCY_MAP[item.urgency]?.label}</span></td>
@@ -368,7 +368,7 @@ export default function IncidentsPage() {
                                 <div className="mobile-record-header">
                                     <div>
                                         <div className="mobile-record-title">{item.incidentNumber}</div>
-                                        <div className="mobile-record-subtitle">{item.vehiclePlate || '-'} / {formatDateTime(item.dateTime)}</div>
+                                        <div className="mobile-record-subtitle">{item.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${item.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')} / {formatDateTime(item.dateTime)}</div>
                                     </div>
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                         <span className={`badge badge-${INCIDENT_STATUS_MAP[item.status]?.color}`}>
@@ -380,11 +380,11 @@ export default function IncidentsPage() {
                                 <div className="mobile-record-meta">
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Supir</span>
-                                        <span className="mobile-record-value">{item.driverName || '-'}</span>
+                                        <span className="mobile-record-value">{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: 'var(--color-primary)' }}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">No. DO Internal</span>
-                                        <span className="mobile-record-value">{item.relatedDONumber || '-'}</span>
+                                        <span className="mobile-record-value">{item.relatedDeliveryOrderRef && canOpenDeliveryOrders ? <Link href={`/delivery-orders/${item.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{item.relatedDONumber || '-'}</Link> : (item.relatedDONumber || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Tipe</span>
@@ -437,7 +437,7 @@ export default function IncidentsPage() {
                         <div className="modal-body">
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Kendaraan <span className="required">*</span></label>
-                                    <select className="form-select" value={form.vehicleRef} onChange={e => handleVehicleChange(e.target.value)} disabled={Boolean(form.relatedDeliveryOrderRef)}><option value="">Pilih</option>{vehicles.map(vehicle => <option key={vehicle._id} value={vehicle._id}>{vehicle.plateNumber}</option>)}</select>
+                                    <Combobox className="form-select" value={form.vehicleRef} onChange={(v: string) => handleVehicleChange(v)} options={vehicles.map(vehicle => ({ value: vehicle._id, label: vehicle.plateNumber }))} placeholder="Pilih" disabled={Boolean(form.relatedDeliveryOrderRef)} />
                                     {form.relatedDeliveryOrderRef && (
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                             Kendaraan mengikuti DO internal terkait. Hapus pilihan DO internal dulu jika ingin mengganti kendaraan.
@@ -462,20 +462,16 @@ export default function IncidentsPage() {
                             )}
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Tipe Insiden</label>
-                                    <select className="form-select" value={form.incidentType} onChange={e => setForm({ ...form, incidentType: e.target.value as Incident['incidentType'] })}>
-                                        {Object.entries(INCIDENT_TYPE_MAP).map(([key, value]) => <option key={key} value={key}>{value}</option>)}
-                                    </select></div>
+                                    <Combobox className="form-select" value={form.incidentType} onChange={(v: string) => setForm({ ...form, incidentType: v as Incident['incidentType'] })} options={Object.entries(INCIDENT_TYPE_MAP).map(([key, value]) => ({ value: key, label: value }))} /></div>
                                 <div className="form-group"><label className="form-label">Urgency</label>
-                                    <select className="form-select" value={form.urgency} onChange={e => setForm({ ...form, urgency: e.target.value as Incident['urgency'] })}>
-                                        {Object.entries(URGENCY_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                                    </select></div>
+                                    <Combobox className="form-select" value={form.urgency} onChange={(v: string) => setForm({ ...form, urgency: v as Incident['urgency'] })} options={Object.entries(URGENCY_MAP).map(([key, value]) => ({ value: key, label: value.label }))} /></div>
                             </div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Lokasi</label><input className="form-input" value={form.locationText} onChange={e => setForm({ ...form, locationText: e.target.value })} placeholder="Tol Cikampek KM 45..." /></div>
                                 <div className="form-group"><label className="form-label">Odometer</label><FormattedNumberInput allowDecimal={false} value={form.odometer} onValueChange={value => setForm({ ...form, odometer: value })} /></div>
                             </div>
                             <div className="form-group"><label className="form-label">DO Internal Terkait (Opsional)</label>
-                                <select className="form-select" value={form.relatedDeliveryOrderRef} onChange={e => handleRelatedDOChange(e.target.value)}><option value="">- Tidak ada -</option>{filteredDos.map(deliveryOrder => <option key={deliveryOrder._id} value={deliveryOrder._id}>{`${formatInternalDeliveryOrderNumber(deliveryOrder)}${getShipperReferenceCount(deliveryOrder) > 0 ? ` | SJ ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''}`}</option>)}</select></div>
+                                <Combobox className="form-select" value={form.relatedDeliveryOrderRef} onChange={(v: string) => handleRelatedDOChange(v)} options={filteredDos.map(deliveryOrder => ({ value: deliveryOrder._id, label: `${formatInternalDeliveryOrderNumber(deliveryOrder)}${getShipperReferenceCount(deliveryOrder) > 0 ? ` | SJ ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''}` }))} placeholder="- Tidak ada -" /></div>
                             <div className="form-group"><label className="form-label">Kronologi / Deskripsi <span className="required">*</span></label><textarea className="form-textarea" rows={4} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Jelaskan kronologi insiden secara detail..." /></div>
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={closeIncidentModal} disabled={saving}>Batal</button><button className="btn btn-danger" onClick={handleSave} disabled={saving}><AlertTriangle size={16} /> {saving ? 'Menyimpan...' : 'Laporkan Insiden'}</button></div>

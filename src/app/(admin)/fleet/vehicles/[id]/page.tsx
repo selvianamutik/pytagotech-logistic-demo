@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useApp, useToast } from '../../../layout';
-import { Car, Wrench, AlertTriangle, Truck, Edit, Plus, Disc3, Warehouse, ExternalLink, Save, History } from 'lucide-react';
+import { Car, Wrench, AlertTriangle, Truck, Edit, Plus, Disc3, Warehouse, ExternalLink, Save, History, Printer } from 'lucide-react';
 import {
     VEHICLE_STATUS_MAP,
     MAINTENANCE_STATUS_MAP,
@@ -48,10 +48,59 @@ import {
     getInstalledVehicleComponentRows,
     getMaintenanceMaterialOverflowCount,
     getMaintenanceMaterialPreview,
+    getMaintenanceMaterialSummary,
     getMaintenanceRecordedCost,
     isWarehouseStockMaintenanceMaterialUsage,
 } from '@/lib/maintenance';
 import { getTireHistoryActionColor, getTireHistoryActionLabel } from '@/lib/tire-history';
+import { escapePrintHtml, fetchCompanyProfile, openBrandedPrint, openPrintWindow } from '@/lib/print';
+import Combobox from '@/components/Combobox';
+
+function buildMaintenanceCostDescriptionText(maintenance: Maintenance) {
+    const materialCost = typeof maintenance.materialCostTotal === 'number' ? maintenance.materialCostTotal : 0;
+    const laborCost = typeof maintenance.laborCost === 'number' ? maintenance.laborCost : 0;
+    const parts = [maintenance.type];
+    if (maintenance.materialUsageCount) {
+        parts.push(getMaintenanceMaterialSummary(maintenance));
+    }
+    if (materialCost > 0 || laborCost > 0) {
+        const costParts: string[] = [];
+        if (materialCost > 0) costParts.push(`Material ${formatCurrency(materialCost)}`);
+        if (laborCost > 0) costParts.push(`Jasa ${formatCurrency(laborCost)}`);
+        parts.push(costParts.join(' | '));
+    }
+    return parts.filter(Boolean).join(' | ');
+}
+
+function buildVehicleMaintenanceCostPrintHtml(
+    rows: Array<{ date: string; source: string; description: string; amount: number }>,
+    total: number,
+) {
+    const rowHtml = rows.length === 0
+        ? '<tr><td colspan="4" style="text-align:center;padding:2rem;color:#94a3b8;">Belum ada biaya maintenance</td></tr>'
+        : rows.map(row => `<tr>
+                <td>${escapePrintHtml(formatDate(row.date))}</td>
+                <td class="b">${escapePrintHtml(row.source)}</td>
+                <td>${escapePrintHtml(row.description)}</td>
+                <td class="r b">${escapePrintHtml(formatCurrency(row.amount))}</td>
+            </tr>`).join('');
+    return `
+        <table>
+            <thead>
+                <tr><th>Tanggal</th><th>Sumber</th><th>Deskripsi</th><th class="r">Jumlah</th></tr>
+            </thead>
+            <tbody>
+                ${rowHtml}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" class="r b" style="padding-top:0.75rem;border-top:2px solid #1e293b;">Total Biaya Maintenance</td>
+                    <td class="r b" style="padding-top:0.75rem;border-top:2px solid #1e293b;">${escapePrintHtml(formatCurrency(total))}</td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
 
 function isTripOrDriverExpense(expense: Expense) {
     return Boolean(expense.voucherRef || expense.boronganRef) || expense.categoryScope === 'TRIP' || expense.categoryScope === 'DRIVER_FEE';
@@ -137,16 +186,19 @@ export default function VehicleDetailPage() {
     const [slotHistoryCode, setSlotHistoryCode] = useState<string | null>(null);
     const [slotHistoryRows, setSlotHistoryRows] = useState<TireHistoryLog[]>([]);
     const [loadingSlotHistory, setLoadingSlotHistory] = useState(false);
-    const isOwner = user?.role === 'OWNER';
-    const canManageVehicle = user ? hasPermission(user.role, 'vehicles', 'update') : false;
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
-    const canCreateIncident = user ? hasPermission(user.role, 'incidents', 'create') : false;
-    const canManageTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canViewVehicleExpenses = user ? hasPermission(user.role, 'expenses', 'view') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenWarehouseItems = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-    const vehicleTabs = getVehicleTabs(isOwner);
+    const canUpdateVehicle = user ? hasPermission(user, 'vehicles', 'update') : false;
+    const canViewExpenses = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canManageVehicle = canUpdateVehicle;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
+    const canCreateIncident = user ? hasPermission(user, 'incidents', 'create') : false;
+    const canManageTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canViewVehicleExpenses = user ? hasPermission(user, 'expenses', 'view') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
+    const canOpenWarehouseItems = user ? hasPageAccess(user, 'warehouseItems') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
+    const vehicleTabs = getVehicleTabs(canViewExpenses);
 
     const loadVehicleDetail = useCallback(async () => {
         setLoading(true);
@@ -335,6 +387,7 @@ export default function VehicleDetailPage() {
                     id: `maintenance-${maintenance._id}-tire-${index}`,
                     date: maintenance.completedDate || maintenance.plannedDate || '',
                     source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance Ban</Link>,
+                    sourceText: 'Maintenance Ban',
                     description: (
                         <div style={{ display: 'grid', gap: '0.2rem' }}>
                             <div>{usage.itemName || usage.itemCode || maintenance.type}</div>
@@ -342,18 +395,21 @@ export default function VehicleDetailPage() {
                             {usage.note && <div className="text-muted text-sm">{usage.note}</div>}
                         </div>
                     ),
+                    descriptionText: [usage.itemName || usage.itemCode || maintenance.type, maintenance.type, usage.note].filter(Boolean).join(' | '),
                     amount: usage.subtotalCost || 0,
                     })),
                     ...(laborCost > 0 ? [{
                         id: `maintenance-${maintenance._id}-technician`,
                         date: maintenance.completedDate || maintenance.plannedDate || '',
                         source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance Ban</Link>,
+                        sourceText: 'Maintenance Ban',
                         description: (
                             <div style={{ display: 'grid', gap: '0.2rem' }}>
                                 <div>Biaya teknisi ban</div>
                                 <div className="text-muted text-sm">{maintenance.vendor || maintenance.type}</div>
                             </div>
                         ),
+                        descriptionText: ['Biaya teknisi ban', maintenance.vendor || maintenance.type].filter(Boolean).join(' | '),
                         amount: laborCost,
                     }] : []),
                 ];
@@ -363,7 +419,9 @@ export default function VehicleDetailPage() {
                 id: `maintenance-${maintenance._id}`,
                 date: maintenance.completedDate || maintenance.plannedDate || '',
                 source: <Link href={`/fleet/maintenance?vehicleRef=${vehicle._id}`} style={{ color: 'var(--color-primary)' }}>Maintenance</Link>,
+                sourceText: 'Maintenance',
                 description: renderMaintenanceCostDescription(maintenance),
+                descriptionText: buildMaintenanceCostDescriptionText(maintenance),
                 amount: getMaintenanceRecordedCost(maintenance),
             }];
         });
@@ -376,6 +434,7 @@ export default function VehicleDetailPage() {
             id: `tire-usage-${row._id}`,
             date: row.timestamp || '',
             source: <Link href={`/fleet/tires/${row.tireEventRef}`} style={{ color: 'var(--color-primary)' }}>Pemakaian Ban</Link>,
+            sourceText: 'Pemakaian Ban',
             description: (
                 <div style={{ display: 'grid', gap: '0.2rem' }}>
                     <div>{row.tireCode || row.tireEventRef}</div>
@@ -383,6 +442,11 @@ export default function VehicleDetailPage() {
                     <div className="text-muted text-sm">Pemakaian {formatQuantity(row.usagePercent || 0, 2)}% | sisa {formatQuantity(row.remainingPercentAfter || 0, 2)}% ({formatCurrency(row.remainingValueAfter || 0)})</div>
                 </div>
             ),
+            descriptionText: [
+                row.tireCode || row.tireEventRef,
+                row.fromPlacementLabel && row.toPlacementLabel ? `${row.fromPlacementLabel} -> ${row.toPlacementLabel}` : '',
+                `Pemakaian ${formatQuantity(row.usagePercent || 0, 2)}% | sisa ${formatQuantity(row.remainingPercentAfter || 0, 2)}% (${formatCurrency(row.remainingValueAfter || 0)})`,
+            ].filter(Boolean).join(' | '),
             amount: Number(row.usageCost || 0),
         }));
     const renderIncidentCostSummary = (incident: Incident) => {
@@ -478,6 +542,7 @@ export default function VehicleDetailPage() {
                 id: `current-tire-${tire._id}`,
                 date: tire.installDate || '',
                 source: 'Ban Terpasang',
+                sourceText: 'Ban Terpasang',
                 description: (
                     <div style={{ display: 'grid', gap: '0.2rem' }}>
                         <div>{tire.tireCodeLabel} - {slot.slotCode} ({formatTireSlotLabel(slot.slotCode)})</div>
@@ -489,6 +554,11 @@ export default function VehicleDetailPage() {
                         </div>
                     </div>
                 ),
+                descriptionText: [
+                    `${tire.tireCodeLabel} - ${slot.slotCode} (${formatTireSlotLabel(slot.slotCode)})`,
+                    `Original ${formatCurrency(originalCost)} | Terpakai ${formatQuantity(totalUsedPercent, 2)}% | Sisa ${formatQuantity(remainingPercent, 2)}% (${formatCurrency(remainingValue)})`,
+                    'Nilai ban terpasang dihitung dari sisa persentase ban saat ini.',
+                ].filter(Boolean).join(' | '),
                 amount: remainingValue,
             };
         });
@@ -511,12 +581,14 @@ export default function VehicleDetailPage() {
                 id: expense._id,
                 date: expense.date || '',
                 source,
+                sourceText: expense.relatedMaintenanceRef ? 'Maintenance' : (expense.categoryName || 'Maintenance'),
                 description: (
                     <div style={{ display: 'grid', gap: '0.2rem' }}>
                         <div>{expense.note || expense.description || '-'}</div>
                         {documentLink && <div className="text-muted text-sm">{documentLink}</div>}
                     </div>
                 ),
+                descriptionText: expense.note || expense.description || '-',
                 amount: expense.amount,
             };
         }),
@@ -525,6 +597,33 @@ export default function VehicleDetailPage() {
         ...currentVehicleTireCostRows,
     ].sort((left, right) => `${right.date}-${right.id}`.localeCompare(`${left.date}-${left.id}`));
     const totalMaintenanceExpense = vehicleCostRows.reduce((sum, row) => sum + row.amount, 0);
+
+    const handlePrintMaintenanceCosts = async () => {
+        const printWindow = openPrintWindow('Menyiapkan cetak biaya maintenance...');
+        if (!printWindow) return addToast('error', 'Popup browser diblok. Izinkan pop-up lalu coba cetak lagi.');
+        try {
+            const company = await fetchCompanyProfile().catch(() => null);
+            openBrandedPrint({
+                title: 'Biaya Maintenance Unit',
+                subtitle: vehicle ? `${vehicle.plateNumber} - ${vehicle.unitCode}` : undefined,
+                company,
+                targetWindow: printWindow,
+                bodyHtml: buildVehicleMaintenanceCostPrintHtml(
+                    vehicleCostRows.map(row => ({
+                        date: row.date,
+                        source: row.sourceText,
+                        description: row.descriptionText,
+                        amount: row.amount,
+                    })),
+                    totalMaintenanceExpense,
+                ),
+                extraStyles: 'td { vertical-align: top; } td:nth-child(3) { word-break: break-word; }',
+            });
+        } catch {
+            try { printWindow.close(); } catch {}
+            addToast('error', 'Gagal menyiapkan dokumen cetak');
+        }
+    };
     const requiresSourceTireUsagePercent = Boolean(
         selectedRegisteredTire?.holderType === 'INTERNAL_VEHICLE' &&
         selectedRegisteredTire.vehicleRef &&
@@ -904,7 +1003,7 @@ export default function VehicleDetailPage() {
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Kapasitas Vol (m3)</div><div className="detail-value">{vehicle.capacityVolume || '-'}</div></div><div className="detail-item"><div className="detail-label">Tanggal Masuk Unit</div><div className="detail-value">{formatDate(vehicle.registeredDate)}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Kepemilikan</div><div className="detail-value">{VEHICLE_OWNERSHIP_LABELS[vehicle.ownershipType || 'COMPANY'] || '-'}</div></div><div className="detail-item"><div className="detail-label">Pemilik Mitra</div><div className="detail-value">{vehicle.ownershipType === 'PARTNER' ? vehicle.partnerOwnerName || '-' : '-'}</div></div></div>
                                 {vehicle.ownershipType === 'PARTNER' && <div className="detail-row"><div className="detail-item"><div className="detail-label">Kontak Pemilik</div><div className="detail-value">{vehicle.partnerOwnerPhone || '-'}</div></div><div className="detail-item"><div className="detail-label">Catatan Kepemilikan</div><div className="detail-value">{vehicle.partnerNotes || '-'}</div></div></div>}
-                                {isOwner && <div className="detail-row"><div className="detail-item"><div className="detail-label">No. Rangka</div><div className="detail-value font-mono">{vehicle.chassisNumber || '-'}</div></div><div className="detail-item"><div className="detail-label">No. Mesin</div><div className="detail-value font-mono">{vehicle.engineNumber || '-'}</div></div></div>}
+                                {canUpdateVehicle && <div className="detail-row"><div className="detail-item"><div className="detail-label">No. Rangka</div><div className="detail-value font-mono">{vehicle.chassisNumber || '-'}</div></div><div className="detail-item"><div className="detail-label">No. Mesin</div><div className="detail-value font-mono">{vehicle.engineNumber || '-'}</div></div></div>}
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Odometer Terakhir</div><div className="detail-value">{vehicle.lastOdometer ? `${formatQuantity(vehicle.lastOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Jarak Trip Terakhir</div><div className="detail-value">{typeof vehicle.lastTripOdometerDeltaKm === 'number' ? `${formatQuantity(vehicle.lastTripOdometerDeltaKm, 0)} km` : '-'}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Servis Oli Berikutnya</div><div className="detail-value">{vehicle.oilNextServiceOdometer ? `${formatQuantity(vehicle.oilNextServiceOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Sisa Servis Oli</div><div className="detail-value">{typeof vehicle.oilServiceRemainingKm === 'number' ? `${formatQuantity(vehicle.oilServiceRemainingKm, 0)} km` : '-'}</div></div></div>
                                 <div className="detail-row"><div className="detail-item"><div className="detail-label">Servis Oli Terakhir</div><div className="detail-value">{vehicle.oilLastServiceOdometer ? `${formatQuantity(vehicle.oilLastServiceOdometer, 0)} km` : '-'}</div></div><div className="detail-item"><div className="detail-label">Catatan</div><div className="detail-value">{vehicle.notes || '-'}</div></div></div>
@@ -933,7 +1032,7 @@ export default function VehicleDetailPage() {
                                     <div className="kpi-card"><div className="kpi-icon warning"><Wrench size={20} /></div><div className="kpi-content"><div className="kpi-label">Maintenance</div><div className="kpi-value">{maints.length}</div></div></div>
                                     <div className="kpi-card"><div className="kpi-icon danger"><AlertTriangle size={20} /></div><div className="kpi-content"><div className="kpi-label">Insiden</div><div className="kpi-value">{incidents.length}</div></div></div>
                                     <div className="kpi-card"><div className="kpi-icon success"><Disc3 size={20} /></div><div className="kpi-content"><div className="kpi-label">Slot Ban Terisi</div><div className="kpi-value">{filledSlotCount}/{layout.allSlots.length}</div></div></div>
-                                    {isOwner && <div className="kpi-card"><div className="kpi-icon primary"><Car size={20} /></div><div className="kpi-content"><div className="kpi-label">Biaya Maintenance</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{formatCurrency(totalMaintenanceExpense)}</div></div></div>}
+                                    {canViewExpenses && <div className="kpi-card"><div className="kpi-icon primary"><Car size={20} /></div><div className="kpi-content"><div className="kpi-label">Biaya Maintenance</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{formatCurrency(totalMaintenanceExpense)}</div></div></div>}
                                 </div>
                             </div>
                         </div>
@@ -952,7 +1051,7 @@ export default function VehicleDetailPage() {
                         <div className="table-wrapper table-desktop-only"><table>
                             <thead><tr><th>Trip / DO</th><th>Tanggal</th><th>Supir</th><th>Rute Trip</th><th>Customer</th><th>Barang</th><th>Status</th></tr></thead>
                             <tbody>{dos.length === 0 ? <tr><td colSpan={7} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada riwayat trip</td></tr> : dos.map(d => (
-                                <tr key={d._id}><td><a href={`/delivery-orders/${d._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{formatInternalDeliveryOrderNumber(d)}</a>{getShipperReferenceCount(d) > 0 && <div className="text-muted text-sm font-mono">{formatShipperDeliveryOrderNumber(d)}</div>}</td><td>{formatDate(d.date)}</td><td>{d.driverName || '-'}</td><td>{formatDeliveryOrderTripRoute(d)}</td><td>{d.customerName}</td><td>{renderDeliveryOrderCargoSummary(d)}</td><td><span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span></td></tr>
+                                <tr key={d._id}><td><Link href={`/delivery-orders/${d._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{formatInternalDeliveryOrderNumber(d)}</Link>{getShipperReferenceCount(d) > 0 && <div className="text-muted text-sm font-mono">{formatShipperDeliveryOrderNumber(d)}</div>}</td><td>{formatDate(d.date)}</td><td>{d.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${d.driverRef}`} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}</td><td>{formatDeliveryOrderTripRoute(d)}</td><td>{d.customerRef && canOpenCustomerPage ? <Link href={`/customers/${d.customerRef}`} style={{ color: 'var(--color-primary)' }}>{d.customerName}</Link> : d.customerName}</td><td>{renderDeliveryOrderCargoSummary(d)}</td><td><span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span></td></tr>
                             ))}</tbody>
                         </table></div>
                         <div className="mobile-record-list">
@@ -965,7 +1064,7 @@ export default function VehicleDetailPage() {
                                     <div className="mobile-record-header">
                                         <div>
                                             <div className="mobile-record-title">{formatInternalDeliveryOrderNumber(d)}</div>
-                                            <div className="mobile-record-subtitle">{d.customerName}</div>
+                                            <div className="mobile-record-subtitle">{d.customerRef && canOpenCustomerPage ? <Link href={`/customers/${d.customerRef}`} style={{ color: 'var(--color-primary)' }}>{d.customerName}</Link> : d.customerName}</div>
                                         </div>
                                         <span className={`badge badge-${DO_STATUS_MAP[d.status]?.color}`}>{DO_STATUS_MAP[d.status]?.label}</span>
                                     </div>
@@ -982,7 +1081,7 @@ export default function VehicleDetailPage() {
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Driver</span>
-                                            <span className="mobile-record-value">{d.driverName || '-'}</span>
+                                            <span className="mobile-record-value">{d.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${d.driverRef}`} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}</span>
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Rute Trip</span>
@@ -1070,10 +1169,10 @@ export default function VehicleDetailPage() {
                         </div>
                         <div className="card-body">
                             <div className="table-wrapper table-desktop-only"><table>
-                                <thead><tr><th>Tipe</th><th>Jadwal</th><th>Status</th><th>Material Gudang</th><th>Odometer</th><th>Vendor</th>{isOwner && <th>Biaya Internal</th>}</tr></thead>
-                                <tbody>{maints.length === 0 ? <tr><td colSpan={isOwner ? 7 : 6} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada maintenance</td></tr> : maints.map(m => {
+                                <thead><tr><th>Tipe</th><th>Jadwal</th><th>Status</th><th>Material Gudang</th><th>Odometer</th><th>Vendor</th>{canViewExpenses && <th>Biaya Internal</th>}</tr></thead>
+                                <tbody>{maints.length === 0 ? <tr><td colSpan={canViewExpenses ? 7 : 6} className="text-center text-muted" style={{ padding: '2rem' }}>Belum ada maintenance</td></tr> : maints.map(m => {
                                     return (
-                                    <tr key={m._id}><td>{m.type}</td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{isOwner && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
+                                    <tr key={m._id}><td><Link href={`/fleet/maintenance/${m._id}`} style={{ color: 'var(--color-primary)' }}>{m.type}</Link></td><td>{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</td><td><span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span></td><td>{renderMaintenanceMaterialUsage(m)}</td><td>{m.odometerAtService ? `${formatQuantity(m.odometerAtService, 0)} km` : '-'}</td><td>{m.vendor || '-'}</td>{canViewExpenses && <td>{m.status === 'DONE' ? formatCurrency(getMaintenanceRecordedCost(m)) : '-'}</td>}</tr>
                                     );
                                 })}</tbody>
                             </table></div>
@@ -1086,7 +1185,7 @@ export default function VehicleDetailPage() {
                                     <div key={m._id} className="mobile-record-card">
                                         <div className="mobile-record-header">
                                             <div>
-                                                <div className="mobile-record-title">{m.type}</div>
+                                                <div className="mobile-record-title"><Link href={`/fleet/maintenance/${m._id}`} style={{ color: 'var(--color-primary)' }}>{m.type}</Link></div>
                                                 <div className="mobile-record-subtitle">{m.scheduleType === 'DATE' ? formatDate(m.plannedDate) : `${formatQuantity(m.plannedOdometer || 0, 0)} km`}</div>
                                             </div>
                                             <span className={`badge badge-${MAINTENANCE_STATUS_MAP[m.status]?.color}`}>{MAINTENANCE_STATUS_MAP[m.status]?.label}</span>
@@ -1104,7 +1203,7 @@ export default function VehicleDetailPage() {
                                                 <span className="mobile-record-label">Material Gudang</span>
                                                 <div className="mobile-record-value">{renderMaintenanceMaterialUsage(m)}</div>
                                             </div>
-                                            {isOwner && m.status === 'DONE' && (
+                                            {canViewExpenses && m.status === 'DONE' && (
                                                 <div className="mobile-record-kv">
                                                     <span className="mobile-record-label">Biaya Internal</span>
                                                     <span className="mobile-record-value">{formatCurrency(getMaintenanceRecordedCost(m))}</span>
@@ -1235,7 +1334,7 @@ export default function VehicleDetailPage() {
                         <div className="table-wrapper table-desktop-only"><table>
                             <thead><tr><th>No.</th><th>Tanggal</th><th>Tipe</th><th>Lokasi</th><th>Biaya Insiden</th><th>Status</th></tr></thead>
                             <tbody>{incidents.length === 0 ? <tr><td colSpan={6} className="text-center text-muted" style={{ padding: '2rem' }}>Tidak ada insiden</td></tr> : incidents.map(i => (
-                                <tr key={i._id}><td><a href={`/fleet/incidents/${i._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</a></td><td>{formatDate(i.dateTime)}</td><td>{i.incidentType}</td><td>{i.locationText}</td><td>{renderIncidentCostSummary(i)}</td><td><span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span></td></tr>
+                                <tr key={i._id}><td><Link href={`/fleet/incidents/${i._id}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</Link></td><td>{formatDate(i.dateTime)}</td><td>{i.incidentType}</td><td>{i.locationText}</td><td>{renderIncidentCostSummary(i)}</td><td><span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span></td></tr>
                             ))}</tbody>
                         </table></div>
                         <div className="mobile-record-list">
@@ -1247,7 +1346,7 @@ export default function VehicleDetailPage() {
                                 <div key={i._id} className="mobile-record-card">
                                     <div className="mobile-record-header">
                                         <div>
-                                            <div className="mobile-record-title">{i.incidentNumber}</div>
+                                            <div className="mobile-record-title">{canOpenIncidentPage ? <Link href={`/fleet/incidents/${i._id}`} style={{ color: 'var(--color-primary)' }}>{i.incidentNumber}</Link> : i.incidentNumber}</div>
                                             <div className="mobile-record-subtitle">{formatDate(i.dateTime)} - {i.locationText || '-'}</div>
                                         </div>
                                         <span className={`badge badge-${INCIDENT_STATUS_MAP[i.status]?.color}`}>{INCIDENT_STATUS_MAP[i.status]?.label}</span>
@@ -1259,7 +1358,7 @@ export default function VehicleDetailPage() {
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">DO Terkait</span>
-                                            <span className="mobile-record-value">{i.relatedDONumber || '-'}</span>
+                                            <span className="mobile-record-value">{i.relatedDeliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${i.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{i.relatedDONumber || '-'}</Link> : (i.relatedDONumber || '-')}</span>
                                         </div>
                                         <div className="mobile-record-kv">
                                             <span className="mobile-record-label">Biaya Insiden</span>
@@ -1276,12 +1375,15 @@ export default function VehicleDetailPage() {
                 </div>
             )}
 
-            {tab === 'biaya' && isOwner && (
+            {tab === 'biaya' && canViewExpenses && (
                 <div className="card">
-                    <div className="card-header">
+                    <div className="card-header" style={{ justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                         <div>
                             <span className="card-header-title">Biaya Maintenance Unit</span>
                         </div>
+                        <button className="btn btn-secondary btn-sm" onClick={() => void handlePrintMaintenanceCosts()}>
+                            <Printer size={14} /> Print
+                        </button>
                     </div>
                     <div className="card-body">
                         <div className="table-wrapper"><table>
@@ -1311,30 +1413,32 @@ export default function VehicleDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Slot Ban</label>
-                                        <select className="form-select" value={tireForm.slotCode} onChange={e => updateTireForm('slotCode', e.target.value)} disabled={savingTire}>
-                                            {layout.allSlots.map(slotCode => (
-                                                <option key={slotCode} value={slotCode}>{slotCode} - {formatTireSlotLabel(slotCode)}</option>
+                                                                                <Combobox
+                                            value={tireForm.slotCode}
+                                            onChange={(v: string) => updateTireForm('slotCode', v)}
+                                            options={layout.allSlots.map(slotCode => (
+                                                { value: slotCode, label: `${slotCode} - ${formatTireSlotLabel(slotCode)}` }
                                             ))}
-                                        </select>
+                                            disabled={savingTire}
+                                            className="form-select"
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Sumber Ban</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={tireForm.tireSource}
-                                            onChange={e => setTireForm(prev => ({
+                                            onChange={(v: string) => setTireForm(prev => ({
                                                 ...createDefaultVehicleTireForm(prev.slotCode),
-                                                tireSource: e.target.value as VehicleTireFormState['tireSource'],
+                                                tireSource: v as VehicleTireFormState['tireSource'],
                                                 sourceVehicleRef: '',
                                                 slotCode: prev.slotCode,
                                                 installDate: prev.installDate,
                                                 oldTireDestination: prev.oldTireDestination,
                                             }))}
+                                            options={[{ value: "WAREHOUSE", label: "Gudang Ban" }, { value: "UNIT", label: "Unit Lain" }]}
                                             disabled={savingTire}
-                                        >
-                                            <option value="WAREHOUSE">Gudang Ban</option>
-                                            <option value="UNIT">Unit Lain</option>
-                                        </select>
+                                            className="form-select"
+                                        />
                                     </div>
                                 </div>
 
@@ -1342,12 +1446,11 @@ export default function VehicleDetailPage() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Unit Sumber</label>
-                                            <select
-                                                className="form-select"
+                                                                                        <Combobox
                                                 value={tireForm.sourceVehicleRef}
-                                                onChange={e => setTireForm(prev => ({
+                                                onChange={(v: string) => setTireForm(prev => ({
                                                     ...prev,
-                                                    sourceVehicleRef: e.target.value,
+                                                    sourceVehicleRef: v,
                                                     registeredTireId: '',
                                                     tireCode: '',
                                                     tireBrand: '',
@@ -1356,15 +1459,13 @@ export default function VehicleDetailPage() {
                                                     totalUsedPercent: 0,
                                                     sourceTireUsagePercent: null,
                                                 }))}
-                                                disabled={savingTire}
-                                            >
-                                                <option value="">Pilih unit sumber</option>
-                                                {sourceUnitOptions.map(option => (
-                                                    <option key={option.value} value={option.value}>
-                                                        {option.label} ({option.tireCount} ban)
-                                                    </option>
+                                                options={sourceUnitOptions.map(option => (
+                                                    { value: option.value, label: `${option.label} (${option.tireCount} ban)` }
                                                 ))}
-                                            </select>
+                                                placeholder="Pilih unit sumber"
+                                                disabled={savingTire}
+                                                className="form-select"
+                                            />
                                         </div>
                                     </div>
                                 )}
@@ -1372,19 +1473,16 @@ export default function VehicleDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">{tireForm.tireSource === 'WAREHOUSE' ? 'Ban dari Gudang' : 'Ban dari Unit'}</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={tireForm.registeredTireId}
-                                            onChange={e => handleRegisteredTireChange(e.target.value)}
-                                            disabled={savingTire || (tireForm.tireSource === 'UNIT' && !tireForm.sourceVehicleRef)}
-                                        >
-                                            <option value="">{tireForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : tireForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu'}</option>
-                                            {availableRegisteredTires.map(registeredTire => (
-                                                <option key={registeredTire._id} value={registeredTire._id}>
-                                                    {registeredTire.tireCodeLabel} - {registeredTire.tireBrand} {registeredTire.tireSize} ({registeredTire.placementLabel})
-                                                </option>
+                                            onChange={(v: string) => handleRegisteredTireChange(v)}
+                                            options={availableRegisteredTires.map(registeredTire => (
+                                                { value: registeredTire._id, label: `${registeredTire.tireCodeLabel} - ${registeredTire.tireBrand} ${registeredTire.tireSize} (${registeredTire.placementLabel})` }
                                         ))}
-                                        </select>
+                                            placeholder={tireForm.tireSource === 'WAREHOUSE' ? 'Pilih ban dari gudang' : tireForm.sourceVehicleRef ? 'Pilih ban dari unit' : 'Pilih unit sumber dulu'}
+                                            disabled={savingTire || (tireForm.tireSource === 'UNIT' && !tireForm.sourceVehicleRef)}
+                                            className="form-select"
+                                        />
                                     </div>
                                 </div>
 
@@ -1490,10 +1588,13 @@ export default function VehicleDetailPage() {
                                             <div className="form-row" style={{ marginBottom: 0 }}>
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label className="form-label">Ban Lama Dipindahkan Ke</label>
-                                                    <select className="form-select" value={tireForm.oldTireDestination} onChange={e => updateTireForm('oldTireDestination', e.target.value as VehicleTireFormState['oldTireDestination'])} disabled={savingTire}>
-                                                        <option value="WAREHOUSE">Gudang Ban</option>
-                                                        <option value="SCRAPPED">Afkir</option>
-                                                    </select>
+                                                                                                        <Combobox
+                                                        value={tireForm.oldTireDestination}
+                                                        onChange={(v: string) => updateTireForm('oldTireDestination', v as VehicleTireFormState['oldTireDestination'])}
+                                                        options={[{ value: "WAREHOUSE", label: "Gudang Ban" }, { value: "SCRAPPED", label: "Afkir" }]}
+                                                        disabled={savingTire}
+                                                        className="form-select"
+                                                    />
                                                 </div>
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label className="form-label">Persentase Pemakaian Ban Lama</label>
@@ -1513,9 +1614,13 @@ export default function VehicleDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Jenis Ban</label>
-                                        <select className="form-select" value={tireForm.tireType} onChange={e => updateTireForm('tireType', e.target.value as VehicleTireFormState['tireType'])} disabled={savingTire || !selectedRegisteredTire || registeredTireDetailLocked}>
-                                            {VEHICLE_TIRE_TYPE_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}
-                                        </select>
+                                                                                <Combobox
+                                            value={tireForm.tireType}
+                                            onChange={(v: string) => updateTireForm('tireType', v as VehicleTireFormState['tireType'])}
+                                            options={VEHICLE_TIRE_TYPE_OPTIONS.map(type => ({ value: type, label: type }))}
+                                            disabled={savingTire || !selectedRegisteredTire || registeredTireDetailLocked}
+                                            className="form-select"
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Tanggal Catat</label>

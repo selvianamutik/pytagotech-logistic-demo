@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useApp, useToast } from '../../layout';
-import { Edit, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
+import { Edit, FileDown, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAdminData, fetchOptionalAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
 import { summarizeCustomerCreditUsage } from '@/lib/customer-credit-limit';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { FREIGHT_NOTA_BILLING_MODE_OPTIONS, getFreightNotaBillingModeLabel } from '@/lib/freight-nota-billing';
 import { buildPph23Label, DEFAULT_PPH23_RATE_PERCENT, PPH23_BASE_MODE_OPTIONS } from '@/lib/pph23';
 import { formatDate, formatCurrency, getReceivableNetAmount } from '@/lib/utils';
@@ -17,6 +19,7 @@ import { formatCargoSummary, getWeightInputFractionDigits, VOLUME_INPUT_UNIT_OPT
 import type { Customer, CustomerBillingRate, CustomerBillingRateBasis, CustomerPickupLocation, CustomerProduct, CustomerRecipient, Order, FreightNota, Service } from '@/lib/types';
 import PageBackButton from '@/components/PageBackButton';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 
 type CustomerProductForm = {
     code: string;
@@ -134,6 +137,10 @@ export default function CustomerDetailPage() {
     const [showPickupModal, setShowPickupModal] = useState(false);
     const [savingPickup, setSavingPickup] = useState(false);
     const [deletingPickupId, setDeletingPickupId] = useState<string | null>(null);
+    const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmBillingRate, setDeleteConfirmBillingRate] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmRecipient, setDeleteConfirmRecipient] = useState<{ id: string; name: string } | null>(null);
+    const [deleteConfirmPickup, setDeleteConfirmPickup] = useState<{ id: string; name: string } | null>(null);
     const [editPickup, setEditPickup] = useState<CustomerPickupLocation | null>(null);
     const [form, setForm] = useState({
         name: '',
@@ -153,8 +160,9 @@ export default function CustomerDetailPage() {
     const [billingRateForm, setBillingRateForm] = useState<CustomerBillingRateForm>(DEFAULT_BILLING_RATE_FORM);
     const [recipientForm, setRecipientForm] = useState<CustomerRecipientForm>(DEFAULT_RECIPIENT_FORM);
     const [pickupForm, setPickupForm] = useState<CustomerPickupForm>(DEFAULT_PICKUP_FORM);
-    const canOpenCustomerOrderHistory = user ? hasPageAccess(user.role, 'orders') : false;
-    const canManageCustomer = user ? hasPermission(user.role, 'customers', 'update') : false;
+    const canOpenCustomerOrderHistory = user ? hasPageAccess(user, 'orders') : false;
+    const canManageCustomer = user ? hasPermission(user, 'customers', 'update') : false;
+    const canExportCustomerProducts = user ? hasPermission(user, 'customers', 'export') : false;
 
     useEffect(() => {
         const loadCustomerDetail = async () => {
@@ -221,6 +229,40 @@ export default function CustomerDetailPage() {
         setEditProduct(null);
         setProductForm(DEFAULT_PRODUCT_FORM);
         setShowProductModal(true);
+    };
+
+    const handleExportProducts = async () => {
+        if (!canExportCustomerProducts) return;
+        try {
+            await exportToExcel(
+                customerProducts.map((product) => ({
+                    customerName: customer?.name || '',
+                    code: product.code || '',
+                    name: product.name,
+                    description: product.description || '',
+                    defaultQtyKoli: product.defaultQtyKoli || 1,
+                    defaultWeightInputValue: product.defaultWeightInputValue || 0,
+                    defaultWeightInputUnit: product.defaultWeightInputUnit || 'KG',
+                    defaultVolumeInputValue: product.defaultVolumeInputValue || 0,
+                    defaultVolumeInputUnit: product.defaultVolumeInputUnit || 'M3',
+                    notes: product.notes || '',
+                    active: product.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('customer-products').map((column, index) => ({
+                    ...column,
+                    width: [26, 16, 30, 30, 10, 14, 12, 14, 12, 24, 12][index] || 18,
+                })),
+                `master-barang-customer-${new Date().toISOString().slice(0, 10)}`,
+                'Master Barang Customer',
+                {
+                    title: `Master Barang Customer: ${customer?.name || customerId}`,
+                    subtitle: `${customerProducts.length} barang`,
+                },
+            );
+            addToast('success', 'Excel master barang customer berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel master barang customer');
+        }
     };
 
     const openEditProduct = (product: CustomerProduct) => {
@@ -648,33 +690,30 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 320 }}>
                                     <label className="form-label">Default Basis Billing Invoice</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.defaultFreightNotaBillingMode}
-                                        onChange={e => setForm({ ...form, defaultFreightNotaBillingMode: e.target.value as CustomerBillingRateBasis })}
-                                    >
-                                        {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        onChange={(v: string) => setForm({ ...form, defaultFreightNotaBillingMode: v as CustomerBillingRateBasis })}
+                                        options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Default PPh 23</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={form.defaultPph23Enabled ? 'YA' : 'TIDAK'}
-                                            onChange={e => setForm({
+                                            onChange={(v: string) => setForm({
                                                 ...form,
-                                                defaultPph23Enabled: e.target.value === 'YA',
-                                                defaultPph23RatePercent: e.target.value === 'YA'
+                                                defaultPph23Enabled: v === 'YA',
+                                                defaultPph23RatePercent: v === 'YA'
                                                     ? (form.defaultPph23RatePercent || DEFAULT_PPH23_RATE_PERCENT)
                                                     : DEFAULT_PPH23_RATE_PERCENT,
                                             })}
-                                        >
-                                            <option value="TIDAK">Tidak dipotong</option>
-                                            <option value="YA">Potong PPh 23</option>
-                                        </select>
+                                            options={[{ value: "TIDAK", label: "Tidak dipotong" }, { value: "YA", label: "Potong PPh 23" }]}
+                                            className="form-select"
+                                        />
                                     </div>
                                     <div className="form-group" style={{ maxWidth: 180 }}>
                                         <label className="form-label">Tarif PPh 23 (%)</label>
@@ -687,15 +726,14 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 280 }}>
                                     <label className="form-label">Basis Hitung PPh 23</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.defaultPph23BaseMode}
-                                        onChange={e => setForm({ ...form, defaultPph23BaseMode: e.target.value as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
-                                    >
-                                        {PPH23_BASE_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        onChange={(v: string) => setForm({ ...form, defaultPph23BaseMode: v as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
+                                        options={PPH23_BASE_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Awalan Referensi SJ Pengirim</label>
@@ -804,9 +842,9 @@ export default function CustomerDetailPage() {
                                         </td>
                                         <td><span className={`badge ${recipient.active !== false ? 'badge-green' : 'badge-gray'}`}>{recipient.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditRecipient(recipient)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteRecipient(recipient._id)} disabled={deletingRecipientId === recipient._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmRecipient({ id: recipient._id, name: recipient.label })} disabled={deletingRecipientId === recipient._id}>
                                                     <Trash2 size={14} /> {deletingRecipientId === recipient._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -853,7 +891,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditRecipient(recipient)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteRecipient(recipient._id)} disabled={deletingRecipientId === recipient._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmRecipient({ id: recipient._id, name: recipient.label })} disabled={deletingRecipientId === recipient._id}>
                                     <Trash2 size={14} /> {deletingRecipientId === recipient._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -892,9 +930,9 @@ export default function CustomerDetailPage() {
                                         </td>
                                         <td><span className={`badge ${pickup.active !== false ? 'badge-green' : 'badge-gray'}`}>{pickup.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditPickup(pickup)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeletePickup(pickup._id)} disabled={deletingPickupId === pickup._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmPickup({ id: pickup._id, name: pickup.label })} disabled={deletingPickupId === pickup._id}>
                                                     <Trash2 size={14} /> {deletingPickupId === pickup._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -941,7 +979,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditPickup(pickup)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeletePickup(pickup._id)} disabled={deletingPickupId === pickup._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmPickup({ id: pickup._id, name: pickup.label })} disabled={deletingPickupId === pickup._id}>
                                     <Trash2 size={14} /> {deletingPickupId === pickup._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -975,9 +1013,9 @@ export default function CustomerDetailPage() {
                                     <td>{rate.routeFrom || rate.routeTo ? `${rate.routeFrom || '*'} -> ${rate.routeTo || '*'}` : 'Semua rute'}</td>
                                     <td><span className={`badge ${rate.active !== false ? 'badge-green' : 'badge-gray'}`}>{rate.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {canManageCustomer && <button className="table-action-btn" onClick={() => openEditBillingRate(rate)}><Edit size={14} /> Edit</button>}
-                                            {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteBillingRate(rate._id)} disabled={deletingBillingRateId === rate._id}>
+                                            {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmBillingRate({ id: rate._id, name: rate.serviceName || 'Semua jenis armada' })} disabled={deletingBillingRateId === rate._id}>
                                                 <Trash2 size={14} /> {deletingBillingRateId === rate._id ? 'Menghapus...' : 'Hapus'}
                                             </button>}
                                         </div>
@@ -1014,7 +1052,7 @@ export default function CustomerDetailPage() {
                             </div>
                             <div className="mobile-record-actions">
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditBillingRate(rate)}><Edit size={14} /> Edit</button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteBillingRate(rate._id)} disabled={deletingBillingRateId === rate._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmBillingRate({ id: rate._id, name: rate.serviceName || 'Semua jenis armada' })} disabled={deletingBillingRateId === rate._id}>
                                     <Trash2 size={14} /> {deletingBillingRateId === rate._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -1027,7 +1065,10 @@ export default function CustomerDetailPage() {
                 title={`Master Barang Customer (${customerProducts.length})`}
                 defaultOpen
             >
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    {canExportCustomerProducts && <button className="btn btn-secondary btn-sm" onClick={() => void handleExportProducts()}>
+                        <FileDown size={14} /> Excel
+                    </button>}
                     {canManageCustomer && <button className="btn btn-primary btn-sm" onClick={openNewProduct}>
                         <Plus size={14} /> Tambah Barang
                     </button>}
@@ -1062,9 +1103,9 @@ export default function CustomerDetailPage() {
                                         })}</td>
                                         <td><span className={`badge ${product.active !== false ? 'badge-green' : 'badge-gray'}`}>{product.active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
                                         <td>
-                                            <div className="table-actions">
+                                            <div className="table-actions-col">
                                                 {canManageCustomer && <button className="table-action-btn" onClick={() => openEditProduct(product)}><Edit size={14} /> Edit</button>}
-                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => handleDeleteProduct(product._id)} disabled={deletingProductId === product._id}>
+                                                {canManageCustomer && <button className="table-action-btn danger" onClick={() => setDeleteConfirmProduct({ id: product._id, name: product.name })} disabled={deletingProductId === product._id}>
                                                     <Trash2 size={14} /> {deletingProductId === product._id ? 'Menghapus...' : 'Hapus'}
                                                 </button>}
                                             </div>
@@ -1116,7 +1157,7 @@ export default function CustomerDetailPage() {
                                 {canManageCustomer && <button className="btn btn-secondary" onClick={() => openEditProduct(product)}>
                                     <Edit size={14} /> Edit
                                 </button>}
-                                {canManageCustomer && <button className="btn btn-danger" onClick={() => handleDeleteProduct(product._id)} disabled={deletingProductId === product._id}>
+                                {canManageCustomer && <button className="btn btn-danger" onClick={() => setDeleteConfirmProduct({ id: product._id, name: product.name })} disabled={deletingProductId === product._id}>
                                     <Trash2 size={14} /> {deletingProductId === product._id ? 'Menghapus...' : 'Hapus'}
                                 </button>}
                             </div>
@@ -1206,7 +1247,7 @@ export default function CustomerDetailPage() {
                         <div key={nota._id} className="mobile-record-card">
                             <div className="mobile-record-header">
                                 <div>
-                                    <div className="mobile-record-title">{nota.notaNumber}</div>
+                                    <div className="mobile-record-title"><Link href={`/invoices/${nota._id}`} style={{ color: 'var(--color-primary)' }}>{nota.notaNumber}</Link></div>
                                     <div className="mobile-record-subtitle">Jatuh tempo {formatDate(nota.dueDate)}</div>
                                 </div>
                                 <span className="badge badge-info">{nota.status}</span>
@@ -1237,20 +1278,26 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Jenis Armada</label>
-                                    <select className="form-select" value={billingRateForm.serviceRef} onChange={e => setBillingRateForm(prev => ({ ...prev, serviceRef: e.target.value }))}>
-                                        <option value="">Semua jenis armada</option>
-                                        {services.map(service => (
-                                            <option key={service._id} value={service._id}>{service.name}</option>
+                                                                        <Combobox
+                                        value={billingRateForm.serviceRef}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, serviceRef: v }))}
+                                        options={services.map(service => (
+                                            { value: service._id, label: service.name }
                                         ))}
-                                    </select>
+                                        placeholder="Semua jenis armada"
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Basis Tarif <span className="required">*</span></label>
-                                    <select className="form-select" value={billingRateForm.basis} onChange={e => setBillingRateForm(prev => ({ ...prev, basis: e.target.value as CustomerBillingRateBasis }))}>
-                                        {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                                        <Combobox
+                                        value={billingRateForm.basis}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, basis: v as CustomerBillingRateBasis }))}
+                                        options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -1260,10 +1307,12 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={billingRateForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setBillingRateForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE' }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={billingRateForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, active: v === 'ACTIVE' }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -1322,10 +1371,12 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={recipientForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setRecipientForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE', isDefault: e.target.value === 'ACTIVE' ? prev.isDefault : false }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={recipientForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setRecipientForm(prev => ({ ...prev, active: v === 'ACTIVE', isDefault: v === 'ACTIVE' ? prev.isDefault : false }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Default</label>
@@ -1369,10 +1420,12 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={pickupForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setPickupForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE', isDefault: e.target.value === 'ACTIVE' ? prev.isDefault : false }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={pickupForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setPickupForm(prev => ({ ...prev, active: v === 'ACTIVE', isDefault: v === 'ACTIVE' ? prev.isDefault : false }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Default</label>
@@ -1424,10 +1477,12 @@ export default function CustomerDetailPage() {
                                     </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={productForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setProductForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE' }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={productForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setProductForm(prev => ({ ...prev, active: v === 'ACTIVE' }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                                 <div className="form-row">
@@ -1440,9 +1495,14 @@ export default function CustomerDetailPage() {
                                             value={productForm.defaultWeightInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultWeightInputValue: value }))}
                                         />
-                                        <select className="form-select" value={productForm.defaultWeightInputUnit} onChange={e => setProductForm(prev => ({ ...prev, defaultWeightInputUnit: e.target.value as WeightInputUnit }))} style={{ width: 100 }}>
-                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                                                                <div style={{ width: 100 }}>
+                                            <Combobox
+                                                value={productForm.defaultWeightInputUnit}
+                                                onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultWeightInputUnit: v as WeightInputUnit }))}
+                                                options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                className="form-select"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                                     <div className="form-group">
@@ -1455,9 +1515,14 @@ export default function CustomerDetailPage() {
                                             value={productForm.defaultVolumeInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultVolumeInputValue: value }))}
                                         />
-                                        <select className="form-select" value={productForm.defaultVolumeInputUnit} onChange={e => setProductForm(prev => ({ ...prev, defaultVolumeInputUnit: e.target.value as VolumeInputUnit }))} style={{ width: 100 }}>
-                                            {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                                                                <div style={{ width: 100 }}>
+                                            <Combobox
+                                                value={productForm.defaultVolumeInputUnit}
+                                                onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultVolumeInputUnit: v as VolumeInputUnit }))}
+                                                options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                className="form-select"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1469,6 +1534,66 @@ export default function CustomerDetailPage() {
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowProductModal(false)} disabled={savingProduct}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSaveProduct} disabled={savingProduct}><Save size={16} /> {savingProduct ? 'Menyimpan...' : 'Simpan'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmProduct && (
+                <div className="modal-overlay" onClick={() => { if (deletingProductId !== deleteConfirmProduct.id) setDeleteConfirmProduct(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Barang Customer?</h3></div>
+                        <div className="modal-body"><p>Hapus barang <strong>{deleteConfirmProduct.name}</strong> dari master barang customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmProduct(null)} disabled={deletingProductId === deleteConfirmProduct.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteProduct(deleteConfirmProduct.id)} disabled={deletingProductId === deleteConfirmProduct.id}>
+                                <Trash2 size={16} /> {deletingProductId === deleteConfirmProduct.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmBillingRate && (
+                <div className="modal-overlay" onClick={() => { if (deletingBillingRateId !== deleteConfirmBillingRate.id) setDeleteConfirmBillingRate(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Tarif Billing?</h3></div>
+                        <div className="modal-body"><p>Hapus tarif <strong>{deleteConfirmBillingRate.name}</strong> dari master tarif billing customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmBillingRate(null)} disabled={deletingBillingRateId === deleteConfirmBillingRate.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteBillingRate(deleteConfirmBillingRate.id)} disabled={deletingBillingRateId === deleteConfirmBillingRate.id}>
+                                <Trash2 size={16} /> {deletingBillingRateId === deleteConfirmBillingRate.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmRecipient && (
+                <div className="modal-overlay" onClick={() => { if (deletingRecipientId !== deleteConfirmRecipient.id) setDeleteConfirmRecipient(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Master Penerima?</h3></div>
+                        <div className="modal-body"><p>Hapus penerima <strong>{deleteConfirmRecipient.name}</strong> dari master penerima customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmRecipient(null)} disabled={deletingRecipientId === deleteConfirmRecipient.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteRecipient(deleteConfirmRecipient.id)} disabled={deletingRecipientId === deleteConfirmRecipient.id}>
+                                <Trash2 size={16} /> {deletingRecipientId === deleteConfirmRecipient.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmPickup && (
+                <div className="modal-overlay" onClick={() => { if (deletingPickupId !== deleteConfirmPickup.id) setDeleteConfirmPickup(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Master Pickup?</h3></div>
+                        <div className="modal-body"><p>Hapus lokasi pickup <strong>{deleteConfirmPickup.name}</strong> dari master pickup customer ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmPickup(null)} disabled={deletingPickupId === deleteConfirmPickup.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeletePickup(deleteConfirmPickup.id)} disabled={deletingPickupId === deleteConfirmPickup.id}>
+                                <Trash2 size={16} /> {deletingPickupId === deleteConfirmPickup.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
                         </div>
                     </div>
                 </div>

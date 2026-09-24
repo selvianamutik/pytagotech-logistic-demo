@@ -10,8 +10,11 @@ import {
     type WeightInputUnit,
 } from './measurement';
 
+export const MANUAL_ITEM_OPTION_VALUE = '__manual__';
+
 export type OrderItemForm = {
     id?: string;
+    manualEntry?: boolean;
     customerProductRef: string;
     description: string;
     qtyKoli: number;
@@ -83,6 +86,24 @@ export function summarizeDraftOrderCargo(items: OrderItemForm[]) {
 
 export function resetCustomerScopedOrderItems(items: OrderItemForm[]) {
     return items.map(item => (item.customerProductRef ? createDefaultOrderItemForm() : item));
+}
+
+export function applyOrderItemPickerSelection(
+    item: OrderItemForm,
+    nextValue: string,
+    customerProducts: CustomerProduct[]
+): OrderItemForm {
+    if (nextValue === MANUAL_ITEM_OPTION_VALUE) {
+        return { ...item, customerProductRef: '', manualEntry: true };
+    }
+    const selectedProduct = customerProducts.find(product => product._id === nextValue);
+    return { ...applyCustomerProductToOrderItem(item, selectedProduct), manualEntry: false };
+}
+
+export function getOrderItemPickerValue(item: Pick<OrderItemForm, 'customerProductRef' | 'description' | 'manualEntry'>): string {
+    if (item.customerProductRef) return item.customerProductRef;
+    if (item.manualEntry || Boolean(item.description && item.description.trim())) return MANUAL_ITEM_OPTION_VALUE;
+    return '';
 }
 
 export function applyCustomerProductToOrderItem(item: OrderItemForm, selectedProduct: CustomerProduct | undefined): OrderItemForm {

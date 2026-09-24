@@ -13,6 +13,7 @@ import { fetchAdminCollectionData, fetchAdminListPayload } from '@/lib/api/admin
 import type { DeliveryOrder, DriverVoucher, Order, Service } from '@/lib/types';
 import { getDeliveryOrderHoldCargoSummary, hasDeliveryOrderBillableCargo } from '@/lib/delivery-order-completion';
 import { hasPageAccess } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 
 type TripCashStatusCode = 'NO_DO' | 'NEEDS_BON' | 'BON_DRAFT' | 'BON_ISSUED' | 'BON_SETTLED' | 'NOT_REQUIRED';
 type TripCashStatusMeta = { code: TripCashStatusCode; label: string; color: string };
@@ -156,7 +157,7 @@ export default function OrdersPage() {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
 
     const buildOrdersQuery = useCallback((targetPage = page, targetPageSize = DEFAULT_PAGE_SIZE) => {
         const params = new URLSearchParams({
@@ -405,28 +406,28 @@ export default function OrdersPage() {
                                 onChange={e => setSearch(e.target.value)}
                             />
                         </div>
-                        <select
-                            className="form-select"
-                            style={{ width: 'auto', minWidth: 180 }}
-                            value={serviceFilter}
-                            onChange={e => setServiceFilter(e.target.value)}
-                        >
-                            <option value="">Semua Kategori</option>
-                            {availableServiceOptions.map(service => (
-                                <option key={service._id} value={service._id}>{service.code} - {service.name}</option>
+                                                <div style={{ width: 'auto', minWidth: 180 }}>
+                            <Combobox
+                                value={serviceFilter}
+                                onChange={(v: string) => setServiceFilter(v)}
+                                options={availableServiceOptions.map(service => (
+                                { value: service._id, label: `${service.code} - ${service.name}` }
                             ))}
-                        </select>
-                        <select
-                            className="form-select"
-                            style={{ width: 'auto', minWidth: 140 }}
-                            value={statusFilter}
-                            onChange={e => setStatusFilter(e.target.value)}
-                        >
-                            <option value="">Semua Status</option>
-                            {ORDER_STATUS_FILTER_OPTIONS.map(([k, v]) => (
-                                <option key={k} value={k}>{v.label}</option>
+                                placeholder="Semua Kategori"
+                                className="form-select"
+                            />
+                        </div>
+                                                <div style={{ width: 'auto', minWidth: 140 }}>
+                            <Combobox
+                                value={statusFilter}
+                                onChange={(v: string) => setStatusFilter(v)}
+                                options={ORDER_STATUS_FILTER_OPTIONS.map(([k, v]) => (
+                                { value: k, label: v.label }
                             ))}
-                        </select>
+                                placeholder="Semua Status"
+                                className="form-select"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -510,9 +511,9 @@ export default function OrdersPage() {
                                             </td>
                                             <td className="text-muted">{formatDate(order.createdAt)}</td>
                                             <td>
-                                                <div className="table-actions">
+                                                <div className="table-actions-col">
                                                     <button className="table-action-btn" onClick={() => router.push(`/orders/${order._id}`)}>
-                                                        <Eye size={14} /> Buka
+                                                        <Eye size={14} /> Detail
                                                     </button>
                                                     <button className="table-action-btn" onClick={() => router.push(`/orders/${order._id}/edit`)}>
                                                         <Edit size={14} /> Edit
@@ -587,7 +588,7 @@ export default function OrdersPage() {
                                 </div>
                                 <div className="mobile-record-actions">
                                     <button className="btn btn-secondary" onClick={() => router.push(`/orders/${order._id}`)}>
-                                        <Eye size={14} /> Buka
+                                        <Eye size={14} /> Detail
                                     </button>
                                     <button className="btn btn-secondary" onClick={() => router.push(`/orders/${order._id}/edit`)}>
                                         <Edit size={14} /> Edit

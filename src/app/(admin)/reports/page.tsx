@@ -11,6 +11,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useApp, useToast } from "../layout";
+import Combobox from "@/components/Combobox";
 import { openBrandedPrint } from "@/lib/print";
 import { fetchAdminData, fetchAllAdminCollectionData } from "@/lib/api/admin-client";
 import {
@@ -82,13 +83,15 @@ export default function ReportsPage() {
   );
   const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const canOpenBankAccounts = user ? hasPageAccess(user.role, "bankAccounts") : false;
-  const canOpenInvoices = user ? hasPageAccess(user.role, "invoices") : false;
-  const canOpenDriverVouchers = user ? hasPageAccess(user.role, "driverVouchers") : false;
-  const canOpenDriverBorongans = user ? hasPageAccess(user.role, "driverBorongans") : false;
-  const canOpenVehicles = user ? hasPageAccess(user.role, "vehicles") : false;
-  const canOpenIncidents = user ? hasPageAccess(user.role, "incidents") : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, "purchases") : false;
+  const canOpenBankAccounts = user ? hasPageAccess(user, "bankAccounts") : false;
+  const canOpenInvoices = user ? hasPageAccess(user, "invoices") : false;
+  const canOpenDriverVouchers = user ? hasPageAccess(user, "driverVouchers") : false;
+  const canOpenDriverBorongans = user ? hasPageAccess(user, "driverBorongans") : false;
+  const canOpenVehicles = user ? hasPageAccess(user, "vehicles") : false;
+  const canOpenIncidents = user ? hasPageAccess(user, "incidents") : false;
+  const canOpenMaintenance = user ? hasPageAccess(user, "maintenance") : false;
+  const canOpenPurchases = user ? hasPageAccess(user, "purchases") : false;
+  const canOpenDrivers = user ? hasPageAccess(user, "drivers") : false;
 
   const businessToday = getBusinessCalendarDateParts() || {
     year: String(new Date().getFullYear()),
@@ -341,7 +344,7 @@ export default function ReportsPage() {
               )}</div><table><thead><tr><th>Bank</th><th>Tanggal</th><th>Tipe</th><th>Deskripsi</th><th class="r">Jumlah</th><th class="r">Saldo</th></tr></thead><tbody>${sortedFilteredBankTx
               .map((item) => {
                 const isIn =
-                  item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                  item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                 const bankName = resolveBankTransactionAccountName(
                   item,
                   allBankAccounts,
@@ -408,30 +411,21 @@ export default function ReportsPage() {
         </div>
         <div className="page-toolbar-side">
           <div className="period-controls">
-          <select
+          <Combobox
             className="form-select"
             value={periodMode}
-            onChange={(event) =>
-              setPeriodMode(event.target.value as ReportPeriodMode)
+            onChange={(v: string) =>
+              setPeriodMode(v as ReportPeriodMode)
             }
-          >
-            <option value="month">Bulanan</option>
-            <option value="year">Tahunan</option>
-            <option value="custom">Rentang Tanggal</option>
-            <option value="all">Semua</option>
-          </select>
+            options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }, { value: 'all', label: 'Semua' }]}
+          />
           {periodMode === "month" && (
-            <select
+            <Combobox
               className="form-select"
-              value={month}
-              onChange={(event) => setMonth(Number(event.target.value))}
-            >
-              {monthNames.map((name, index) => (
-                <option key={name} value={index}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              value={String(month)}
+              onChange={(v: string) => setMonth(Number(v))}
+              options={monthNames.map((name, index) => ({ value: String(index), label: name }))}
+            />
           )}
           {periodMode === "custom" && (
             <>
@@ -449,15 +443,12 @@ export default function ReportsPage() {
               >
                 <ChevronLeft size={14} />
               </button>
-              <select
+              <Combobox
                 className="form-select period-year-select"
-                value={year}
-                onChange={(event) => setYear(Number(event.target.value))}
-              >
-                {yearOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                value={String(year)}
+                onChange={(v: string) => setYear(Number(v))}
+                options={yearOptions.map(option => ({ value: String(option), label: String(option) }))}
+              />
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={nextPeriod}
@@ -743,10 +734,10 @@ export default function ReportsPage() {
                         });
                         return (
                           <tr key={item._id}>
-                            <td style={{ fontWeight: 600 }}>{item.bonNumber}</td>
+                            <td style={{ fontWeight: 600 }}>{canOpenDriverVouchers ? <Link href={`/driver-vouchers/${item._id}`} style={{ color: "var(--color-primary)" }}>{item.bonNumber}</Link> : item.bonNumber}</td>
                             <td>{formatDate(item.issuedDate)}</td>
-                            <td>{item.driverName || "-"}</td>
-                            <td>{item.issueBankName || "-"}</td>
+                            <td>{item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: "var(--color-primary)" }}>{item.driverName || "-"}</Link> : (item.driverName || "-")}</td>
+                            <td>{item.issueBankRef && canOpenBankAccounts ? <Link href={`/bank-accounts/${item.issueBankRef}`} style={{ color: "var(--color-primary)" }}>{item.issueBankName || "-"}</Link> : (item.issueBankName || "-")}</td>
                             <td style={{ textAlign: "right", fontWeight: 600 }}>
                               {formatCurrency(totalIssuedAmount)}
                             </td>
@@ -816,10 +807,10 @@ export default function ReportsPage() {
                         <div className="mobile-record-header">
                           <div>
                             <div className="mobile-record-title">
-                              {item.bonNumber}
+                              {canOpenDriverVouchers ? <Link href={`/driver-vouchers/${item._id}`} style={{ color: "var(--color-primary)" }}>{item.bonNumber}</Link> : item.bonNumber}
                             </div>
                             <div className="mobile-record-subtitle">
-                              {item.driverName || "-"} | {formatDate(item.issuedDate)}
+                              {item.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${item.driverRef}`} style={{ color: "var(--color-primary)" }}>{item.driverName || "-"}</Link> : (item.driverName || "-")} | {formatDate(item.issuedDate)}
                             </div>
                           </div>
                           <span className="badge badge-warning">Belum Diselesaikan</span>
@@ -828,7 +819,7 @@ export default function ReportsPage() {
                           <div className="mobile-record-kv">
                             <span className="mobile-record-label">Rekening</span>
                             <span className="mobile-record-value">
-                              {item.issueBankName || "-"}
+                              {item.issueBankRef && canOpenBankAccounts ? <Link href={`/bank-accounts/${item.issueBankRef}`} style={{ color: "var(--color-primary)" }}>{item.issueBankName || "-"}</Link> : (item.issueBankName || "-")}
                             </span>
                           </div>
                           <div className="mobile-record-kv">
@@ -1214,7 +1205,7 @@ export default function ReportsPage() {
                   ) : (
                     sortedFilteredBankTx.map((item) => {
                       const isIn =
-                        item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                        item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                       const bankName = resolveBankTransactionAccountName(
                         item,
                         allBankAccounts,
@@ -1235,6 +1226,7 @@ export default function ReportsPage() {
                           canOpenDriverBorongans,
                           canOpenVehicles,
                           canOpenIncidents,
+                          canOpenMaintenance,
                           canOpenPurchases,
                         },
                       });
@@ -1317,7 +1309,7 @@ export default function ReportsPage() {
               ) : (
                 sortedFilteredBankTx.map((item) => {
                   const isIn =
-                    item.type === "CREDIT" || item.type === "TRANSFER_IN";
+                    item.type === "CREDIT" || item.type === "TRANSFER_IN" || item.type === "ADJUSTMENT";
                   const bankName = resolveBankTransactionAccountName(
                     item,
                     allBankAccounts,
@@ -1338,6 +1330,7 @@ export default function ReportsPage() {
                       canOpenDriverBorongans,
                       canOpenVehicles,
                       canOpenIncidents,
+                      canOpenMaintenance,
                       canOpenPurchases,
                     },
                   });

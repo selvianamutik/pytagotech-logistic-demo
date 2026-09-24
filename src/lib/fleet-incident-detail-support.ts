@@ -29,7 +29,7 @@ const INCIDENT_NEXT_STATUS_MAP: Record<string, string[]> = {
 };
 const INCIDENT_SETTLEMENT_NEXT_STATUS_MAP: Record<IncidentSettlementLineStatus, IncidentSettlementLineStatus[]> = {
     DRAFT: ['APPROVED', 'VOID'],
-    APPROVED: ['DRAFT', 'VOID', 'POSTED'],
+    APPROVED: ['VOID', 'POSTED'],
     POSTED: [],
     VOID: [],
 };
@@ -79,11 +79,11 @@ export function getAvailableIncidentSettlementStatuses(line: IncidentSettlementL
 }
 
 export function canEditIncidentSettlementLine(line: IncidentSettlementLine) {
-    return line.status === 'DRAFT';
+    return line.status === 'DRAFT' || line.status === 'APPROVED';
 }
 
 export function canDeleteIncidentSettlementLine(line: IncidentSettlementLine) {
-    return line.status === 'DRAFT' && !line.linkedExpenseRef;
+    return (line.status === 'DRAFT' || line.status === 'APPROVED') && !line.linkedExpenseRef;
 }
 
 export function canPostIncidentSettlementLine(line: IncidentSettlementLine) {

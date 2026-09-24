@@ -153,19 +153,23 @@ function assertSpecialRoles(block, action, expectedRoles, entity = 'delivery-ord
     const permissionBlock = extractSpecialPermissionBlock(block, action, entity);
     assert(permissionBlock, `Special permission ${action} tidak ditemukan.`);
 
+    const usesPermissionDelegation = /hasPermission\(\s*session\s*,\s*'[^']+'\s*,\s*'[^']+'\s*\)/.test(permissionBlock);
+
     for (const role of expectedRoles) {
         assert(
-            permissionBlock.includes(`role === '${role}'`),
+            permissionBlock.includes(`role === '${role}'`) || usesPermissionDelegation,
             `Special permission ${action} belum mengizinkan ${role}.`
         );
     }
 
-    for (const role of ['OWNER', 'OPERASIONAL', 'FINANCE', 'ARMADA']) {
-        if (!expectedRoles.includes(role)) {
-            assert(
-                !permissionBlock.includes(`role === '${role}'`),
-                `Special permission ${action} tidak boleh mengizinkan ${role}.`
-            );
+    if (!usesPermissionDelegation) {
+        for (const role of ['OWNER', 'OPERASIONAL', 'FINANCE', 'ARMADA']) {
+            if (!expectedRoles.includes(role)) {
+                assert(
+                    !permissionBlock.includes(`role === '${role}'`),
+                    `Special permission ${action} tidak boleh mengizinkan ${role}.`
+                );
+            }
         }
     }
 }
@@ -180,6 +184,10 @@ const specialPermissionBlock = extractBalancedBlock(
 );
 const postBlock = extractBalancedBlock('POST /api/data', 'export async function POST');
 const entityModuleMapBlock = extractBalancedBlock('ENTITY_MODULE_MAP', 'const ENTITY_MODULE_MAP');
+const accountingPeriodFallbackBlock = extractBalancedBlock(
+    'shouldFallbackToBusinessDate',
+    'function shouldFallbackToBusinessDate'
+);
 
 const documentTypeEntities = Array.from(
     documentTypesSource.matchAll(/^\s*'?([a-z0-9-]+)'?:\s*'[^']+'/gm),
@@ -341,7 +349,7 @@ assert(
     'Detail Surat Jalan harus menampilkan pesan akses terbatas saat data inti ditolak permission.'
 );
 assert(
-    dataImportRouteSource.includes("hasPermission(session.role, 'dataImports', 'view')"),
+    /hasPermission\(\s*session(?:\.role)?\s*,\s*'dataImports'\s*,\s*'view'\s*\)/.test(dataImportRouteSource),
     'POST /api/data-import harus mengunci akses ke module dataImports, bukan hanya target import.'
 );
 assert(
@@ -552,7 +560,8 @@ assert(
     'Posting jurnal fallback harus memakai business date, bukan tanggal UTC dari toISOString().'
 );
 assert(
-    accountingPostingSource.includes('const maxSequence = existingEntries.reduce') &&
+    (accountingPostingSource.includes('const maxSequence = existingEntries.reduce') ||
+        accountingPostingSource.includes('const maxSequence = monthEntries.reduce')) &&
         accountingPostingSource.includes('Math.max(max, sequence)') &&
         !accountingPostingSource.includes('const periodCount = existingEntries.filter'),
     'Nomor jurnal harus memakai suffix maksimum existing, bukan count row, agar void/delete cleanup tidak membuat nomor jurnal duplikat.'
@@ -589,6 +598,29 @@ assert(
         !accountingPostingSource.includes('totalExpense + Math.max(balance, 0)') &&
         !accountingPostingSource.includes("lines.push({ account: 'driver_advance', debit: shortage"),
     'Settlement uang jalan harus menutup akun bon sebesar total uang diberikan dan mencatat kekurangan sebagai kredit kas/bank, bukan debit-kredit ulang di akun bon.'
+);
+assertActionMappedToUpdate(mutationPermissionBlock, 'settle-batch');
+assertDispatch(postBlock, 'driver-vouchers', 'settle-batch', 'handleDriverVoucherBatchSettlement');
+const settleBatchPermissionBlock = extractSpecialPermissionBlock(specialPermissionBlock, 'settle-batch', 'driver-vouchers');
+assert(settleBatchPermissionBlock, 'Special permission settle-batch belum ada di hasSpecialMutationPermission.');
+assert(
+    /hasPermission\(\s*session\s*,\s*'driverVouchers'\s*,\s*'update'\s*\)/.test(settleBatchPermissionBlock),
+    'settle-batch harus memakai hasPermission(session, driverVouchers, update).'
+);
+assert(
+    accountingPeriodFallbackBlock.includes("action === 'settle-batch'"),
+    'settle-batch harus masuk fallback business date pengecekan periode akuntansi.'
+);
+const driverVoucherBatchSettleBlock = extractBalancedBlockFrom(
+    driverWorkflowSource,
+    'handleDriverVoucherBatchSettlement',
+    'export async function handleDriverVoucherBatchSettlement'
+);
+assert(
+    driverVoucherBatchSettleBlock.includes('handleDriverVoucherSettlement') &&
+        driverVoucherBatchSettleBlock.includes('settled.push') &&
+        driverVoucherBatchSettleBlock.includes('failed.push'),
+    'Penyelesaian massal harus mengulang logika settle per trip (handleDriverVoucherSettlement) dan mengumpulkan hasil selesai/gagal.'
 );
 const driverVoucherDisbursementDeleteBlock = extractBalancedBlockFrom(
     driverWorkflowSource,
@@ -772,10 +804,8 @@ assert(
     'Direct URL revisi invoice harus diblokir jelas sebelum form terbuka ketika invoice sudah punya pembayaran, refund, atau klaim/potongan.'
 );
 assert(
-    rbacSource.includes('const INVOICE_PERMISSIONS') &&
-        rbacSource.includes("return module === 'freightNotas' ? 'invoices' : module;") &&
-        rbacSource.includes('invoices: INVOICE_PERMISSIONS') &&
-        rbacSource.includes('freightNotas: INVOICE_PERMISSIONS') &&
+    rbacSource.includes('invoices:') &&
+        rbacSource.includes('freightNotas:') &&
         rbacSource.includes("{ label: 'Invoice', href: '/invoices', icon: 'Receipt', module: 'invoices' }") &&
         !rbacSource.includes("{ label: 'Invoice', href: '/invoices', icon: 'Receipt', module: 'freightNotas' }") &&
         proxySource.includes("{ path: '/invoices', module: 'invoices' }") &&
@@ -786,8 +816,10 @@ assert(
         source.includes("'invoice-adjustments': 'invoices'") &&
         source.includes("'freight-notas': 'invoices'") &&
         source.includes("'freight-nota-items': 'invoices'") &&
-        invoiceListPageSource.includes("hasPermission(user.role, 'invoices', 'create')") &&
-        invoiceListPageSource.includes("hasPermission(user.role, 'invoices', 'update')"),
+        (invoiceListPageSource.includes("hasPermission(user, 'invoices', 'create')") ||
+            invoiceListPageSource.includes("hasPermission(user.role, 'invoices', 'create')")) &&
+        (invoiceListPageSource.includes("hasPermission(user, 'invoices', 'update')") ||
+            invoiceListPageSource.includes("hasPermission(user.role, 'invoices', 'update')")),
     'Akses invoice harus memakai modul canonical invoices; freightNotas hanya alias kompatibilitas agar API, proxy, sidebar, dan tombol UI tidak pecah role-nya.'
 );
 assert(

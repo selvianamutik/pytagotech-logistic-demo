@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Plus, FileText, Printer, FileDown, Receipt } from 'lucide-react';
+import { Search, Plus, FileText, Printer, FileDown, Eye, Receipt, RotateCcw, ChevronsRight } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
@@ -30,6 +30,7 @@ import type { BankAccount, CompanyProfile, Customer, CustomerOverpayment, Custom
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 
 import { useApp, useToast } from '../layout';
+import Combobox from '@/components/Combobox';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
     UNPAID: { label: 'Belum Lunas', color: 'danger' },
@@ -151,12 +152,12 @@ export default function NotaListPage() {
     const [refundAmount, setRefundAmount] = useState(0);
     const [refundBankRef, setRefundBankRef] = useState('');
     const [refundNote, setRefundNote] = useState('');
-    const canCreateInvoice = user ? hasPermission(user.role, 'invoices', 'create') : false;
-    const canCreateReceipt = user ? hasPermission(user.role, 'invoices', 'update') : false;
-    const canExportInvoices = user ? hasPermission(user.role, 'invoices', 'export') : false;
-    const canPrintInvoices = user ? hasPermission(user.role, 'invoices', 'print') : false;
+    const canCreateInvoice = user ? hasPermission(user, 'invoices', 'create') : false;
+    const canCreateReceipt = user ? hasPermission(user, 'invoices', 'update') : false;
+    const canExportInvoices = user ? hasPermission(user, 'invoices', 'export') : false;
+    const canPrintInvoices = user ? hasPermission(user, 'invoices', 'print') : false;
     const canManageOverpayments = canCreateReceipt;
-    const canOpenCustomers = user ? hasPageAccess(user.role, 'customers') : false;
+    const canOpenCustomers = user ? hasPageAccess(user, 'customers') : false;
     const dateRange = useMemo(
         () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
         [dateFrom, dateTo, monthIndex, periodMode, year]
@@ -941,7 +942,7 @@ export default function NotaListPage() {
                                                 </td>
                                                 <td>
                                                     <button className="table-action-btn" onClick={() => openRefundModal(item)}>
-                                                        Konfirmasi Transfer Balik
+                                                        <RotateCcw size={14} /> Konfirmasi Transfer Balik
                                                     </button>
                                                 </td>
                                             </tr>
@@ -995,7 +996,7 @@ export default function NotaListPage() {
                                             </div>
                                             <div className="mobile-record-actions">
                                                 <button className="btn btn-secondary" onClick={() => openRefundModal(item)}>
-                                                    Konfirmasi Transfer Balik
+                                                    <RotateCcw size={14} /> Konfirmasi Transfer Balik
                                                 </button>
                                             </div>
                                         </article>
@@ -1012,25 +1013,34 @@ export default function NotaListPage() {
                 <div className="table-toolbar">
                     <div className="table-toolbar-left finance-filter-toolbar">
                         <div className="table-search finance-search"><Search size={16} className="table-search-icon" /><input placeholder="Cari invoice, customer, receipt..." value={search} onChange={e => setSearch(e.target.value)} /></div>
-                        <select className="form-select finance-filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                            <option value="">Semua Status Aktif</option>
-                            {Object.entries(STATUS_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as FinancePeriodMode)}>
-                            <option value="all">Semua Tanggal</option>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                                                <Combobox
+                            value={statusFilter}
+                            onChange={(v: string) => setStatusFilter(v)}
+                            options={Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))}
+                            placeholder="Semua Status Aktif"
+                            className="form-select finance-filter"
+                        />
+                                                <Combobox
+                            value={periodMode}
+                            onChange={(v: string) => setPeriodMode(v as FinancePeriodMode)}
+                            options={[{ value: "all", label: "Semua Tanggal" }, { value: "month", label: "Bulanan" }, { value: "year", label: "Tahunan" }, { value: "custom", label: "Rentang Tanggal" }]}
+                            className="form-select finance-filter"
+                        />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                                                        <Combobox
+                                value={String(monthIndex)}
+                                onChange={(v: string) => setMonthIndex(Number(v))}
+                                options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))}
+                                className="form-select finance-filter"
+                            />
                         )}
                         {periodMode !== 'all' && periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                                                        <Combobox
+                                value={String(year)}
+                                onChange={(v: string) => setYear(Number(v))}
+                                options={yearOptions.map(option => ({ value: String(option), label: String(option) }))}
+                                className="form-select finance-filter"
+                            />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -1075,17 +1085,16 @@ export default function NotaListPage() {
                                         return (
                                     <tr key={n._id}>
                                         <td>
-                                            <button
-                                                type="button"
+                                            <Link
+                                                href={`/invoices/${n._id}`}
                                                 className="btn btn-ghost btn-sm"
                                                 style={{ padding: 0, textAlign: 'left', color: 'var(--color-primary)' }}
-                                                onClick={() => router.push(`/invoices/${n._id}`)}
                                             >
                                                 <div className="font-semibold">{formatFreightNotaDisplayNumber(n, company)}</div>
                                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{n.notaNumber}</div>
-                                            </button>
+                                            </Link>
                                         </td>
-                                        <td>{n.customerName}</td>
+                                        <td>{n.customerRef && canOpenCustomers ? <Link href={`/customers/${n.customerRef}`} style={{ color: 'var(--color-primary)' }}>{n.customerName}</Link> : n.customerName}</td>
                                         <td className="text-muted">{formatDate(n.issueDate)}</td>
                                     <td>{formatQuantity(n.totalCollie || 0)}</td>
                                         <td>{formatFreightNotaDisplayWeight({ beratKg: n.totalWeightKg || 0, volumeM3: n.totalVolumeM3 || 0, billingMode: normalizeFreightNotaBillingMode(n.billingMode), includeCanonical: false })}</td>
@@ -1097,8 +1106,8 @@ export default function NotaListPage() {
                                         <td><span className={`badge badge-${STATUS_MAP[displayStatus]?.color}`}><span className="badge-dot" /> {STATUS_MAP[displayStatus]?.label}</span></td>
                                         <td><span style={{ fontWeight: 500 }}>{getNextInvoiceAction(displayStatus, n, getNotaRemaining(n))}</span></td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                                                <button className="table-action-btn" onClick={() => router.push(`/invoices/${n._id}`)}>Buka</button>
+                                            <div className="table-actions-col">
+                                                <button className="table-action-btn" onClick={() => router.push(`/invoices/${n._id}`)}><Eye size={14} /> Detail</button>
                                                 {canExportInvoices && <button className="table-action-btn" onClick={() => void handleExportNota(n)}><FileDown size={13} /> Excel</button>}
                                                 {canPrintInvoices && <button className="table-action-btn" onClick={() => void handlePrintNota(n)}><Printer size={13} /> Cetak</button>}
                                             </div>
@@ -1124,8 +1133,8 @@ export default function NotaListPage() {
                             <div key={n._id} className="mobile-record-card">
                                 <div className="mobile-record-header">
                                     <div>
-                                        <div className="mobile-record-title">{formatFreightNotaDisplayNumber(n, company)}</div>
-                                        <div className="mobile-record-subtitle">{n.customerName || '-'} | {formatDate(n.issueDate)}</div>
+                                        <div className="mobile-record-title"><Link href={`/invoices/${n._id}`} style={{ color: 'var(--color-primary)' }}>{formatFreightNotaDisplayNumber(n, company)}</Link></div>
+                                        <div className="mobile-record-subtitle">{n.customerRef && canOpenCustomers ? <Link href={`/customers/${n.customerRef}`} style={{ color: 'var(--color-primary)' }}>{n.customerName || '-'}</Link> : (n.customerName || '-')} | {formatDate(n.issueDate)}</div>
                                     </div>
                                     <span className={`badge badge-${STATUS_MAP[displayStatus]?.color}`}>
                                         <span className="badge-dot" /> {STATUS_MAP[displayStatus]?.label}
@@ -1154,7 +1163,7 @@ export default function NotaListPage() {
                                     </div>
                                 </div>
                                 <div className="mobile-record-actions">
-                                    <button className="btn btn-secondary" onClick={() => router.push(`/invoices/${n._id}`)}>Buka</button>
+                                    <button className="btn btn-secondary" onClick={() => router.push(`/invoices/${n._id}`)}><Eye size={14} /> Detail</button>
                                     {canExportInvoices && <button className="btn btn-secondary" onClick={() => void handleExportNota(n)}><FileDown size={13} /> Excel</button>}
                                     {canPrintInvoices && <button className="btn btn-secondary" onClick={() => void handlePrintNota(n)}><Printer size={13} /> Cetak</button>}
                                 </div>
@@ -1202,14 +1211,16 @@ export default function NotaListPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Rekening / Kas Sumber</label>
-                                <select className="form-select" value={refundBankRef} onChange={e => setRefundBankRef(e.target.value)} disabled={refunding}>
-                                    <option value="">-- Pilih rekening atau kas --</option>
-                                    {bankAccounts.map(account => (
-                                        <option key={account._id} value={account._id}>
-                                            {account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}
-                                        </option>
+                                                                <Combobox
+                                    value={refundBankRef}
+                                    onChange={(v: string) => setRefundBankRef(v)}
+                                    options={bankAccounts.map(account => (
+                                        { value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }
                                     ))}
-                                </select>
+                                    placeholder="-- Pilih rekening atau kas --"
+                                    disabled={refunding}
+                                    className="form-select"
+                                />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Catatan</label>
@@ -1236,10 +1247,14 @@ export default function NotaListPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Customer</label>
-                                    <select className="form-select" value={receiptCustomerRef} onChange={e => { setReceiptCustomerRef(e.target.value); setReceiptAllocations({}); setReceiptAmount(0); }} disabled={receiving}>
-                                        <option value="">-- Pilih customer --</option>
-                                        {receiptCustomerOptions.map(option => <option key={option.ref} value={option.ref}>{option.name}</option>)}
-                                    </select>
+                                                                        <Combobox
+                                        value={receiptCustomerRef}
+                                        onChange={(v: string) => { setReceiptCustomerRef(v); setReceiptAllocations({}); setReceiptAmount(0); }}
+                                        options={receiptCustomerOptions.map(option => ({ value: option.ref, label: option.name }))}
+                                        placeholder="-- Pilih customer --"
+                                        disabled={receiving}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tanggal Penerimaan</label>
@@ -1249,27 +1264,30 @@ export default function NotaListPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Metode</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={receiptMethod}
-                                        onChange={e => {
-                                            const nextMethod = e.target.value;
+                                        onChange={(v: string) => {
+                                            const nextMethod = v;
                                             setReceiptMethod(nextMethod);
                                             if (nextMethod === 'CASH') {
                                                 setReceiptBankRef('');
                                             }
                                         }}
+                                        options={Object.entries(PAYMENT_METHOD_MAP).map(([value, label]) => ({ value: value, label: label }))}
                                         disabled={receiving}
-                                    >
-                                        {Object.entries(PAYMENT_METHOD_MAP).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Rekening / Kas</label>
-                                    <select className="form-select" value={receiptBankRef} onChange={e => setReceiptBankRef(e.target.value)} disabled={receiving || receiptMethod === 'CASH'}>
-                                        <option value="">{receiptMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Pilih --'}</option>
-                                        {receiptAccountOptions.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                    </select>
+                                                                        <Combobox
+                                        value={receiptBankRef}
+                                        onChange={(v: string) => setReceiptBankRef(v)}
+                                        options={receiptAccountOptions.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))}
+                                        placeholder={receiptMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Pilih --'}
+                                        disabled={receiving || receiptMethod === 'CASH'}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -1365,7 +1383,7 @@ export default function NotaListPage() {
                                                     <td>{formatCurrency(item.paidAmount)}</td>
                                                     <td>
                                                         <div className="font-semibold">{formatCurrency(item.remainingAmount)}</div>
-                                                        <button className="table-action-btn" type="button" onClick={() => updateReceiptAllocation(item.nota._id, item.remainingAmount)} disabled={receiving}>Isi penuh</button>
+                                                        <button className="table-action-btn" type="button" onClick={() => updateReceiptAllocation(item.nota._id, item.remainingAmount)} disabled={receiving}><ChevronsRight size={14} /> Isi penuh</button>
                                                     </td>
                                                     <td><FormattedNumberInput allowDecimal={false} value={receiptAllocations[item.nota._id] || 0} onValueChange={value => updateReceiptAllocation(item.nota._id, value)} disabled={receiving} placeholder="Alokasi" /></td>
                                                 </tr>

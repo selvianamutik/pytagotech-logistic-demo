@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CheckCircle, Pencil, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 
 import CollapsibleCard from '@/components/CollapsibleCard';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminCollectionData, fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
@@ -65,20 +66,27 @@ export default function DriverVoucherDetailPage() {
     const [editingDisbursementId, setEditingDisbursementId] = useState<string | null>(null);
     const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
     const [deletingDisbursementId, setDeletingDisbursementId] = useState<string | null>(null);
+    const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ id: string; label: string } | null>(null);
+    const [deleteConfirmDisbursement, setDeleteConfirmDisbursement] = useState<{ id: string; label: string } | null>(null);
     const [repairingIssueLedger, setRepairingIssueLedger] = useState(false);
     const [itemForm, setItemForm] = useState(createDefaultDriverVoucherItemForm());
     const [topUpForm, setTopUpForm] = useState(createDefaultDriverVoucherTopUpForm());
     const [settlementDate, setSettlementDate] = useState(getBusinessDateValue());
     const [settlementBankRef, setSettlementBankRef] = useState('');
     const [issueBankRepairRef, setIssueBankRepairRef] = useState('');
+    const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+    const [correctingVoucher, setCorrectingVoucher] = useState(false);
+    const [correctionForm, setCorrectionForm] = useState({ driverFeeAmount: 0, initialCashGiven: 0 });
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenDriverPage = user ? hasPageAccess(user.role, 'drivers') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
     const canManageVoucherItems = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canTopUpVoucher = normalizedRole === 'OWNER' || normalizedRole === 'OPERASIONAL';
     const canSettleVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
     const canRepairIssueLedger = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
+    const canCorrectVoucher = normalizedRole === 'OWNER' || normalizedRole === 'FINANCE';
 
     const loadVoucherDetail = useCallback(async () => {
         setLoading(true);
@@ -166,6 +174,7 @@ export default function DriverVoucherDetailPage() {
     const linkedDoHasFinalActualWeight = (linkedDeliveryOrder?.actualTotalWeightKg || 0) > 0;
     const linkedDoFinalTripFee = linkedDeliveryOrder?.taripBorongan || driverFeeAmount;
     const linkedDoHasManualOvertonase = (linkedDeliveryOrder?.manualOvertonaseWeightKg || 0) > 0;
+    const correctionPreviewBalance = correctionForm.initialCashGiven + topUpAmount - operationalSpent - correctionForm.driverFeeAmount;
     const canManageVoucherOvertonase = Boolean(
         linkedDeliveryOrder &&
         canManageVoucherItems &&
@@ -561,6 +570,64 @@ export default function DriverVoucherDetailPage() {
         }
     };
 
+    const openCorrectionModal = () => {
+        if (!canCorrectVoucher || !voucher || isSettled) return;
+        setCorrectionForm({
+            driverFeeAmount,
+            initialCashGiven,
+        });
+        setShowCorrectionModal(true);
+    };
+
+    const closeCorrectionModal = () => {
+        if (correctingVoucher) return;
+        setShowCorrectionModal(false);
+    };
+
+    const handleCorrectCore = async () => {
+        if (!canCorrectVoucher || !voucher) return;
+        if (correctionForm.driverFeeAmount < 0) {
+            addToast('error', 'Upah borongan tidak boleh negatif');
+            return;
+        }
+        if (correctionForm.initialCashGiven <= 0) {
+            addToast('error', 'Nominal uang jalan awal harus lebih dari 0');
+            return;
+        }
+
+        setCorrectingVoucher(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'driver-vouchers',
+                    action: 'correct-core',
+                    data: {
+                        id: voucher._id,
+                        driverFeeAmount: correctionForm.driverFeeAmount,
+                        initialCashGiven: correctionForm.initialCashGiven,
+                    },
+                }),
+            });
+            const result = await res.json();
+
+            if (!res.ok) {
+                addToast('error', result.error || 'Gagal mengoreksi bon');
+                return;
+            }
+
+            setVoucher(result.data);
+            void loadVoucherDetail();
+            setShowCorrectionModal(false);
+            addToast('success', 'Bon berhasil dikoreksi');
+        } catch {
+            addToast('error', 'Gagal mengoreksi bon');
+        } finally {
+            setCorrectingVoucher(false);
+        }
+    };
+
     const openSettleModal = () => {
         if (!canSettleVoucher || !voucher) return;
         setSettlementDate(getBusinessDateValue());
@@ -666,7 +733,7 @@ export default function DriverVoucherDetailPage() {
                             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{voucher.bonNumber}</h1>
                             <span className={`badge ${statusConfig.cls}`}>{statusConfig.label}</span>
                         </div>
-                        <p className="page-subtitle" style={{ margin: 0 }}>{voucher.driverName} | {formatDate(voucher.issuedDate)} | No. DO Internal {voucher.doNumber || '-'} | Uang Jalan Trip</p>
+                        <p className="page-subtitle" style={{ margin: 0 }}>{voucher.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${voucher.driverRef}`} style={{ color: 'var(--color-primary)' }}>{voucher.driverName}</Link> : voucher.driverName} | {formatDate(voucher.issuedDate)} | No. DO Internal {voucher.deliveryOrderRef && canOpenDeliveryOrderPage ? <Link href={`/delivery-orders/${voucher.deliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{voucher.doNumber || '-'}</Link> : (voucher.doNumber || '-')} | Uang Jalan Trip</p>
                     </div>
                 </div>
                 <div className="page-actions">
@@ -676,6 +743,7 @@ export default function DriverVoucherDetailPage() {
                         </Link>
                     )}
                     {!isSettled && canTopUpVoucher && <button className="btn btn-secondary btn-sm" onClick={openTopUpModal}><Plus size={15} /> Tambah Uang Jalan</button>}
+                    {!isSettled && canCorrectVoucher && <button className="btn btn-secondary btn-sm" onClick={openCorrectionModal}><Pencil size={15} /> Koreksi Bon</button>}
                     {!isSettled && canSettleVoucher && (items.length > 0 || driverFeeAmount > 0) && <button className="btn btn-primary" onClick={openSettleModal}><CheckCircle size={16} /> Selesaikan Trip</button>}
                     <button className="btn btn-secondary btn-sm" onClick={handlePrint}><Printer size={15} /> Print</button>
                 </div>
@@ -691,10 +759,7 @@ export default function DriverVoucherDetailPage() {
                         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                             <div className="form-group" style={{ minWidth: 260, marginBottom: 0 }}>
                                 <label className="form-label">Rekening / Kas Sumber</label>
-                                <select className="form-select" value={issueBankRepairRef} onChange={event => setIssueBankRepairRef(event.target.value)}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={issueBankRepairRef} onChange={(v: string) => setIssueBankRepairRef(v)} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                             </div>
                             {canRepairIssueLedger ? (
                                 <button className="btn btn-primary" onClick={handleRepairIssueLedger} disabled={repairingIssueLedger}>
@@ -801,13 +866,13 @@ export default function DriverVoucherDetailPage() {
                                         <td>{index + 1}</td>
                                         <td>{formatDate(item.date)}</td>
                                         <td><span className={`badge ${item.kind === 'INITIAL' ? 'badge-blue' : 'badge-warning'}`}>{bonLabel}</span></td>
-                                        <td>{item.bankAccountName || '-'}</td>
+                                        <td>{item.bankAccountRef && canOpenBankAccountPage ? <Link href={`/bank-accounts/${item.bankAccountRef}`} style={{ color: 'var(--color-primary)' }}>{item.bankAccountName || '-'}</Link> : (item.bankAccountName || '-')}</td>
                                         <td>{item.note || '-'}</td>
                                         <td className="font-medium">{formatCurrency(item.amount)}</td>
                                         {!isSettled && canTopUpVoucher && (
                                             <td>
                                                 {item.kind === 'TOP_UP' ? (
-                                                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                                    <div className="table-actions-col">
                                                         <button
                                                             className="btn btn-ghost btn-sm"
                                                             onClick={() => openEditDisbursementModal(item)}
@@ -818,7 +883,7 @@ export default function DriverVoucherDetailPage() {
                                                         </button>
                                                         <button
                                                             className="btn btn-ghost btn-sm"
-                                                            onClick={() => handleDeleteDisbursement(item._id)}
+                                                            onClick={() => setDeleteConfirmDisbursement({ id: item._id, label: bonLabel })}
                                                             disabled={deletingDisbursementId === item._id}
                                                             aria-label={`Hapus ${bonLabel}`}
                                                         >
@@ -848,7 +913,7 @@ export default function DriverVoucherDetailPage() {
                                 <div className="mobile-record-header">
                                     <div>
                                         <div className="mobile-record-title">{bonLabel}</div>
-                                        <div className="mobile-record-subtitle">{formatDate(item.date)} | {item.bankAccountName || '-'}</div>
+                                        <div className="mobile-record-subtitle">{formatDate(item.date)} | {item.bankAccountRef && canOpenBankAccountPage ? <Link href={`/bank-accounts/${item.bankAccountRef}`} style={{ color: 'var(--color-primary)' }}>{item.bankAccountName || '-'}</Link> : (item.bankAccountName || '-')}</div>
                                     </div>
                                     <span className={`badge ${item.kind === 'INITIAL' ? 'badge-blue' : 'badge-warning'}`}>{formatCurrency(item.amount)}</span>
                                 </div>
@@ -863,7 +928,7 @@ export default function DriverVoucherDetailPage() {
                                         <button className="btn btn-secondary" onClick={() => openEditDisbursementModal(item)} disabled={deletingDisbursementId === item._id || toppingUp}>
                                             <Pencil size={14} /> Edit Top Up
                                         </button>
-                                        <button className="btn btn-secondary" onClick={() => handleDeleteDisbursement(item._id)} disabled={deletingDisbursementId === item._id}>
+                                        <button className="btn btn-secondary" onClick={() => setDeleteConfirmDisbursement({ id: item._id, label: bonLabel })} disabled={deletingDisbursementId === item._id}>
                                             <Trash2 size={14} /> Hapus Top Up
                                         </button>
                                     </div>
@@ -897,7 +962,7 @@ export default function DriverVoucherDetailPage() {
                                             <td className="font-medium">{formatCurrency(item.amount)}</td>
                                             {!isSettled && canManageVoucherItems && (
                                                 <td>
-                                                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                                    <div className="table-actions-col">
                                                         <button
                                                             className="btn btn-ghost btn-sm"
                                                             onClick={() => openEditItemModal(item)}
@@ -908,7 +973,7 @@ export default function DriverVoucherDetailPage() {
                                                         </button>
                                                         <button
                                                             className="btn btn-ghost btn-sm"
-                                                            onClick={() => handleDeleteItem(item._id)}
+                                                            onClick={() => setDeleteConfirmItem({ id: item._id, label: item.description || item.category })}
                                                             disabled={deletingItemId === item._id}
                                                             aria-label={`Hapus biaya lain-lain ${item.category}`}
                                                         >
@@ -962,7 +1027,7 @@ export default function DriverVoucherDetailPage() {
                                                 </button>
                                                 <button
                                                     className="btn btn-danger btn-sm"
-                                                    onClick={() => handleDeleteItem(item._id)}
+                                                    onClick={() => setDeleteConfirmItem({ id: item._id, label: item.description || item.category })}
                                                     disabled={deletingItemId === item._id}
                                                 >
                                                     <Trash2 size={14} /> Hapus
@@ -1013,17 +1078,16 @@ export default function DriverVoucherDetailPage() {
                                             disabled={savingManualOvertonase || manualOvertonaseReviewMode === 'automatic'}
                                             placeholder="Isi berat manual"
                                         />
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={manualOvertonaseWeightInputUnit}
-                                            onChange={event => {
-                                                updateManualOvertonaseWeightUnit(event.target.value as WeightInputUnit);
+                                            onChange={(v: string) => {
+                                                updateManualOvertonaseWeightUnit(v as WeightInputUnit);
                                                 setManualOvertonaseReviewMode('manual');
                                             }}
                                             disabled={savingManualOvertonase || manualOvertonaseReviewMode === 'automatic'}
-                                        >
-                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                            options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                        />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -1086,9 +1150,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Kategori</label>
-                                <select className="form-select" value={itemForm.category} onChange={event => setItemForm({ ...itemForm, category: event.target.value })}>
-                                    {DRIVER_VOUCHER_EXPENSE_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={itemForm.category} onChange={(v: string) => setItemForm({ ...itemForm, category: v })} options={DRIVER_VOUCHER_EXPENSE_CATEGORIES} />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Deskripsi</label>
@@ -1131,10 +1193,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Rekening / Kas Sumber <span className="required">*</span></label>
-                                <select className="form-select" value={topUpForm.bankAccountRef} onChange={event => setTopUpForm({ ...topUpForm, bankAccountRef: event.target.value })}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={topUpForm.bankAccountRef} onChange={(v: string) => setTopUpForm({ ...topUpForm, bankAccountRef: v })} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Jumlah Tambahan <span className="required">*</span></label>
@@ -1181,10 +1240,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">{settlementDisplay.bankFieldLabel} {balance !== 0 ? <span className="required">*</span> : null}</label>
-                                <select className="form-select" value={settlementBankRef} onChange={event => setSettlementBankRef(event.target.value)} disabled={settling}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={settlementBankRef} onChange={(v: string) => setSettlementBankRef(v)} disabled={settling} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                                 <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>{settlementDisplay.description}</div>
                             </div>
                             <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '0.6rem', padding: '0.85rem 1rem' }}>
@@ -1206,6 +1262,78 @@ export default function DriverVoucherDetailPage() {
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowSettleModal(false)} disabled={settling}>Batal</button>
                             <button className="btn btn-primary" onClick={handleSettle} disabled={settling}><CheckCircle size={16} /> {settling ? 'Memproses...' : settlementDisplay.primaryActionLabel}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCorrectionModal && canCorrectVoucher && (
+                <div className="modal-overlay" onClick={closeCorrectionModal}>
+                    <div className="modal" onClick={event => event.stopPropagation()}>
+                        <div className="modal-header"><h3 className="modal-title">Koreksi Bon</h3><button className="modal-close" onClick={closeCorrectionModal} disabled={correctingVoucher}><X size={20} /></button></div>
+                        <div className="modal-body">
+                            <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.75rem', padding: '0.85rem 1rem', marginBottom: '1rem', border: '1px solid var(--color-gray-200)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+                                    <div>
+                                        <div className="text-muted text-sm">Uang Jalan Awal</div>
+                                        <div className="font-semibold">{formatCurrency(initialCashGiven)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted text-sm">Upah Borongan</div>
+                                        <div className="font-semibold">{formatCurrency(driverFeeAmount)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted text-sm">Total Uang Diberikan</div>
+                                        <div className="font-semibold">{formatCurrency(totalIssuedAmount)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Uang Jalan Awal (Bon Pertama) <span className="required">*</span></label>
+                                <FormattedNumberInput allowDecimal={false} value={correctionForm.initialCashGiven} onValueChange={value => setCorrectionForm(prev => ({ ...prev, initialCashGiven: value }))} placeholder="Ketik nominal uang jalan awal" />
+                                <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Mengubah nilai ini akan membalik pencairan bank lama lalu membuat pencairan baru dengan nilai terkoreksi.</div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Upah Borongan <span className="required">*</span></label>
+                                <FormattedNumberInput allowDecimal={false} value={correctionForm.driverFeeAmount} onValueChange={value => setCorrectionForm(prev => ({ ...prev, driverFeeAmount: value }))} placeholder="Ketik upah borongan" />
+                                <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Nilai ini ikut disinkronkan ke Surat Jalan agar perhitungan upah final tetap konsisten.</div>
+                            </div>
+                            <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '0.6rem', padding: '0.85rem 1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Uang Jalan Awal Baru</span><strong>{formatCurrency(correctionForm.initialCashGiven)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Borongan Baru</span><strong>{formatCurrency(correctionForm.driverFeeAmount)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Penyelesaian Jika Sekarang</span><strong style={{ color: correctionPreviewBalance < 0 ? 'var(--color-danger)' : 'inherit' }}>{formatCurrency(correctionPreviewBalance)}</strong></div>
+                            </div>
+                        </div>
+                        <div className="modal-footer"><button className="btn btn-secondary" onClick={closeCorrectionModal} disabled={correctingVoucher}>Batal</button><button className="btn btn-primary" onClick={handleCorrectCore} disabled={correctingVoucher}><Save size={16} /> {correctingVoucher ? 'Memproses...' : 'Simpan Koreksi'}</button></div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmItem && (
+                <div className="modal-overlay" onClick={() => { if (deletingItemId !== deleteConfirmItem.id) setDeleteConfirmItem(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Biaya Lain-lain?</h3></div>
+                        <div className="modal-body"><p>Hapus biaya <strong>{deleteConfirmItem.label || 'tanpa deskripsi'}</strong> senilai <strong>{formatCurrency(items.find(item => item._id === deleteConfirmItem.id)?.amount || 0)}</strong> dari uang jalan trip ini?</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmItem(null)} disabled={deletingItemId === deleteConfirmItem.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteItem(deleteConfirmItem.id)} disabled={deletingItemId === deleteConfirmItem.id}>
+                                <Trash2 size={16} /> {deletingItemId === deleteConfirmItem.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteConfirmDisbursement && (
+                <div className="modal-overlay" onClick={() => { if (deletingDisbursementId !== deleteConfirmDisbursement.id) setDeleteConfirmDisbursement(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Top Up?</h3></div>
+                        <div className="modal-body"><p>Hapus tambahan bon <strong>{deleteConfirmDisbursement.label}</strong>? Uang kembali ke saldo uang jalan trip.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmDisbursement(null)} disabled={deletingDisbursementId === deleteConfirmDisbursement.id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDeleteDisbursement(deleteConfirmDisbursement.id)} disabled={deletingDisbursementId === deleteConfirmDisbursement.id}>
+                                <Trash2 size={16} /> {deletingDisbursementId === deleteConfirmDisbursement.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
                         </div>
                     </div>
                 </div>

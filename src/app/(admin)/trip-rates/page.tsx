@@ -1,17 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Edit, MapPin, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { Edit, FileDown, MapPin, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { useApp, useToast } from '../layout';
 import { fetchAdminCollectionData } from '@/lib/api/admin-client';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { hasPermission } from '@/lib/rbac';
 import { formatCurrency } from '@/lib/utils';
 import { getTripRouteOvertonaseRatePerTon, stripTripRouteOvertonaseRateNote } from '@/lib/trip-route-rate-support';
 import type { Service, TripRouteRate } from '@/lib/types';
+import Combobox from '@/components/Combobox';
 
 type TripRouteRateSortField = 'originArea' | 'destinationArea' | 'serviceName' | 'rate' | 'overtonaseDriverRatePerTon' | 'active';
 
@@ -54,9 +57,10 @@ export default function TripRouteRatesPage() {
         active: true,
     });
 
-    const canCreateTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'create') : false;
-    const canUpdateTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'update') : false;
-    const canDeleteTripRate = user ? hasPermission(user.role, 'tripRouteRates', 'delete') : false;
+    const canCreateTripRate = user ? hasPermission(user, 'tripRouteRates', 'create') : false;
+    const canUpdateTripRate = user ? hasPermission(user, 'tripRouteRates', 'update') : false;
+    const canDeleteTripRate = user ? hasPermission(user, 'tripRouteRates', 'delete') : false;
+    const canExportTripRate = user ? hasPermission(user, 'tripRouteRates', 'export') : false;
 
     const loadReferenceData = useCallback(async () => {
         try {
@@ -140,6 +144,65 @@ export default function TripRouteRatesPage() {
     useEffect(() => {
         void loadReferenceData();
     }, [loadReferenceData]);
+
+    const handleExport = async () => {
+        if (!canExportTripRate) return;
+        try {
+            const listFilter: Record<string, unknown> = {};
+            if (serviceFilter) listFilter.serviceRef = serviceFilter;
+            if (originFilter) listFilter.originArea = originFilter;
+            if (destinationFilter) listFilter.destinationArea = destinationFilter;
+
+            const listParams = new URLSearchParams({
+                entity: 'trip-route-rates',
+                pageSize: '500',
+                sortField,
+                sortDir,
+            });
+            if (Object.keys(listFilter).length > 0) {
+                listParams.set('filter', JSON.stringify(listFilter));
+            }
+            if (search.trim()) {
+                listParams.set('search', search.trim());
+                listParams.set('searchFields', 'originArea,destinationArea,serviceName,notes');
+            }
+
+            const rows = await fetchAdminCollectionData<TripRouteRate[]>(
+                `/api/data?${listParams.toString()}`,
+                'Gagal memuat biaya rute trip untuk export',
+                500,
+            );
+            const serviceCodeByRef = new Map(services.map((service) => [service._id, service.code]));
+            await exportToExcel(
+                (rows || []).map((rate) => ({
+                    originArea: rate.originArea,
+                    destinationArea: rate.destinationArea,
+                    serviceCode: rate.serviceRef ? serviceCodeByRef.get(rate.serviceRef) || '' : '',
+                    serviceName: rate.serviceName || '',
+                    rate: rate.rate,
+                    overtonaseDriverRatePerTon: rate.overtonaseDriverRatePerTon || 0,
+                    notes: rate.notes || '',
+                    active: rate.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('trip-route-rates').map((column, index) => ({
+                    ...column,
+                    width: [24, 24, 18, 24, 18, 22, 28, 12][index] || 18,
+                    ...(column.key === 'rate' || column.key === 'overtonaseDriverRatePerTon'
+                        ? { formatter: (value: unknown) => Number(value || 0).toLocaleString('id-ID') }
+                        : {}),
+                })),
+                `tarif-rute-trip-${new Date().toISOString().slice(0, 10)}`,
+                'Tarif Rute Trip',
+                {
+                    title: 'Daftar Biaya Rute Trip',
+                    subtitle: [serviceFilter ? `Layanan: ${serviceFilter}` : '', originFilter ? `Asal: ${originFilter}` : '', destinationFilter ? `Tujuan: ${destinationFilter}` : '', search.trim() ? `Pencarian: ${search.trim()}` : ''].filter(Boolean).join(' | ') || 'Semua rute',
+                },
+            );
+            addToast('success', 'Excel biaya rute trip berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel biaya rute trip');
+        }
+    };
 
     const activeCount = totalItems - inactiveCount;
     const selectedService = useMemo(
@@ -294,6 +357,7 @@ export default function TripRouteRatesPage() {
                     <h1 className="page-title">Biaya Rute Trip</h1>
                 </div>
                 <div className="page-actions">
+                    {canExportTripRate && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
                     {canCreateTripRate && (
                         <button className="btn btn-primary" onClick={openNew}>
                             <Plus size={18} /> Tambah Rute Trip
@@ -334,45 +398,40 @@ export default function TripRouteRatesPage() {
                                 placeholder="Cari area, tujuan, armada, catatan..."
                             />
                         </div>
-                        <select
-                            className="filter-select"
+                                                <Combobox
                             value={serviceFilter}
-                            onChange={event => {
-                                setServiceFilter(event.target.value);
+                            onChange={(v: string) => {
+                                setServiceFilter(v);
                                 setOriginFilter('');
                                 setDestinationFilter('');
                             }}
-                        >
-                            <option value="">Semua layanan armada</option>
-                            {services.map(service => (
-                                <option key={service._id} value={service._id}>
-                                    {service.code} - {service.name}
-                                </option>
+                            options={services.map(service => (
+                                { value: service._id, label: `${service.code} - ${service.name}` }
                             ))}
-                        </select>
-                        <select
+                            placeholder="Semua layanan armada"
                             className="filter-select"
+                        />
+                                                <Combobox
                             value={originFilter}
-                            onChange={event => {
-                                setOriginFilter(event.target.value);
+                            onChange={(v: string) => {
+                                setOriginFilter(v);
                                 setDestinationFilter('');
                             }}
-                        >
-                            <option value="">Semua asal area</option>
-                            {originOptions.map(origin => (
-                                <option key={origin} value={origin}>{origin}</option>
+                            options={originOptions.map(origin => (
+                                { value: origin, label: origin }
                             ))}
-                        </select>
-                        <select
+                            placeholder="Semua asal area"
                             className="filter-select"
+                        />
+                                                <Combobox
                             value={destinationFilter}
-                            onChange={event => setDestinationFilter(event.target.value)}
-                        >
-                            <option value="">Semua tujuan</option>
-                            {destinationOptions.map(destination => (
-                                <option key={destination} value={destination}>{destination}</option>
+                            onChange={(v: string) => setDestinationFilter(v)}
+                            options={destinationOptions.map(destination => (
+                                { value: destination, label: destination }
                             ))}
-                        </select>
+                            placeholder="Semua tujuan"
+                            className="filter-select"
+                        />
                     </div>
                 </div>
                 <div className="table-wrapper">
@@ -463,7 +522,7 @@ export default function TripRouteRatesPage() {
                                         </td>
                                         <td>
                                             {canUpdateTripRate || canDeleteTripRate ? (
-                                                <div className="table-actions">
+                                                <div className="table-actions-col">
                                                     {canUpdateTripRate && (
                                                         <button className="table-action-btn" onClick={() => openEdit(item)}>
                                                             <Edit size={14} /> Edit
@@ -531,18 +590,15 @@ export default function TripRouteRatesPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Layanan Armada</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.serviceRef}
-                                        onChange={event => setForm(previous => ({ ...previous, serviceRef: event.target.value }))}
-                                    >
-                                        <option value="">Semua layanan armada</option>
-                                        {services.map(service => (
-                                            <option key={service._id} value={service._id}>
-                                                {service.code} - {service.name}
-                                            </option>
+                                        onChange={(v: string) => setForm(previous => ({ ...previous, serviceRef: v }))}
+                                        options={services.map(service => (
+                                            { value: service._id, label: `${service.code} - ${service.name}` }
                                         ))}
-                                    </select>
+                                        placeholder="Semua layanan armada"
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tarif Trip <span className="required">*</span></label>

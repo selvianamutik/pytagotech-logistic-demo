@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Edit, History, Receipt, Save, X } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
@@ -138,12 +139,12 @@ export default function WarehouseItemDetailPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ItemFormState>(createItemForm());
 
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenPurchases = user ? hasPageAccess(user.role, 'purchases') : false;
-  const canOpenVehicles = user ? hasPageAccess(user.role, 'vehicles') : false;
-  const canOpenMaintenance = user ? hasPageAccess(user.role, 'maintenance') : false;
-  const canOpenTires = user ? hasPageAccess(user.role, 'tires') : false;
-  const canManage = user ? hasPermission(user.role, 'warehouseItems', 'create') || hasPermission(user.role, 'warehouseItems', 'update') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenPurchases = user ? hasPageAccess(user, 'purchases') : false;
+  const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+  const canOpenMaintenance = user ? hasPageAccess(user, 'maintenance') : false;
+  const canOpenTires = user ? hasPageAccess(user, 'tires') : false;
+  const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplierItem) => supplierItem.active !== false), [suppliers]);
 
   const loadItemDetail = useCallback(async () => {
@@ -516,7 +517,7 @@ export default function WarehouseItemDetailPage() {
                       <tr key={purchaseItem._id}>
                         <td className="font-mono">{canOpenPurchases && purchase ? <Link href={`/inventory/purchases/${purchase._id}`} style={{ color: 'var(--color-primary)' }}>{purchase.purchaseNumber}</Link> : (purchase?.purchaseNumber || '-')}</td>
                         <td>{purchase?.orderDate ? formatDate(purchase.orderDate) : '-'}</td>
-                        <td>{purchase?.supplierName || '-'}</td>
+                        <td>{purchase?.supplierRef && canOpenSuppliers ? <Link href={`/suppliers/${purchase.supplierRef}`} style={{ color: 'var(--color-primary)' }}>{purchase.supplierName || '-'}</Link> : (purchase?.supplierName || '-')}</td>
                         <td>{formatInventoryQuantity(purchaseItem.orderedQty)} {purchaseItem.itemUnit || item.unit}</td>
                         <td>{formatInventoryQuantity(purchaseItem.receivedQty || 0)} {purchaseItem.itemUnit || item.unit}</td>
                         <td>{formatCurrency(Number(purchaseItem.unitPrice || 0))}</td>
@@ -720,7 +721,8 @@ export default function WarehouseItemDetailPage() {
                   <tbody>
                     {movements.map((movement) => {
                       const source = getMovementSourceMeta(movement);
-                      const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : formatInventoryQuantity(movement.quantity);
+                      const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : `+ ${formatInventoryQuantity(movement.quantity)}`;
+                      const qtyClass = movement.type === 'OUT' ? 'text-danger' : 'text-success';
                       const safeNote = movement.sourceType === 'MAINTENANCE_USAGE' && !canOpenVehicles
                         ? 'Pemakaian material maintenance'
                         : (movement.note || '-');
@@ -729,7 +731,7 @@ export default function WarehouseItemDetailPage() {
                           <td>{formatDate(movement.movementDate)}</td>
                           <td>{STOCK_MOVEMENT_TYPE_LABELS[movement.type]}</td>
                           <td>{source.href ? <Link href={source.href} style={{ color: 'var(--color-primary)' }}>{source.primary}</Link> : source.primary}<div className="text-muted text-xs">{source.secondary}</div></td>
-                          <td>{signedQty} {movement.unit || item.unit}</td>
+                          <td className={qtyClass}>{signedQty} {movement.unit || item.unit}</td>
                           <td>{formatInventoryQuantity(movement.balanceAfter || 0)} {movement.unit || item.unit}</td>
                           <td>{safeNote}</td>
                         </tr>
@@ -741,7 +743,8 @@ export default function WarehouseItemDetailPage() {
               <div className="mobile-record-list">
                 {movements.map((movement) => {
                   const source = getMovementSourceMeta(movement);
-                  const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : formatInventoryQuantity(movement.quantity);
+                  const signedQty = movement.type === 'OUT' ? `- ${formatInventoryQuantity(movement.quantity)}` : `+ ${formatInventoryQuantity(movement.quantity)}`;
+                  const qtyClass = movement.type === 'OUT' ? 'text-danger' : 'text-success';
                   const safeNote = movement.sourceType === 'MAINTENANCE_USAGE' && !canOpenVehicles
                     ? 'Pemakaian material maintenance'
                     : (movement.note || '-');
@@ -759,7 +762,7 @@ export default function WarehouseItemDetailPage() {
                           <span className="mobile-record-value">{source.href ? <Link href={source.href} style={{ color: 'var(--color-primary)' }}>{source.primary}</Link> : source.primary}</span>
                           <div className="mobile-record-subtitle" style={{ marginTop: '0.25rem' }}>{source.secondary}</div>
                         </div>
-                        <div className="mobile-record-field"><span className="mobile-record-label">Qty</span><span className="mobile-record-value">{signedQty} {movement.unit || item.unit}</span></div>
+                        <div className="mobile-record-field"><span className="mobile-record-label">Qty</span><span className={`mobile-record-value ${qtyClass}`}>{signedQty} {movement.unit || item.unit}</span></div>
                         <div className="mobile-record-field"><span className="mobile-record-label">Saldo Setelah</span><span className="mobile-record-value">{formatInventoryQuantity(movement.balanceAfter || 0)} {movement.unit || item.unit}</span></div>
                         <div className="mobile-record-field mobile-record-field-full"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{safeNote}</span></div>
                       </div>
@@ -784,10 +787,10 @@ export default function WarehouseItemDetailPage() {
             </div>
             <div className="modal-body">
               <div className="form-row"><div className="form-group"><label className="form-label">Kode Barang</label><input className="form-input" value={form.itemCode} onChange={(event) => setForm((current) => ({ ...current, itemCode: event.target.value }))} /></div><div className="form-group"><label className="form-label">Nama Barang</label><input className="form-input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><input className="form-input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} /></div><div className="form-group"><label className="form-label">Mode Tracking</label><select className="form-select" value={form.trackingMode} onChange={(event) => setForm((current) => ({ ...current, trackingMode: event.target.value as ItemFormState['trackingMode'], unit: event.target.value === 'TIRE_ASSET' && current.unit !== 'PCS' && current.unit !== 'UNIT' ? 'PCS' : current.unit }))}>{WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => <option key={option} value={option}>{WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option]}</option>)}</select></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value as WarehouseItem['unit'] }))}>{INVENTORY_UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div><div className="form-group"><label className="form-label">Min. Stok</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} value={form.minStockQty} onValueChange={(value) => setForm((current) => ({ ...current, minStockQty: value }))} /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Supplier Default</label><select className="form-select" value={form.defaultSupplierRef} onChange={(event) => setForm((current) => ({ ...current, defaultSupplierRef: event.target.value }))}><option value="">-- Tidak dipilih --</option>{activeSuppliers.map((supplierItem) => <option key={supplierItem._id} value={supplierItem._id}>{supplierItem.supplierCode} - {supplierItem.name}</option>)}</select></div><div className="form-group"><label className="form-label">Harga Beli Default (Rp)</label><FormattedNumberInput allowDecimal={false} value={form.defaultPurchasePrice} onValueChange={(value) => setForm((current) => ({ ...current, defaultPurchasePrice: value }))} placeholder="Ketik harga beli default" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Status</label><select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><input className="form-input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} /></div><div className="form-group"><label className="form-label">Mode Tracking</label><Combobox className="form-select" value={form.trackingMode} onChange={(v: string) => setForm((current) => ({ ...current, trackingMode: v as ItemFormState['trackingMode'], unit: v === 'TIRE_ASSET' && current.unit !== 'PCS' && current.unit !== 'UNIT' ? 'PCS' : current.unit }))} options={WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => ({ value: option, label: WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option] }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><Combobox className="form-select" value={form.unit} onChange={(v: string) => setForm((current) => ({ ...current, unit: v as WarehouseItem['unit'] }))} options={[...INVENTORY_UNIT_OPTIONS]} /></div><div className="form-group"><label className="form-label">Min. Stok</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} value={form.minStockQty} onValueChange={(value) => setForm((current) => ({ ...current, minStockQty: value }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Supplier Default</label><Combobox className="form-select" value={form.defaultSupplierRef} onChange={(v: string) => setForm((current) => ({ ...current, defaultSupplierRef: v }))} placeholder="-- Tidak dipilih --" options={activeSuppliers.map((supplierItem) => ({ value: supplierItem._id, label: `${supplierItem.supplierCode} - ${supplierItem.name}` }))} /></div><div className="form-group"><label className="form-label">Harga Beli Default (Rp)</label><FormattedNumberInput allowDecimal={false} value={form.defaultPurchasePrice} onValueChange={(value) => setForm((current) => ({ ...current, defaultPurchasePrice: value }))} placeholder="Ketik harga beli default" /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Status</label><Combobox className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(v: string) => setForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} /></div></div>
               {form.trackingMode === 'TIRE_ASSET' && (
                 <>
                   <div className="info-banner" style={{ marginBottom: '1rem' }}>
@@ -797,7 +800,7 @@ export default function WarehouseItemDetailPage() {
                     </div>
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">Jenis Ban Default</label><select className="form-select" value={form.tireTypeDefault} onChange={(event) => setForm((current) => ({ ...current, tireTypeDefault: event.target.value }))}>{TIRE_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+                    <div className="form-group"><label className="form-label">Jenis Ban Default</label><Combobox className="form-select" value={form.tireTypeDefault} onChange={(v: string) => setForm((current) => ({ ...current, tireTypeDefault: v }))} options={[...TIRE_TYPE_OPTIONS]} /></div>
                     <div className="form-group"><label className="form-label">Merk Ban Default</label><input className="form-input" value={form.tireBrandDefault} onChange={(event) => setForm((current) => ({ ...current, tireBrandDefault: event.target.value }))} /></div>
                   </div>
                   <div className="form-row">
