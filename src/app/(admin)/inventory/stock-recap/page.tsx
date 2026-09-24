@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileDown, Printer, Search } from 'lucide-react';
 
 import PageBackButton from '@/components/PageBackButton';
+import Combobox from '@/components/Combobox';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { exportToExcel } from '@/lib/export';
 import {
@@ -52,10 +53,10 @@ export default function InventoryStockRecapPage() {
   const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const canViewPage = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canOpenItemDetail = user ? hasPageAccess(user.role, 'warehouseItems') : false;
-  const canExport = user ? hasPermission(user.role, 'warehouseItems', 'export') : false;
-  const canPrint = user ? hasPermission(user.role, 'warehouseItems', 'print') : false;
+  const canViewPage = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canOpenItemDetail = user ? hasPageAccess(user, 'warehouseItems') : false;
+  const canExport = user ? hasPermission(user, 'warehouseItems', 'export') : false;
+  const canPrint = user ? hasPermission(user, 'warehouseItems', 'print') : false;
 
   useEffect(() => {
     async function loadData() {
@@ -317,28 +318,18 @@ export default function InventoryStockRecapPage() {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Mode Periode</label>
-              <select className="form-select" value={periodMode} onChange={(event) => setPeriodMode(event.target.value as InventoryReportPeriodMode)}>
-                <option value="month">Bulanan</option>
-                <option value="year">Tahunan</option>
-                <option value="custom">Rentang Tanggal</option>
-              </select>
+              <Combobox className="form-select" value={periodMode} onChange={(v: string) => setPeriodMode(v as InventoryReportPeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
             </div>
             {periodMode === 'month' && (
               <div className="form-group">
                 <label className="form-label">Bulan</label>
-                <select className="form-select" value={monthIndex} onChange={(event) => setMonthIndex(Number(event.target.value))}>
-                  {INVENTORY_REPORT_MONTH_NAMES.map((name, index) => (
-                    <option key={name} value={index}>{name}</option>
-                  ))}
-                </select>
+                <Combobox className="form-select" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={INVENTORY_REPORT_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
               </div>
             )}
             {periodMode !== 'custom' && (
               <div className="form-group">
                 <label className="form-label">Tahun</label>
-                <select className="form-select" value={year} onChange={(event) => setYear(Number(event.target.value) || defaultPeriod.year)}>
-                  {yearOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                </select>
+                <Combobox className="form-select" value={String(year)} onChange={(v: string) => setYear(Number(v) || defaultPeriod.year)} options={yearOptions.map((option) => String(option))} />
               </div>
             )}
           </div>
@@ -377,13 +368,8 @@ export default function InventoryStockRecapPage() {
               <Search size={16} className="table-search-icon" />
               <input className="table-search-input" placeholder="Cari kode, barang, kategori..." value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
-            <select className="form-select purchase-status-filter" value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="">Semua Kategori</option>
-              {categoryOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
-            <select className="form-select purchase-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <Combobox className="form-select purchase-status-filter" value={category} onChange={(v: string) => setCategory(v)} placeholder="Semua Kategori" options={categoryOptions} />
+            <Combobox className="form-select purchase-status-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} options={[...STATUS_OPTIONS]} />
             <button className="btn btn-secondary" onClick={resetFilters}>Reset</button>
           </div>
         </div>

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { FileText, MapPin, Plus, Save, Truck, X } from 'lucide-react';
+import { FileText, MapPin, Plus, Save, Trash2, Truck, X } from 'lucide-react';
 import PageBackButton from '@/components/PageBackButton';
+import Combobox from '@/components/Combobox';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import SplitDecimalNumberInput from '@/components/SplitDecimalNumberInput';
@@ -37,8 +38,10 @@ import { deriveSuratJalanDocumentStatus } from '@/lib/trip-document-mappers';
 import { convertKgToWeightInputValue, convertM3ToVolumeInputValue, convertVolumeToM3, convertWeightToKg, formatCargoSummary, getWeightInputFractionDigits, VOLUME_INPUT_UNIT_OPTIONS, WEIGHT_INPUT_UNIT_OPTIONS } from '@/lib/measurement';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import {
-    applyCustomerProductToOrderItem,
     applyOrderItemAutoWeightFromQty,
+    applyOrderItemPickerSelection,
+    getOrderItemPickerValue,
+    MANUAL_ITEM_OPTION_VALUE,
     shouldLockOrderItemVolume,
     shouldLockOrderItemWeight,
     updateOrderItemVolumeUnit,
@@ -172,6 +175,7 @@ export default function SuratJalanDetailPage() {
     const [savingEdit, setSavingEdit] = useState(false);
     const [savingActualEdit, setSavingActualEdit] = useState(false);
     const [removingCargoItemId, setRemovingCargoItemId] = useState<string | null>(null);
+    const [removeConfirmItem, setRemoveConfirmItem] = useState<EditExistingCargoItem | null>(null);
     const [editForm, setEditForm] = useState<EditSuratJalanForm>({
         referenceNumber: '',
         pickupStopKey: '',
@@ -186,12 +190,14 @@ export default function SuratJalanDetailPage() {
     const [editNewItems, setEditNewItems] = useState<DeliveryOrderCargoDraftItem[]>([]);
     const [actualEditItems, setActualEditItems] = useState<ActualCargoDraft[]>([]);
     const [selectedActualEditItemRef, setSelectedActualEditItemRef] = useState('');
-    const canOpenTripPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenOrderPage = user ? hasPageAccess(user.role, 'orders') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenInvoicePage = user ? hasPageAccess(user.role, 'invoices') : false;
-    const canViewFreightNotas = user ? hasPermission(user.role, 'invoices', 'view') : false;
-    const canManageDeliveryStatus = user ? hasPermission(user.role, 'deliveryOrders', 'update') : false;
+    const canOpenTripPage = user ? hasPageAccess(user, 'trips') : false;
+    const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenInvoicePage = user ? hasPageAccess(user, 'invoices') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
+    const canManageDeliveryStatus = user ? hasPermission(user, 'suratJalan', 'update') : false;
     const canEditSuratJalan = canManageDeliveryStatus;
     const currentPath = pathname || `/surat-jalan/${encodeURIComponent(id)}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;
@@ -297,39 +303,35 @@ export default function SuratJalanDetailPage() {
         }));
     };
     const applyExistingItemProduct = (itemIndex: number, productRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === productRef);
         setEditExistingItems(previous => previous.map((item, index) => (
             index === itemIndex
                 ? {
                     ...item,
-                    ...toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                    ...toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                         ...item,
                         pickupStopKey: editForm.pickupStopKey,
                         shipperReferenceNumber: editForm.referenceNumber,
-                    }, selectedProduct)),
+                    }, productRef, customerProducts)),
                     deliveryOrderItemId: item.deliveryOrderItemId,
                 }
                 : item
         )));
     };
     const applyNewItemProduct = (itemIndex: number, productRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === productRef);
         setEditNewItems(previous => previous.map((item, index) => (
             index === itemIndex
-                ? toDeliveryOrderCargoDraftItem(applyCustomerProductToOrderItem({
+                ? toDeliveryOrderCargoDraftItem(applyOrderItemPickerSelection({
                     ...item,
                     pickupStopKey: editForm.pickupStopKey,
                     shipperReferenceNumber: editForm.referenceNumber,
-                }, selectedProduct))
+                }, productRef, customerProducts))
                 : item
         )));
     };
     const addNewItem = () => setEditNewItems(previous => [...previous, createDefaultDeliveryOrderCargoDraftItem()]);
     const removeNewItem = (itemIndex: number) => setEditNewItems(previous => previous.filter((_, index) => index !== itemIndex));
     const removeExistingItem = async (item: EditExistingCargoItem) => {
-        if (!deliveryOrder || !canEditSuratJalan || deliveryOrder.tripClosedByAdminAt) return;
-        const confirmed = window.confirm(`Hapus barang ${item.description || 'ini'} dari Surat Jalan?`);
-        if (!confirmed) return;
+        if (!deliveryOrder || !canEditSuratJalan || deliveryOrder.tripClosedByAdminAt || removingCargoItemId) return;
         setRemovingCargoItemId(item.deliveryOrderItemId);
         try {
             const res = await fetch('/api/data', {
@@ -356,6 +358,7 @@ export default function SuratJalanDetailPage() {
             addToast('error', 'Gagal menghapus barang dari Surat Jalan');
         } finally {
             setRemovingCargoItemId(null);
+            setRemoveConfirmItem(null);
         }
     };
     const saveEdit = async () => {
@@ -1744,7 +1747,7 @@ export default function SuratJalanDetailPage() {
                             <div className="detail-item"><div className="detail-label">Pickup</div><div className="detail-value">{suratJalanDocument.pickupAddress || '-'}</div></div>
                         </div>
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Kendaraan / Driver</div><div className="detail-value">{`${suratJalanDocument.vehiclePlate || '-'} / ${suratJalanDocument.driverName || '-'}`}</div></div>
+                            <div className="detail-item"><div className="detail-label">Kendaraan / Driver</div><div className="detail-value">{deliveryOrder?.vehicleRef && canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${deliveryOrder.vehicleRef}`)}>{suratJalanDocument.vehiclePlate || '-'}</Link> : (suratJalanDocument.vehiclePlate || '-')} / {deliveryOrder?.driverRef && canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${deliveryOrder.driverRef}`)}>{suratJalanDocument.driverName || '-'}</Link> : (suratJalanDocument.driverName || '-')}</div></div>
                         </div>
                         <div className="detail-row">
                             <div className="detail-item"><div className="detail-label">Penerima / Tujuan</div><div className="detail-value">{suratJalanDocument.receiverCompany || suratJalanDocument.receiverName || suratJalanDocument.receiverAddress || '-'}</div></div>
@@ -1874,18 +1877,13 @@ export default function SuratJalanDetailPage() {
                                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                                     <div className="form-group">
                                         <label className="form-label">Item Terkirim Aktual</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={selectedActualEditItem.deliveryOrderItemRef}
-                                            onChange={event => setSelectedActualEditItemRef(event.target.value)}
+                                            onChange={(v: string) => setSelectedActualEditItemRef(v)}
                                             disabled={savingActualEdit}
-                                        >
-                                            {actualEditSelectableItems.map((item, index) => (
-                                                <option key={item.deliveryOrderItemRef} value={item.deliveryOrderItemRef}>
-                                                    {getActualEditItemLabel(item, index)}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            options={actualEditSelectableItems.map((item, index) => ({ value: item.deliveryOrderItemRef, label: getActualEditItemLabel(item, index) }))}
+                                        />
                                     </div>
                                     {(() => {
                                         const item = selectedActualEditItem;
@@ -1927,14 +1925,13 @@ export default function SuratJalanDetailPage() {
                                                         onValueChange={value => updateActualEditItem(item.deliveryOrderItemRef, 'actualWeightInputValue', String(value))}
                                                         disabled={savingActualEdit || shouldLockActualCargoVolume(item)}
                                                     />
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={item.actualWeightInputUnit}
-                                                        onChange={event => updateActualEditWeightUnit(item.deliveryOrderItemRef, event.target.value as ActualCargoDraft['actualWeightInputUnit'])}
+                                                        onChange={(v: string) => updateActualEditWeightUnit(item.deliveryOrderItemRef, v as ActualCargoDraft['actualWeightInputUnit'])}
                                                         disabled={savingActualEdit}
-                                                    >
-                                                        {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                    </select>
+                                                        options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                                    />
                                                 </div>
                                             </div>
                                             <div className="form-group">
@@ -1948,14 +1945,13 @@ export default function SuratJalanDetailPage() {
                                                         onValueChange={value => updateActualEditItem(item.deliveryOrderItemRef, 'actualVolumeInputValue', String(value))}
                                                         disabled={savingActualEdit}
                                                     />
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={item.actualVolumeInputUnit}
-                                                        onChange={event => updateActualEditVolumeUnit(item.deliveryOrderItemRef, event.target.value as ActualCargoDraft['actualVolumeInputUnit'])}
+                                                        onChange={(v: string) => updateActualEditVolumeUnit(item.deliveryOrderItemRef, v as ActualCargoDraft['actualVolumeInputUnit'])}
                                                         disabled={savingActualEdit}
-                                                    >
-                                                        {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                    </select>
+                                                        options={VOLUME_INPUT_UNIT_OPTIONS}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
@@ -1995,19 +1991,14 @@ export default function SuratJalanDetailPage() {
                             {(deliveryOrder.pickupStops?.length || 0) > 1 && (
                                 <div className="form-group">
                                     <label className="form-label">Titik Pickup</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={editForm.pickupStopKey}
-                                        onChange={event => updateEditForm({ pickupStopKey: event.target.value })}
+                                        onChange={(v: string) => updateEditForm({ pickupStopKey: v })}
                                         disabled={savingEdit}
-                                    >
-                                        <option value="">Pilih pickup</option>
-                                        {(deliveryOrder.pickupStops || []).map((stop, index) => (
-                                            <option key={stop._key || `pickup-${index + 1}`} value={stop._key || ''}>
-                                                {`Pickup ${stop.sequence || index + 1}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}`}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        placeholder="Pilih pickup"
+                                        options={(deliveryOrder.pickupStops || []).map((stop, index) => ({ value: stop._key || '', label: `Pickup ${stop.sequence || index + 1}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}` }))}
+                                    />
                                 </div>
                             )}
                             <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
@@ -2029,7 +2020,7 @@ export default function SuratJalanDetailPage() {
                                                     <button
                                                         type="button"
                                                         className="btn btn-ghost btn-sm"
-                                                        onClick={() => void removeExistingItem(item)}
+                                                        onClick={() => setRemoveConfirmItem(item)}
                                                         disabled={savingEdit || removingCargoItemId === item.deliveryOrderItemId}
                                                         style={{ color: 'var(--color-danger-700)' }}
                                                     >
@@ -2039,10 +2030,7 @@ export default function SuratJalanDetailPage() {
                                                 <div className="form-row">
                                                     <div className="form-group">
                                                         <label className="form-label">Barang Customer</label>
-                                                        <select className="form-select" value={item.customerProductRef} onChange={event => applyExistingItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
-                                                            <option value="">{customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
-                                                            {customerProducts.map(product => <option key={product._id} value={product._id}>{product.code ? `${product.code} - ` : ''}{product.name}</option>)}
-                                                        </select>
+                                                        <Combobox className="form-select" value={getOrderItemPickerValue(item)} onChange={(v: string) => applyExistingItemProduct(itemIndex, v)} disabled={savingEdit || !deliveryOrder.customerRef} placeholder={customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'} options={[{ value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' }, ...customerProducts.map(product => ({ value: product._id, label: `${product.code ? `${product.code} - ` : ''}${product.name}` }))]} />
                                                     </div>
                                                     <div className="form-group">
                                                         <label className="form-label">Deskripsi Barang</label>
@@ -2058,10 +2046,10 @@ export default function SuratJalanDetailPage() {
                                                         <label className="form-label">Berat</label>
                                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px', gap: '0.5rem' }}>
                                                     <FormattedNumberInput min={0} maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)} value={item.weightInputValue} onValueChange={value => updateExistingItem(itemIndex, 'weightInputValue', value)} disabled={savingEdit || shouldLockOrderItemWeight(item)} />
-                                                            <select
+                                                            <Combobox
                                                                 className="form-select"
                                                                 value={item.weightInputUnit}
-                                                                onChange={event => setEditExistingItems(previous => previous.map((entry, index) => (
+                                                                onChange={(v: string) => setEditExistingItems(previous => previous.map((entry, index) => (
                                                                     index === itemIndex
                                                                         ? {
                                                                             ...entry,
@@ -2069,25 +2057,24 @@ export default function SuratJalanDetailPage() {
                                                                                 ...entry,
                                                                                 pickupStopKey: editForm.pickupStopKey,
                                                                                 shipperReferenceNumber: editForm.referenceNumber,
-                                                                            }, event.target.value as DeliveryOrderCargoDraftItem['weightInputUnit'])),
+                                                                            }, v as DeliveryOrderCargoDraftItem['weightInputUnit'])),
                                                                             deliveryOrderItemId: entry.deliveryOrderItemId,
                                                                         }
                                                                         : entry
                                                                 )))}
                                                                 disabled={savingEdit}
-                                                            >
-                                                                {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                            </select>
+                                                                options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                                            />
                                                         </div>
                                                     </div>
                                                     <div className="form-group">
                                                         <label className="form-label">Volume</label>
                                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px', gap: '0.5rem' }}>
                                                             <FormattedNumberInput min={0} maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3} value={item.volumeInputValue} onValueChange={value => updateExistingItem(itemIndex, 'volumeInputValue', value)} disabled={savingEdit || shouldLockOrderItemVolume(item)} />
-                                                            <select
+                                                            <Combobox
                                                                 className="form-select"
                                                                 value={item.volumeInputUnit}
-                                                                onChange={event => setEditExistingItems(previous => previous.map((entry, index) => (
+                                                                onChange={(v: string) => setEditExistingItems(previous => previous.map((entry, index) => (
                                                                     index === itemIndex
                                                                         ? {
                                                                             ...entry,
@@ -2095,15 +2082,14 @@ export default function SuratJalanDetailPage() {
                                                                                 ...entry,
                                                                                 pickupStopKey: editForm.pickupStopKey,
                                                                                 shipperReferenceNumber: editForm.referenceNumber,
-                                                                            }, event.target.value as DeliveryOrderCargoDraftItem['volumeInputUnit'])),
+                                                                            }, v as DeliveryOrderCargoDraftItem['volumeInputUnit'])),
                                                                             deliveryOrderItemId: entry.deliveryOrderItemId,
                                                                         }
                                                                         : entry
                                                                 )))}
                                                                 disabled={savingEdit}
-                                                            >
-                                                                {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                            </select>
+                                                                options={VOLUME_INPUT_UNIT_OPTIONS}
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2122,10 +2108,7 @@ export default function SuratJalanDetailPage() {
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Barang Customer</label>
-                                                <select className="form-select" value={item.customerProductRef} onChange={event => applyNewItemProduct(itemIndex, event.target.value)} disabled={savingEdit || !deliveryOrder.customerRef}>
-                                                    <option value="">{customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}</option>
-                                                    {customerProducts.map(product => <option key={product._id} value={product._id}>{product.code ? `${product.code} - ` : ''}{product.name}</option>)}
-                                                </select>
+                                                <Combobox className="form-select" value={getOrderItemPickerValue(item)} onChange={(v: string) => applyNewItemProduct(itemIndex, v)} disabled={savingEdit || !deliveryOrder.customerRef} placeholder={customerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'} options={[{ value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' }, ...customerProducts.map(product => ({ value: product._id, label: `${product.code ? `${product.code} - ` : ''}${product.name}` }))]} />
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Deskripsi Barang</label>
@@ -2141,44 +2124,42 @@ export default function SuratJalanDetailPage() {
                                                 <label className="form-label">Berat</label>
                                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px', gap: '0.5rem' }}>
                                                     <FormattedNumberInput min={0} maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)} value={item.weightInputValue} onValueChange={value => updateNewItem(itemIndex, 'weightInputValue', value)} disabled={savingEdit || shouldLockOrderItemWeight(item)} />
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={item.weightInputUnit}
-                                                        onChange={event => setEditNewItems(previous => previous.map((entry, index) => (
+                                                        onChange={(v: string) => setEditNewItems(previous => previous.map((entry, index) => (
                                                             index === itemIndex
                                                                 ? toDeliveryOrderCargoDraftItem(updateOrderItemWeightUnit({
                                                                     ...entry,
                                                                     pickupStopKey: editForm.pickupStopKey,
                                                                     shipperReferenceNumber: editForm.referenceNumber,
-                                                                }, event.target.value as DeliveryOrderCargoDraftItem['weightInputUnit']))
+                                                                }, v as DeliveryOrderCargoDraftItem['weightInputUnit']))
                                                                 : entry
                                                         )))}
                                                         disabled={savingEdit}
-                                                    >
-                                                        {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                    </select>
+                                                        options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                                    />
                                                 </div>
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Volume</label>
                                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px', gap: '0.5rem' }}>
                                                     <FormattedNumberInput min={0} maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3} value={item.volumeInputValue} onValueChange={value => updateNewItem(itemIndex, 'volumeInputValue', value)} disabled={savingEdit || shouldLockOrderItemVolume(item)} />
-                                                    <select
+                                                    <Combobox
                                                         className="form-select"
                                                         value={item.volumeInputUnit}
-                                                        onChange={event => setEditNewItems(previous => previous.map((entry, index) => (
+                                                        onChange={(v: string) => setEditNewItems(previous => previous.map((entry, index) => (
                                                             index === itemIndex
                                                                 ? toDeliveryOrderCargoDraftItem(updateOrderItemVolumeUnit({
                                                                     ...entry,
                                                                     pickupStopKey: editForm.pickupStopKey,
                                                                     shipperReferenceNumber: editForm.referenceNumber,
-                                                                }, event.target.value as DeliveryOrderCargoDraftItem['volumeInputUnit']))
+                                                                }, v as DeliveryOrderCargoDraftItem['volumeInputUnit']))
                                                                 : entry
                                                         )))}
                                                         disabled={savingEdit}
-                                                    >
-                                                        {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                    </select>
+                                                        options={VOLUME_INPUT_UNIT_OPTIONS}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
@@ -2196,6 +2177,21 @@ export default function SuratJalanDetailPage() {
                 </div>
             )}
 
+            {canEditSuratJalan && removeConfirmItem && (
+                <div className="modal-overlay" onClick={() => { if (!removingCargoItemId) setRemoveConfirmItem(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Barang?</h3></div>
+                        <div className="modal-body"><p>Hapus barang <strong>{removeConfirmItem.description || 'tanpa deskripsi'}</strong> dari Surat Jalan? Barang akan dilepas dari surat jalan ini dan stok akan dikembalikan secara otomatis.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setRemoveConfirmItem(null)} disabled={removingCargoItemId === removeConfirmItem.deliveryOrderItemId}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => void removeExistingItem(removeConfirmItem)} disabled={removingCargoItemId === removeConfirmItem.deliveryOrderItemId}>
+                                <Trash2 size={16} /> {removingCargoItemId === removeConfirmItem.deliveryOrderItemId ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {showStatusModal && (
                 <div className="modal-overlay" onClick={() => { if (!updatingStatus) { setShowStatusModal(false); setContinuingHeldCargo(false); } }}>
                     <div className="modal" onClick={event => event.stopPropagation()}>
@@ -2206,12 +2202,7 @@ export default function SuratJalanDetailPage() {
                         <div className="modal-body">
                             <div className="form-group">
                                 <label className="form-label">Status Tujuan</label>
-                                <select className="form-select" value={newStatus} onChange={event => setNewStatus(event.target.value)} disabled={updatingStatus}>
-                                    <option value="">Pilih status</option>
-                                    {availableStatuses.map(status => (
-                                        <option key={status} value={status}>{DO_STATUS_MAP[status]?.label || status}</option>
-                                    ))}
-                                </select>
+                                <Combobox className="form-select" value={newStatus} onChange={(v: string) => setNewStatus(v)} disabled={updatingStatus} placeholder="Pilih status" options={availableStatuses.map(status => ({ value: status, label: DO_STATUS_MAP[status]?.label || status }))} />
                             </div>
                             {isCompletingDelivery && (
                                 <>
@@ -2368,11 +2359,7 @@ export default function SuratJalanDetailPage() {
                                                                 <div className="form-row">
                                                                     <div className="form-group">
                                                                         <label className="form-label">Tipe Titik</label>
-                                                                        <select className="form-select" value={drop.stopType} onChange={event => updateActualDropDraft(drop.draftKey, 'stopType', event.target.value)} disabled={updatingStatus}>
-                                                                            {Object.entries(DO_ACTUAL_DROP_TYPE_MAP).filter(([value]) => !['EXTRA_DROP', 'TRANSIT', 'RETURN'].includes(value)).map(([value, meta]) => (
-                                                                                <option key={value} value={value}>{meta.label}</option>
-                                                                            ))}
-                                                                        </select>
+                                                                        <Combobox className="form-select" value={drop.stopType} onChange={(v: string) => updateActualDropDraft(drop.draftKey, 'stopType', v)} disabled={updatingStatus} options={Object.entries(DO_ACTUAL_DROP_TYPE_MAP).filter(([value]) => !['EXTRA_DROP', 'TRANSIT', 'RETURN'].includes(value)).map(([value, meta]) => ({ value, label: meta.label }))} />
                                                                     </div>
                                                                     <div className="form-group">
                                                                         <label className="form-label">Nama Lokasi <span className="required">*</span></label>
@@ -2564,20 +2551,19 @@ export default function SuratJalanDetailPage() {
                                                     }}
                                                     disabled={updatingStatus || (activeFinalizationDrop ? shouldLockActualDropVolume(activeFinalizationCargoItem) : shouldLockActualCargoVolume(activeFinalizationCargoItem))}
                                                 />
-                                                <select
+                                                <Combobox
                                                     className="form-select"
                                                     value={activeFinalizationDropAllocation?.weightInputUnit || activeFinalizationCargoItem.actualWeightInputUnit}
-                                                    onChange={event => {
+                                                    onChange={(v: string) => {
                                                         if (activeFinalizationDrop) {
-                                                            updateActualDropAllocationForItem(activeFinalizationDrop, activeFinalizationCargoItem, 'weightInputUnit', event.target.value);
+                                                            updateActualDropAllocationForItem(activeFinalizationDrop, activeFinalizationCargoItem, 'weightInputUnit', v);
                                                             return;
                                                         }
-                                                        updateActualCargoWeightUnit(activeFinalizationCargoItem.deliveryOrderItemRef, event.target.value as ActualCargoDraft['actualWeightInputUnit']);
+                                                        updateActualCargoWeightUnit(activeFinalizationCargoItem.deliveryOrderItemRef, v as ActualCargoDraft['actualWeightInputUnit']);
                                                     }}
                                                     disabled={updatingStatus}
-                                                >
-                                                    {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
+                                                    options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -2598,20 +2584,19 @@ export default function SuratJalanDetailPage() {
                                                     }}
                                                     disabled={updatingStatus}
                                                 />
-                                                <select
+                                                <Combobox
                                                     className="form-select"
                                                     value={activeFinalizationDropAllocation?.volumeInputUnit || activeFinalizationCargoItem.actualVolumeInputUnit}
-                                                    onChange={event => {
+                                                    onChange={(v: string) => {
                                                         if (activeFinalizationDrop) {
-                                                            updateActualDropAllocationForItem(activeFinalizationDrop, activeFinalizationCargoItem, 'volumeInputUnit', event.target.value);
+                                                            updateActualDropAllocationForItem(activeFinalizationDrop, activeFinalizationCargoItem, 'volumeInputUnit', v);
                                                             return;
                                                         }
-                                                        updateActualCargoVolumeUnit(activeFinalizationCargoItem.deliveryOrderItemRef, event.target.value as ActualCargoDraft['actualVolumeInputUnit']);
+                                                        updateActualCargoVolumeUnit(activeFinalizationCargoItem.deliveryOrderItemRef, v as ActualCargoDraft['actualVolumeInputUnit']);
                                                     }}
                                                     disabled={updatingStatus}
-                                                >
-                                                    {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
+                                                    options={VOLUME_INPUT_UNIT_OPTIONS}
+                                                />
                                             </div>
                                         </div>
                                     </div>

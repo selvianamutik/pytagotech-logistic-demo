@@ -76,3 +76,14 @@ AGENTS.md
 RTK.md
 
 GMS-Driver-Demo.apk
+
+# Audit scripts (run standalone via npx tsx, not part of build)
+scripts/audit/
+scripts/audit-*.ts
+scripts/debug-*.ts
+
+# Vitest tests (run via npm test, not part of build)
+src/__tests__/
+
+# Test coverage
+TEST_COVERAGE.md

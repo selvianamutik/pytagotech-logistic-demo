@@ -23,6 +23,7 @@ import {
     type PickupStopForm,
 } from '@/lib/order-create-page-support';
 import { useToast } from '../../layout';
+import Combobox from '@/components/Combobox';
 
 type TripDraftForm = {
     id: string;
@@ -506,10 +507,14 @@ export default function NewOrderPage() {
                         <div className="card-body">
                             <div className="form-group">
                                 <label className="form-label">Customer / Pengirim / Penagih <span className="required">*</span></label>
-                                <select className="form-select" value={customerRef} onChange={event => handleCustomerChange(event.target.value)} required>
-                                    <option value="">Pilih customer</option>
-                                    {customers.map(customer => <option key={customer._id} value={customer._id}>{customer.name}</option>)}
-                                </select>
+                                                                <Combobox
+                                    value={customerRef}
+                                    onChange={(v: string) => handleCustomerChange(v)}
+                                    options={customers.map(customer => ({ value: customer._id, label: customer.name }))}
+                                    placeholder="Pilih customer"
+                                    className="form-select"
+                                    required
+                                />
                             </div>
                             {selectedCustomer && customerCreditUsage.isLimited && (
                                 <div
@@ -534,11 +539,10 @@ export default function NewOrderPage() {
                             )}
                             <div className="form-group">
                                 <label className="form-label">Kategori Truk / Armada</label>
-                                <select
-                                    className="form-select"
+                                                                <Combobox
                                     value={serviceRef}
-                                    onChange={event => {
-                                        const nextServiceRef = event.target.value;
+                                    onChange={(v: string) => {
+                                        const nextServiceRef = v;
                                         setServiceRef(nextServiceRef);
                                         setTripDrafts(previous => previous.map(trip => {
                                             const effectiveRouteServiceRef = nextServiceRef || getVehicleServiceRef(trip.vehicleRef);
@@ -557,14 +561,12 @@ export default function NewOrderPage() {
                                             };
                                         }));
                                     }}
-                                >
-                                    <option value="">Pilih kategori armada</option>
-                                    {services.map(service => (
-                                        <option key={service._id} value={service._id}>
-                                            {service.code} - {service.name} ({serviceCapacityRangeMap[service._id] || 'Kapasitas belum diisi'})
-                                        </option>
+                                    options={services.map(service => (
+                                        { value: service._id, label: `${service.code} - ${service.name} (${serviceCapacityRangeMap[service._id] || 'Kapasitas belum diisi'})` }
                                     ))}
-                                </select>
+                                    placeholder="Pilih kategori armada"
+                                    className="form-select"
+                                />
                                 {selectedService && (
                                     <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                                         {selectedServiceCapacityLabel}
@@ -600,18 +602,15 @@ export default function NewOrderPage() {
                                     {customerRef && (
                                         <div className="form-group" style={{ marginBottom: 0 }}>
                                             <label className="form-label">Master Pickup Customer</label>
-                                            <select
-                                                className="form-select"
+                                                                                        <Combobox
                                                 value={stop.customerPickupRef}
-                                                onChange={event => handlePickupStopMasterChange(index, event.target.value)}
-                                            >
-                                                <option value="">{customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup customer'}</option>
-                                                {sortedCustomerPickups.map(pickup => (
-                                                    <option key={pickup._id} value={pickup._id}>
-                                                        {pickup.isDefault ? '[Default] ' : ''}{pickup.label}
-                                                    </option>
+                                                onChange={(v: string) => handlePickupStopMasterChange(index, v)}
+                                                options={sortedCustomerPickups.map(pickup => (
+                                                    { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
                                                 ))}
-                                            </select>
+                                                placeholder={customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup customer'}
+                                                className="form-select"
+                                            />
                                         </div>
                                     )}
                                     <div className="form-group" style={{ marginBottom: 0 }}>
@@ -742,26 +741,30 @@ export default function NewOrderPage() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Kendaraan <span className="required">*</span></label>
-                                            <select className="form-select" value={trip.vehicleRef} onChange={event => handleTripVehicleChange(index, event.target.value)} disabled={loading}>
-                                                <option value="">Pilih kendaraan</option>
-                                                {availableTripVehicles.map(vehicle => (
-                                                    <option key={vehicle._id} value={vehicle._id}>
-                                                        {vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}{vehicle.plateNumber || vehicle._id}
-                                                        {vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | {formatUnitCapacityLabel(vehicle)}
-                                                    </option>
+                                                                                        <Combobox
+                                                value={trip.vehicleRef}
+                                                onChange={(v: string) => handleTripVehicleChange(index, v)}
+                                                options={availableTripVehicles.map(vehicle => (
+                                                    { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || vehicle._id}
+                                                        ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}` }
                                                 ))}
-                                            </select>
+                                                placeholder="Pilih kendaraan"
+                                                disabled={loading}
+                                                className="form-select"
+                                            />
                                         </div>
                                         <div className="form-group">
                                             <label className="form-label">Supir <span className="required">*</span></label>
-                                            <select className="form-select" value={trip.driverRef} onChange={event => updateTripDraft(index, 'driverRef', event.target.value)} disabled={loading}>
-                                                <option value="">Pilih supir</option>
-                                                {availableTripDrivers.map(driver => (
-                                                    <option key={driver._id} value={driver._id}>
-                                                        {driver.name}{driver.phone ? ` - ${driver.phone}` : ''}
-                                                    </option>
+                                                                                        <Combobox
+                                                value={trip.driverRef}
+                                                onChange={(v: string) => updateTripDraft(index, 'driverRef', v)}
+                                                options={availableTripDrivers.map(driver => (
+                                                    { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}` }
                                                 ))}
-                                            </select>
+                                                placeholder="Pilih supir"
+                                                disabled={loading}
+                                                className="form-select"
+                                            />
                                         </div>
                                     </div>
 
@@ -782,27 +785,25 @@ export default function NewOrderPage() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Asal Area Trip</label>
-                                            <select
-                                                className="form-select"
+                                                                                        <Combobox
                                                 value={trip.tripOriginArea}
-                                                onChange={event => updateTripRouteSelection(index, event.target.value, '')}
+                                                onChange={(v: string) => updateTripRouteSelection(index, v, '')}
+                                                options={tripOriginAreaOptions.map(area => ({ value: area, label: area }))}
+                                                placeholder="Pilih asal area"
                                                 disabled={loading}
-                                            >
-                                                <option value="">Pilih asal area</option>
-                                                {tripOriginAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                            </select>
+                                                className="form-select"
+                                            />
                                         </div>
                                         <div className="form-group">
                                             <label className="form-label">Tujuan Area Trip</label>
-                                            <select
-                                                className="form-select"
+                                                                                        <Combobox
                                                 value={trip.tripDestinationArea}
-                                                onChange={event => updateTripRouteSelection(index, trip.tripOriginArea, event.target.value)}
+                                                onChange={(v: string) => updateTripRouteSelection(index, trip.tripOriginArea, v)}
+                                                options={tripDestinationAreaOptions.map(area => ({ value: area, label: area }))}
+                                                placeholder="Pilih tujuan area"
                                                 disabled={loading || !trip.tripOriginArea}
-                                            >
-                                                <option value="">Pilih tujuan area</option>
-                                                {tripDestinationAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                            </select>
+                                                className="form-select"
+                                            />
                                         </div>
                                     </div>
 
@@ -837,14 +838,16 @@ export default function NewOrderPage() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Kas / Bank Uang Jalan <span className="required">*</span></label>
-                                            <select className="form-select" value={trip.issueBankRef} onChange={event => updateTripDraft(index, 'issueBankRef', event.target.value)} disabled={loading}>
-                                                <option value="">Pilih sumber uang jalan</option>
-                                                {activeIssueBankAccounts.map(account => (
-                                                    <option key={account._id} value={account._id}>
-                                                        {account.bankName}{account.accountNumber ? ` - ${account.accountNumber}` : ''}
-                                                    </option>
+                                                                                        <Combobox
+                                                value={trip.issueBankRef}
+                                                onChange={(v: string) => updateTripDraft(index, 'issueBankRef', v)}
+                                                options={activeIssueBankAccounts.map(account => (
+                                                    { value: account._id, label: `${account.bankName}${account.accountNumber ? ` - ${account.accountNumber}` : ''}` }
                                                 ))}
-                                            </select>
+                                                placeholder="Pilih sumber uang jalan"
+                                                disabled={loading}
+                                                className="form-select"
+                                            />
                                         </div>
                                         <div className="form-group">
                                             <label className="form-label">Uang Jalan Awal <span className="required">*</span></label>

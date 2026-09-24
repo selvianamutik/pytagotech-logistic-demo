@@ -36,6 +36,7 @@ import type { CompanyProfile, Customer, CustomerBillingRate, CustomerOverpayment
 import { formatCurrency, formatInternalDeliveryOrderNumber, formatQuantity, formatShipperDeliveryOrderNumber, formatShipperReceiverSummary, getShipperReferenceCount } from '@/lib/utils';
 
 import { useToast } from '../../layout';
+import Combobox from '@/components/Combobox';
 
 type PendingDeliveryOrderSelection = {
     deliveryOrder: DeliveryOrder;
@@ -379,6 +380,11 @@ export default function NewNotaPage() {
         );
         setPph23BaseMode(selectedCustomer.defaultPph23BaseMode === 'AFTER_CLAIM' ? 'AFTER_CLAIM' : 'BEFORE_CLAIM');
     }, [customerRef, customers, ensureCustomerBillingRates]);
+
+    useEffect(() => {
+        if (!customerRef || editNotaId) return;
+        void ensureInvoiceReferenceData().catch(() => {});
+    }, [customerRef, editNotaId, ensureInvoiceReferenceData]);
 
     useEffect(() => {
         setRows(previous => previous.map(row => ({
@@ -904,6 +910,16 @@ export default function NewNotaPage() {
 
     const availableDeliveryOrderOptions = deliveryOrders.flatMap(deliveryOrder => {
         if (!invoiceReferenceDataLoaded) {
+            if (customerRef) {
+                const matchesSelectedCustomer =
+                    deliveryOrder.customerRef === customerRef ||
+                    orders.some(order => order._id === deliveryOrder.orderRef && order.customerRef === customerRef) ||
+                    (deliveryOrder.shipperReferences || []).some(reference => reference.billingCustomerRef === customerRef) ||
+                    (deliveryOrder.actualDropPoints || []).some(point => point.billingCustomerRef === customerRef);
+                if (!matchesSelectedCustomer) {
+                    return [];
+                }
+            }
             const noSJList = [...new Set(
                 (deliveryOrder.shipperReferences || [])
                     .map(reference => reference.referenceNumber?.trim())
@@ -984,24 +1000,21 @@ export default function NewNotaPage() {
                                 <label className="form-label">
                                     Customer / Penagih <span className="required">*</span>
                                 </label>
-                                <select
-                                    className="form-select"
-                                    disabled={hasSelectedRows}
+                                                                <Combobox
                                     value={customerRef}
-                                    onChange={event => {
-                                        const selectedId = event.target.value;
+                                    onChange={(v: string) => {
+                                        const selectedId = v;
                                         setCustomerRef(selectedId);
                                         const customer = customers.find(item => item._id === selectedId);
                                         setCustomerName(customer?.name || '');
                                     }}
-                                >
-                                    <option value="">-- Pilih Customer --</option>
-                                    {customers.map(customer => (
-                                        <option key={customer._id} value={customer._id}>
-                                            {customer.name}
-                                        </option>
+                                    options={customers.map(customer => (
+                                        { value: customer._id, label: customer.name }
                                     ))}
-                                </select>
+                                    placeholder="-- Pilih Customer --"
+                                    disabled={hasSelectedRows}
+                                    className="form-select"
+                                />
                             </div>
 
                             {!customerRef && (
@@ -1042,15 +1055,14 @@ export default function NewNotaPage() {
 
                             <div className="form-group" style={{ maxWidth: 320 }}>
                                 <label className="form-label">Basis Billing Invoice</label>
-                                <select
-                                    className="form-select"
+                                                                <Combobox
                                     value={billingMode}
-                                    onChange={event => setBillingMode(event.target.value as FreightNotaBillingMode)}
-                                >
-                                    {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    onChange={(v: string) => setBillingMode(v as FreightNotaBillingMode)}
+                                    options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                        { value: option.value, label: option.label }
                                     ))}
-                                </select>
+                                    className="form-select"
+                                />
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                     Default customer akan terpakai otomatis. Kamu masih bisa override per invoice kalau customer minta invoice dalam ton.
                                 </div>
@@ -1060,20 +1072,18 @@ export default function NewNotaPage() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">PPh 23</label>
-                                            <select
-                                                className="form-select"
+                                                                                        <Combobox
                                                 value={pph23Enabled ? 'YA' : 'TIDAK'}
-                                                onChange={event => {
-                                                    const nextEnabled = event.target.value === 'YA';
+                                                onChange={(v: string) => {
+                                                    const nextEnabled = v === 'YA';
                                                     setPph23Enabled(nextEnabled);
                                                     if (nextEnabled && pph23RatePercent <= 0) {
                                                         setPph23RatePercent(DEFAULT_PPH23_RATE_PERCENT);
                                                     }
                                                 }}
-                                            >
-                                                <option value="TIDAK">Tidak dipotong</option>
-                                                <option value="YA">Potong PPh 23</option>
-                                            </select>
+                                                options={[{ value: "TIDAK", label: "Tidak dipotong" }, { value: "YA", label: "Potong PPh 23" }]}
+                                                className="form-select"
+                                            />
                                         </div>
                                         <div className="form-group" style={{ maxWidth: 180 }}>
                                             <label className="form-label">Tarif PPh 23 (%)</label>
@@ -1086,15 +1096,14 @@ export default function NewNotaPage() {
                                     </div>
                                     <div className="form-group" style={{ maxWidth: 280 }}>
                                         <label className="form-label">Basis Hitung PPh 23</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={pph23BaseMode}
-                                            onChange={event => setPph23BaseMode(event.target.value as 'BEFORE_CLAIM' | 'AFTER_CLAIM')}
-                                        >
-                                            {PPH23_BASE_MODE_OPTIONS.map(option => (
-                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            onChange={(v: string) => setPph23BaseMode(v as 'BEFORE_CLAIM' | 'AFTER_CLAIM')}
+                                            options={PPH23_BASE_MODE_OPTIONS.map(option => (
+                                                { value: option.value, label: option.label }
                                             ))}
-                                        </select>
+                                            className="form-select"
+                                        />
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                         {buildPph23Label({ enabled: pph23Enabled, ratePercent: pph23RatePercent, baseMode: pph23BaseMode })}. Masih bisa diubah lagi di detail invoice sebelum ada pembayaran.
                                         </div>
@@ -1134,40 +1143,26 @@ export default function NewNotaPage() {
                                     Menampilkan SJ siap tagih dari {sourceContextLabel}. SJ yang sudah masuk invoice lain tetap disembunyikan.
                                 </div>
                             )}
-                            <select
-                                className="form-select"
-                                disabled={loadingInvoiceReferenceData}
-                                onChange={event => {
-                                    if (event.target.value) {
-                                        void openDORowSelector(event.target.value);
-                                        event.target.value = '';
+                                                        <Combobox
+                                value=""
+                                onChange={(v: string) => {
+                                    if (v) {
+                                        void openDORowSelector(v);
+                                        
                                     }
                                 }}
-                            >
-                                <option value="">{loadingInvoiceReferenceData ? 'Memuat data SJ...' : '-- Pilih SJ siap tagih --'}</option>
-                                {availableDeliveryOrderOptions.length > 0 && (
-                                    <optgroup
-                                        label={
-                                            hasSourceContext
-                                                ? `SJ siap tagih dari ${sourceContextLabel}`
-                                                : customerRef
-                                                ? `DO dengan SJ customer ${customerName || '-'} (${availableDeliveryOrderOptions.length})`
-                                                : `SJ Siap Ditagih (${availableDeliveryOrderOptions.length})`
-                                        }
-                                    >
-                                        {availableDeliveryOrderOptions.map(({ deliveryOrder, noSJSummary, tujuanSummary, sjCount, rowCount }) => {
+                                options={availableDeliveryOrderOptions.map(({ deliveryOrder, noSJSummary, tujuanSummary, sjCount, rowCount }) => {
                                             const availabilityText = invoiceReferenceDataLoaded
                                                 ? `${sjCount} SJ tersisa / ${rowCount} barang`
                                                 : `${sjCount} SJ siap dicek`;
                                             return (
-                                                <option key={deliveryOrder._id} value={deliveryOrder._id}>
-                                                    {formatInternalDeliveryOrderNumber(deliveryOrder)} | {availabilityText}{noSJSummary ? ` | ${noSJSummary}` : getShipperReferenceCount(deliveryOrder) > 0 ? ` | ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''} - {deliveryOrder.vehiclePlate || '-'} - {tujuanSummary || formatShipperReceiverSummary(deliveryOrder, { fallback: deliveryOrder.receiverAddress || '-' })}
-                                                </option>
+                                                { value: deliveryOrder._id, label: `${formatInternalDeliveryOrderNumber(deliveryOrder)} | ${availabilityText}${noSJSummary ? ` | ${noSJSummary}` : getShipperReferenceCount(deliveryOrder) > 0 ? ` | ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''} - ${deliveryOrder.vehiclePlate || '-'} - ${tujuanSummary || formatShipperReceiverSummary(deliveryOrder, { fallback: deliveryOrder.receiverAddress || '-' })}` }
                                             );
                                         })}
-                                    </optgroup>
-                                )}
-                            </select>
+                                placeholder={loadingInvoiceReferenceData ? 'Memuat data SJ...' : '-- Pilih SJ siap tagih --'}
+                                disabled={loadingInvoiceReferenceData}
+                                className="form-select"
+                            />
                         </div>
                     </div>
                 </div>

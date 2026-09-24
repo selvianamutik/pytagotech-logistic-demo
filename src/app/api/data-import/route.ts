@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (session.role === 'DRIVER') {
     return jsonNoStore({ error: 'Driver tidak diizinkan mengakses API admin' }, { status: 403 });
   }
-  if (!hasPermission(session.role, 'dataImports', 'view')) {
+  if (!hasPermission(session, 'dataImports', 'view')) {
     return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
   }
 

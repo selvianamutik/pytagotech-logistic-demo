@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getBusinessDateValue } from '@/lib/business-date';
 import { createSession, setSessionCookie } from '@/lib/auth';
+import { buildAuditEntityLabel } from '@/lib/audit-labels';
 import { isSupabaseBackendEnabled } from '@/lib/data-backend';
 import { DOCUMENT_TYPE_MAP } from '@/lib/document-types';
 import {
@@ -84,7 +85,7 @@ import {
     normalizeEmployeePayload,
 } from './employee-workflows';
 import { handleFreightNotaDelete } from './finance-workflows';
-import { postBankAccountOpeningBalanceJournal } from './accounting-posting';
+import { postBankAccountOpeningBalanceJournal, voidJournalEntryForSource } from './accounting-posting';
 import {
     handleDriverUpdate,
     handleDriverDelete,
@@ -602,10 +603,15 @@ function buildCreateSummary(newDoc: Record<string, unknown>, fallbackId: string)
         newDoc.notaNumber ||
         newDoc.boronganNumber ||
         newDoc.incidentNumber ||
+        newDoc.suratJalanNumber ||
+        newDoc.entryNumber ||
+        newDoc.receiptNumber ||
+        newDoc.tripNumber ||
         newDoc.itemCode ||
         newDoc.supplierCode ||
         newDoc.label ||
         newDoc.name ||
+        buildAuditEntityLabel(newDoc, typeof newDoc._type === 'string' ? newDoc._type : '') ||
         fallbackId
     );
 }
@@ -629,7 +635,7 @@ function buildCreateAuditSummary(entity: string, newDoc: Record<string, unknown>
     if (entity === 'tire-events') {
         return `Tambah ban ${(newDoc as Record<string, unknown>).tireCode}: ${(newDoc as Record<string, unknown>).posisi} (${(newDoc as Record<string, unknown>).status})`;
     }
-    return `Created ${entity}: ${buildCreateSummary(newDoc, fallbackId)}`;
+    return `Tambah ${entity}: ${buildCreateSummary(newDoc, fallbackId)}`;
 }
 
 async function resolveTrackedTireWarehouseItem(itemRef: string) {
@@ -1419,6 +1425,7 @@ export async function handleGenericUpdate(
     const updates: Record<string, unknown> = { ...updatesInput };
     let sanitizedEntityUpdates: Record<string, unknown> | null = null;
     let selectedTripRouteRateRevision: { _id: string; _rev?: string } | null = null;
+    let bankAccountInitialBalanceChanged = false;
 
     if (isProtectedLedgerEntity(entity)) {
         return NextResponse.json({ error: 'Entri keuangan yang sudah terposting tidak boleh diubah lewat API umum' }, { status: 409 });
@@ -1987,8 +1994,17 @@ export async function handleGenericUpdate(
     }
 
     if (entity === 'bank-accounts') {
-        if ('currentBalance' in updates || 'initialBalance' in updates) {
+        if ('currentBalance' in updates) {
             return NextResponse.json({ error: 'Saldo rekening tidak boleh diubah manual lewat API umum' }, { status: 409 });
+        }
+        if ('initialBalance' in updates) {
+            const existingTransactionRows = await listDocumentsByFilter<Pick<BankTransaction, '_id'>>('bankTransaction', {
+                bankAccountRef: id,
+            });
+            if (existingTransactionRows.length > 0) {
+                return NextResponse.json({ error: 'Saldo awal tidak dapat diubah karena rekening / kas ini sudah memiliki transaksi' }, { status: 409 });
+            }
+            bankAccountInitialBalanceChanged = true;
         }
         if ('active' in updates) {
             return NextResponse.json({ error: 'Status rekening hanya boleh diubah lewat aksi nonaktifkan resmi' }, { status: 409 });
@@ -1997,7 +2013,7 @@ export async function handleGenericUpdate(
             return NextResponse.json({ error: 'Tipe dan kunci sistem rekening tidak boleh diubah manual' }, { status: 409 });
         }
 
-        const existingAccount = await getDocumentById<BankAccountSummary>(id, 'bankAccount');
+        const existingAccount = await getDocumentById<BankAccountSummary & { initialBalance?: number }>(id, 'bankAccount');
         if (!existingAccount) {
             return NextResponse.json({ error: 'Rekening tidak ditemukan' }, { status: 404 });
         }
@@ -2009,6 +2025,17 @@ export async function handleGenericUpdate(
 
         try {
             sanitizedEntityUpdates = await normalizeBankAccountPayload(updates, existingAccount as unknown as Record<string, unknown>);
+            if (
+                bankAccountInitialBalanceChanged
+                && sanitizedEntityUpdates
+                && typeof sanitizedEntityUpdates.initialBalance === 'number'
+            ) {
+                if (sanitizedEntityUpdates.initialBalance === existingAccount.initialBalance) {
+                    bankAccountInitialBalanceChanged = false;
+                } else {
+                    sanitizedEntityUpdates.currentBalance = sanitizedEntityUpdates.initialBalance;
+                }
+            }
         } catch (error) {
             return NextResponse.json(
                 { error: error instanceof Error ? error.message : 'Data rekening / kas tidak valid' },
@@ -2033,16 +2060,23 @@ export async function handleGenericUpdate(
         }
     }
 
-    const normalizedUpdates =
-        entity === 'users'
-            ? await normalizeUserUpdates(session, id, updates, data.currentPassword)
-            : entity === 'services'
-                ? await normalizeServicePayload(updates, { partial: true, excludeId: id })
-                : entity === 'expense-categories'
-                    ? await normalizeExpenseCategoryPayload(updates, { partial: true, excludeId: id })
-                    : entity === 'vehicles'
-                            ? await normalizeVehiclePayload(session, updates, { partial: true, excludeId: id })
-                            : sanitizedEntityUpdates ?? updates;
+    // For user updates, normalizeUserUpdates returns { updates, extra_data }.
+    // Destructure it early so normalizedUpdates is always Record<string, unknown>.
+    let normalizedUpdates: Record<string, unknown>;
+    let userExtraData: Record<string, unknown> | undefined;
+    if (entity === 'users') {
+        const result = await normalizeUserUpdates(session, id, updates, data.currentPassword);
+        normalizedUpdates = result.updates;
+        userExtraData = result.extra_data;
+    } else if (entity === 'services') {
+        normalizedUpdates = await normalizeServicePayload(updates, { partial: true, excludeId: id });
+    } else if (entity === 'expense-categories') {
+        normalizedUpdates = await normalizeExpenseCategoryPayload(updates, { partial: true, excludeId: id });
+    } else if (entity === 'vehicles') {
+        normalizedUpdates = await normalizeVehiclePayload(session, updates, { partial: true, excludeId: id });
+    } else {
+        normalizedUpdates = sanitizedEntityUpdates ?? updates;
+    }
     const userDriverRevision =
         entity === 'users' &&
         typeof normalizedUpdates.driverRef === 'string' &&
@@ -2139,6 +2173,22 @@ export async function handleGenericUpdate(
         return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
+    if (entity === 'bank-accounts' && bankAccountInitialBalanceChanged) {
+        await voidJournalEntryForSource(session, 'BANK_ACCOUNT', id, 'OPENING_BALANCE');
+        await postBankAccountOpeningBalanceJournal(
+            session,
+            updated as unknown as {
+                _id: string;
+                bankName: string;
+                accountNumber: string;
+                accountType?: 'BANK' | 'CASH';
+                systemKey?: string;
+                initialBalance: number;
+            },
+            getBusinessDateValue(),
+        );
+    }
+
     if (entity === 'customer-recipients' && normalizedUpdates.isDefault === true) {
         const updatedRecipient = updated as { customerRef?: string; _id?: string };
         if (typeof updatedRecipient.customerRef === 'string' && typeof updatedRecipient._id === 'string') {
@@ -2168,6 +2218,14 @@ export async function handleGenericUpdate(
     }
 
     if (entity === 'users' && id === session._id) {
+        // Apply fresh extra_data to the returned document so createSession picks up
+        // the updated modulePermissions. Both the top-level field and extra_data must
+        // be updated since createSession reads user.modulePermissions directly.
+        if (userExtraData) {
+            const doc = updated as Record<string, unknown>;
+            doc.extra_data = userExtraData;
+            doc.modulePermissions = userExtraData.modulePermissions;
+        }
         const nextSessionToken = await createSession(updated as unknown as User);
         await setSessionCookie(nextSessionToken);
     }
@@ -2190,7 +2248,7 @@ export async function handleGenericUpdate(
                                 persistedNormalizedUpdates,
                                 id
                             )
-                            : `Updated ${entity}: ${JSON.stringify(persistedNormalizedUpdates).slice(0, 200)}`;
+                            : `Perbarui ${entity}: ${buildCreateSummary(updated as Record<string, unknown>, id)}`;
     await addAuditLog(session, 'UPDATE', entity, id, updateSummary);
 
     if (entity === 'order-items' && typeof normalizedUpdates.status === 'string') {
@@ -2316,7 +2374,7 @@ export async function handleGenericDelete(
 
         try {
             await deleteDocument(id, 'supplier');
-            await addAuditLog(session, 'DELETE', entity, id, `Deleted supplier ${supplier.name || id}`);
+            await addAuditLog(session, 'DELETE', entity, id, `Hapus supplier ${supplier.name || id}`);
             return NextResponse.json({ success: true });
         } catch (error) {
             if (isMutationConflictError(error)) {
@@ -2656,7 +2714,7 @@ export async function handleGenericDelete(
             'DELETE',
             entity,
             id,
-            `Nonaktifkan rekening ${existingAccount.bankName || id}`
+            `Nonaktifkan rekening ${existingAccount.bankName || existingAccount.accountNumber || id}`
         );
         return NextResponse.json({ success: true });
     }
@@ -2681,7 +2739,7 @@ export async function handleGenericDelete(
         throw error;
     }
 
-    await addAuditLog(session, 'DELETE', entity, id, `Deleted ${entity} ${id}`);
+    await addAuditLog(session, 'DELETE', entity, id, `Hapus ${entity} ${buildCreateSummary(existing as Record<string, unknown>, id)}`);
     return NextResponse.json({ success: true });
 }
 
@@ -2984,6 +3042,10 @@ export async function handleGenericCreate(
         newDoc.createdAt = normalizedUser.createdAt;
         userDriverRevision = typeof normalizedUser.driverRevision === 'string' ? normalizedUser.driverRevision : undefined;
         delete newDoc.password;
+        // Forward modulePermissions from form so it gets stored in extra_data
+        if (typeof data.modulePermissions === 'object' && data.modulePermissions !== null && !Array.isArray(data.modulePermissions)) {
+            newDoc.modulePermissions = data.modulePermissions;
+        }
     }
 
     if (entity === 'employees') {
@@ -3041,7 +3103,7 @@ export async function handleGenericCreate(
             return NextResponse.json({ error: 'Akun sistem tidak boleh dibuat manual' }, { status: 409 });
         }
         try {
-            Object.assign(newDoc, normalizeBankAccountPayload(data));
+            Object.assign(newDoc, await normalizeBankAccountPayload(data));
         } catch (error) {
             return NextResponse.json(
                 { error: error instanceof Error ? error.message : 'Data rekening / kas tidak valid' },

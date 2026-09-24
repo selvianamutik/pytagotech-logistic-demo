@@ -168,31 +168,37 @@ async function main() {
     }
 
     const skipWorkflowTransactions = hasFlag('--skip-workflow-transactions');
-    const deriveTripSuratJalan = hasFlag('--derive-trip-surat-jalan') && !skipWorkflowTransactions;
-    const seedDocuments = deriveTripSuratJalan
-        ? (() => {
-            const baseDocuments = parsedSeedDocuments.filter(doc =>
-                doc &&
-                typeof doc === 'object' &&
-                !['trip', 'suratJalan', 'suratJalanItem'].includes(doc._type)
-            );
-            const { tripDocs, suratJalanDocs, suratJalanItemDocs } = deriveTripSuratJalanDocs(baseDocuments);
-            console.log('Deriving Trip / Surat Jalan seed docs in-memory...');
-            console.log(`  - trips: ${tripDocs.length}`);
-            console.log(`  - surat jalan: ${suratJalanDocs.length}`);
-            console.log(`  - surat jalan items: ${suratJalanItemDocs.length}`);
-            return [...baseDocuments, ...tripDocs, ...suratJalanDocs, ...suratJalanItemDocs];
-        })()
-        : parsedSeedDocuments;
-
     const skipDocTypes = new Set(getCsvArgValues('--skip-doc-types'));
     const skipDocIds = new Set(getCsvArgValues('--skip-doc-ids'));
     if (skipWorkflowTransactions) {
         WORKFLOW_TRANSACTION_DOC_TYPES.forEach(type => skipDocTypes.add(type));
     }
+
+    // Filter base documents before derivation so skipped delivery orders don't
+    // spawn derived trips / surat jalan that also fail FK constraints.
+    const filteredBaseDocuments = parsedSeedDocuments.filter(doc =>
+        doc &&
+        typeof doc === 'object' &&
+        !skipDocTypes.has(doc._type) &&
+        !skipDocIds.has(doc._id) &&
+        !['trip', 'suratJalan', 'suratJalanItem'].includes(doc._type)
+    );
+
+    const deriveTripSuratJalan = hasFlag('--derive-trip-surat-jalan') && !skipWorkflowTransactions;
+    const seedDocuments = deriveTripSuratJalan
+        ? (() => {
+            const { tripDocs, suratJalanDocs, suratJalanItemDocs } = deriveTripSuratJalanDocs(filteredBaseDocuments);
+            console.log('Deriving Trip / Surat Jalan seed docs in-memory...');
+            console.log(`  - trips: ${tripDocs.length}`);
+            console.log(`  - surat jalan: ${suratJalanDocs.length}`);
+            console.log(`  - surat jalan items: ${suratJalanItemDocs.length}`);
+            return [...filteredBaseDocuments, ...tripDocs, ...suratJalanDocs, ...suratJalanItemDocs];
+        })()
+        : filteredBaseDocuments;
+
     const filteredSeedDocuments = seedDocuments.filter(doc =>
-        !skipDocTypes.has(doc?._type) &&
-        !skipDocIds.has(doc?._id)
+        !skipDocTypes.has(doc._type) &&
+        !skipDocIds.has(doc._id)
     );
     const enforceInventoryLinkedTires = hasFlag('--enforce-inventory-linked-tires');
     const seedDocumentsToImport = enforceInventoryLinkedTires

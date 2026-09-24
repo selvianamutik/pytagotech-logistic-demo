@@ -1439,20 +1439,50 @@ export function clearRelationalReadCache() {
     relationalInFlightReads.clear();
 }
 
+const FILTER_OPERATOR_SUFFIXES = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in'] as const;
+type FilterOperatorKey = (typeof FILTER_OPERATOR_SUFFIXES)[number];
+
+function splitFilterFieldKey(rawField: string): { field: string; operator: FilterOperatorKey | null } {
+    const separatorIndex = rawField.lastIndexOf('__');
+    if (separatorIndex > 0) {
+        const candidate = rawField.slice(separatorIndex + 2);
+        if ((FILTER_OPERATOR_SUFFIXES as readonly string[]).includes(candidate)) {
+            return { field: rawField.slice(0, separatorIndex), operator: candidate as FilterOperatorKey };
+        }
+    }
+    return { field: rawField, operator: null };
+}
+
 function buildFilterParams(
     config: RelationalConfig,
     filterObj: Record<string, unknown>,
 ) {
     const params = new URLSearchParams();
 
-    for (const [field, expected] of Object.entries(filterObj)) {
+    for (const [rawField, expected] of Object.entries(filterObj)) {
         if (expected === '' || expected === null || expected === undefined) {
             continue;
         }
 
+        const { field, operator } = splitFilterFieldKey(rawField);
         const column = getColumnName(config, field);
         if (!column) {
             return null;
+        }
+
+        if (operator) {
+            if (operator === 'in') {
+                if (!Array.isArray(expected) || expected.length === 0 || !expected.every(isServerFilterScalar)) {
+                    return null;
+                }
+                params.set(column, `in.(${expected.map(formatServerInValue).join(',')})`);
+                continue;
+            }
+            if (!isServerFilterScalar(expected)) {
+                return null;
+            }
+            params.append(column, `${operator}.${formatServerFilterValue(expected)}`);
+            continue;
         }
 
         if (Array.isArray(expected)) {
@@ -1620,8 +1650,10 @@ function matchesFilterValue(actual: unknown, expected: unknown) {
 }
 
 function matchesFilter(doc: Record<string, unknown>, filterObj: Record<string, unknown>) {
-    for (const [field, expected] of Object.entries(filterObj)) {
-        if (!matchesFilterValue(readField(doc, field), expected)) {
+    for (const [rawField, expected] of Object.entries(filterObj)) {
+        const { field, operator } = splitFilterFieldKey(rawField);
+        const expectation = operator && operator !== 'in' ? { [operator]: expected } : expected;
+        if (!matchesFilterValue(readField(doc, field), expectation)) {
             return false;
         }
     }
@@ -2286,10 +2318,16 @@ export async function relationalPatchDocument<T = Record<string, unknown>>(
                 ? { ...existingRow.extra_data }
                 : {};
             for (const [field, value] of Object.entries(extraUpdates)) {
-                if (value === undefined) {
+                if (value === undefined || value === null) {
                     delete nextExtraData[field];
                 } else {
                     nextExtraData[field] = value;
+                }
+            }
+            // Remove any keys that have null values (explicit deletion)
+            for (const field of Object.keys(nextExtraData)) {
+                if (nextExtraData[field] === null) {
+                    delete nextExtraData[field];
                 }
             }
             patch.extra_data = nextExtraData;

@@ -7,6 +7,7 @@ import { ScrollText } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import { fetchAdminListPayload } from '@/lib/api/admin-client';
 import { getAuditLogTargetHref } from '@/lib/audit-log-target-links';
+import { getAuditEntityLabel } from '@/lib/audit-labels';
 import { hasPermission } from '@/lib/rbac';
 import type { AuditLog, UserRole } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
@@ -91,7 +92,7 @@ function getActorRoleLabel(log: AuditLog) {
 }
 
 function AuditTargetLink({ log }: { log: AuditLog }) {
-    const target = log.entityRef || '-';
+    const target = log.entityLabel || log.entityRef || '-';
     const href = getAuditLogTargetHref(log);
 
     if (!href || target === '-') {
@@ -101,7 +102,7 @@ function AuditTargetLink({ log }: { log: AuditLog }) {
     return (
         <Link
             href={href}
-            className="font-mono"
+            className={log.entityLabel ? undefined : 'font-mono'}
             style={{ color: 'var(--color-primary)', fontWeight: 600, wordBreak: 'break-all' }}
         >
             {target}
@@ -130,7 +131,7 @@ export default function AuditTrailCard({
     const entityRefsKey = buildValuesKey(entityRefs);
     const entityTypesKey = buildValuesKey(entityTypes);
     const queryKey = `${entityRefsKey}|${entityTypesKey}|${limit}`;
-    const canViewAuditLogs = user ? hasPermission(user.role, 'auditLogs', 'view') : false;
+    const canViewAuditLogs = user ? hasPermission(user, 'auditLogs', 'view') : false;
     const auditTrailUrl = shouldLoad && canViewAuditLogs && entityRefsKey
         ? buildAuditTrailQuery(
             entityRefsKey.split(',').filter(Boolean),
@@ -220,7 +221,7 @@ export default function AuditTrailCard({
                                             <span className={`badge badge-${ACTION_COLORS[log.action] || 'gray'}`}>{log.action}</span>
                                         </td>
                                         <td>
-                                            <div>{log.entityType || '-'}</div>
+                                            <div>{getAuditEntityLabel(log.entityType) ?? (log.entityType || '-')}</div>
                                             <div className="text-muted text-xs"><AuditTargetLink log={log} /></div>
                                         </td>
                                         <td className="text-muted" style={{ minWidth: 300, whiteSpace: 'normal', wordBreak: 'break-word' }}>
@@ -244,7 +245,7 @@ export default function AuditTrailCard({
                                 <div className="mobile-record-meta">
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Entitas</span>
-                                        <span className="mobile-record-value">{log.entityType || '-'}</span>
+                                        <span className="mobile-record-value">{getAuditEntityLabel(log.entityType) ?? (log.entityType || '-')}</span>
                                     </div>
                                     <div className="mobile-record-kv">
                                         <span className="mobile-record-label">Target</span>

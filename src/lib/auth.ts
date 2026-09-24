@@ -42,6 +42,7 @@ export async function createSession(user: User): Promise<string> {
         email: user.email,
         role: normalizeUserRole(user.role),
         driverRef: user.driverRef,
+        modulePermissions: user.modulePermissions,
     };
 
     return createSessionToken(payload);
@@ -54,6 +55,7 @@ export async function createDriverMobileSession(user: User): Promise<string> {
         email: user.email,
         role: normalizeUserRole(user.role),
         driverRef: user.driverRef,
+        modulePermissions: user.modulePermissions,
     };
 
     return createSessionToken(payload, {
@@ -68,6 +70,7 @@ export async function createDriverRefreshSession(user: User): Promise<string> {
         email: user.email,
         role: normalizeUserRole(user.role),
         driverRef: user.driverRef,
+        modulePermissions: user.modulePermissions,
     };
 
     return createSessionToken(payload, {
@@ -76,7 +79,7 @@ export async function createDriverRefreshSession(user: User): Promise<string> {
     });
 }
 
-function buildSessionUser(user: User): SessionUser {
+export function buildSessionUser(user: User): SessionUser {
     return {
         _id: user._id,
         name: user.name,
@@ -84,6 +87,7 @@ function buildSessionUser(user: User): SessionUser {
         role: normalizeUserRole(user.role),
         driverRef: user.driverRef,
         driverName: user.driverName,
+        modulePermissions: user.modulePermissions,
     };
 }
 

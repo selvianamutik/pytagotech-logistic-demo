@@ -19,9 +19,9 @@ type InternalPathAccess = {
 const INTERNAL_PATH_MODULES: InternalPathAccess[] = [
     { path: '/dashboard', module: 'dashboard' },
     { path: '/orders', module: 'orders' },
-    { path: '/trips', module: 'deliveryOrders' },
-    { path: '/surat-jalan', module: 'deliveryOrders' },
-    { path: '/delivery-orders', module: 'deliveryOrders' },
+    { path: '/trips', module: 'trips' },
+    { path: '/surat-jalan', module: 'suratJalan' },
+    { path: '/delivery-orders', module: 'trips' },
     { path: '/invoices', module: 'invoices' },
     { path: '/employees', module: 'employees' },
     { path: '/attendance', module: 'attendance' },
@@ -208,8 +208,8 @@ export async function proxy(request: NextRequest) {
             : [];
         const hasAccess = targetModules.length > 0
             ? targetModules.some(module => (requiredAction === 'view'
-                ? hasPageAccess(user.role, module)
-                : hasPermission(user.role, module, requiredAction)))
+                ? hasPageAccess(user, module)
+                : hasPermission(user, module, requiredAction)))
             : true;
 
         if (targetAccess && !hasAccess) {

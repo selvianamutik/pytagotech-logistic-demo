@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '../../layout';
-import { Truck, FileText, Edit, Eye, Plus, Trash2, X } from 'lucide-react';
+import { Truck, FileText, Edit, Eye, Plus, Trash2, X, Pause, Play } from 'lucide-react';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { fetchAdminCollectionData, fetchAdminData, fetchOptionalAdminCollectionData, fetchOptionalAdminData } from '@/lib/api/admin-client';
@@ -46,9 +46,11 @@ import {
     summarizeSelectedShipments,
 } from '@/lib/order-detail-support';
 import {
-    applyCustomerProductToOrderItem,
     applyOrderItemAutoWeightFromQty,
+    applyOrderItemPickerSelection,
+    getOrderItemPickerValue,
     getDraftOrderItems,
+    MANUAL_ITEM_OPTION_VALUE,
     shouldLockOrderItemVolume,
     shouldLockOrderItemWeight,
     summarizeDraftOrderCargo,
@@ -91,6 +93,7 @@ import PageBackButton from '@/components/PageBackButton';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { useApp } from '../../layout';
 import AuditTrailCard from '../../_components/AuditTrailCard';
+import Combobox from '@/components/Combobox';
 
 type TripPlanModalMode = 'create' | 'edit' | 'delete';
 
@@ -163,11 +166,12 @@ export default function OrderDetailPage() {
     const loadedReferenceSignatureRef = useRef<string>('');
     const loadedVehicleOptionsRef = useRef(false);
     const loadedTripPlanSupportRef = useRef(false);
-    const canCreateInvoice = user ? hasPermission(user.role, 'invoices', 'create') : false;
-    const canViewFreightNotas = user ? hasPermission(user.role, 'invoices', 'view') : false;
-    const canManageOrderTrips = user ? hasPermission(user.role, 'orders', 'update') : false;
-    const canOpenCustomerPage = user ? hasPageAccess(user.role, 'customers') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
+    const canCreateInvoice = user ? hasPermission(user, 'invoices', 'create') : false;
+    const canViewFreightNotas = user ? hasPermission(user, 'invoices', 'view') : false;
+    const canManageOrderTrips = user ? hasPermission(user, 'orders', 'update') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const hasOpenModal = showDOModal || showAddTripModal || showTripPlanActionModal || showCancelTripModal || showCancelOrderModal || showHoldModal;
     const currentPath = pathname || `/orders/${orderId}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;
@@ -607,7 +611,6 @@ export default function OrderDetailPage() {
     };
 
     const applyDirectCargoProductSelection = (groupId: string, itemIndex: number, nextProductRef: string) => {
-        const selectedProduct = customerProducts.find(product => product._id === nextProductRef);
         setDirectCargoGroups(previous =>
             previous.map(group => (
                 group.id === groupId
@@ -615,11 +618,11 @@ export default function OrderDetailPage() {
                         ...group,
                         items: group.items.map((item, index) => (
                             index === itemIndex
-                                ? applyCustomerProductToOrderItem({
+                                ? applyOrderItemPickerSelection({
                                     ...item,
                                     pickupStopKey: group.pickupStopKey,
                                     shipperReferenceNumber: group.shipperReferenceNumber,
-                                }, selectedProduct)
+                                }, nextProductRef, customerProducts)
                                 : { ...item, pickupStopKey: group.pickupStopKey, shipperReferenceNumber: group.shipperReferenceNumber }
                         )).map(item => toDirectCargoGroupItem(item)),
                     }
@@ -1884,11 +1887,11 @@ export default function OrderDetailPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div>
                                             <div className="detail-label">Kendaraan</div>
-                                            <div className="detail-value">{tripPlan.vehiclePlate || '-'}</div>
+                                            <div className="detail-value">{canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${tripPlan.vehicleRef}`)} style={{ color: 'var(--color-primary)' }}>{tripPlan.vehiclePlate || '-'}</Link> : (tripPlan.vehiclePlate || '-')}</div>
                                         </div>
                                         <div>
                                             <div className="detail-label">Supir</div>
-                                            <div className="detail-value">{tripPlan.driverName || '-'}</div>
+                                            <div className="detail-value">{canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${tripPlan.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{tripPlan.driverName || '-'}</Link> : (tripPlan.driverName || '-')}</div>
                                         </div>
                                         <div>
                                             <div className="detail-label">Upah Trip</div>
@@ -1990,7 +1993,7 @@ export default function OrderDetailPage() {
                                                     {formatInternalDeliveryOrderNumber(deliveryOrder)}
                                                 </Link>
                                                 <div className="text-muted text-sm">
-                                                    {deliveryOrder.driverName || '-'}{deliveryOrder.vehiclePlate ? ` / ${deliveryOrder.vehiclePlate}` : ''}
+                                                    {canOpenDriverPage && deliveryOrder.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${deliveryOrder.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{deliveryOrder.driverName || '-'}</Link> : (deliveryOrder.driverName || '-')}{deliveryOrder.vehiclePlate ? ` / ${deliveryOrder.vehiclePlate}` : ''}
                                                 </div>
                                             </div>
                                             <div className="text-muted text-sm">{shipperManifests.length} SJ pengirim</div>
@@ -2182,14 +2185,14 @@ export default function OrderDetailPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <div className="table-actions">
+                                        <div className="table-actions-col">
                                             {((usesQtyBasis && progressInfo.pendingQtyKoli > 0) || (!usesQtyBasis && (progressInfo.pendingWeight > 0 || progressInfo.pendingVolume > 0))) && (
                                                 <button className="table-action-btn" onClick={() => openHoldModal(item)}>
-                                                    {activeAssignment ? 'Tahan Sisa' : 'Set Hold'}
+                                                    <Pause size={14} /> {activeAssignment ? 'Tahan Sisa' : 'Set Hold'}
                                                 </button>
                                             )}
                                             {((usesQtyBasis && progressInfo.heldQtyKoli > 0) || (!usesQtyBasis && (progressInfo.heldWeight > 0 || progressInfo.heldVolume > 0))) && (
-                                                <button className="table-action-btn" onClick={() => void releaseHoldQuantity(item)}>Lepas Hold</button>
+                                                <button className="table-action-btn" onClick={() => void releaseHoldQuantity(item)}><Play size={14} /> Lepas Hold</button>
                                             )}
                                             {activeAssignment && (
                                                 <Link href={withReturnTo(`/delivery-orders/${activeAssignment._id}`)} className="table-action-btn" title="Item ini sudah masuk surat jalan aktif">
@@ -2246,7 +2249,7 @@ export default function OrderDetailPage() {
                                             {formatInternalDeliveryOrderNumber(d)}
                                         </Link>
                                         <div className="text-muted text-sm">
-                                            {d.driverName || '-'}{d.vehiclePlate ? ` / ${d.vehiclePlate}` : ''}
+                                            {canOpenDriverPage && d.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${d.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{d.driverName || '-'}</Link> : (d.driverName || '-')}{d.vehiclePlate ? ` / ${d.vehiclePlate}` : ''}
                                         </div>
                                     </td>
                                     <td>
@@ -2393,19 +2396,16 @@ export default function OrderDetailPage() {
                             {tripPlanModalMode === 'edit' && (
                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                     <label className="form-label">Pilih Trip yang Diedit <span className="required">*</span></label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={selectedTripPlanActionKey}
-                                        onChange={event => selectTripPlanForModalAction(event.target.value)}
-                                        disabled={savingTripPlan}
-                                    >
-                                        <option value="">Pilih rencana trip yang belum punya SJ</option>
-                                        {editableOrderTripPlans.map(tripPlan => (
-                                            <option key={tripPlan._key} value={tripPlan._key}>
-                                                Trip {tripPlan.sequence} - {tripPlan.vehiclePlate || 'Tanpa kendaraan'} / {tripPlan.driverName || 'Tanpa supir'}
-                                            </option>
+                                        onChange={(v: string) => selectTripPlanForModalAction(v)}
+                                        options={editableOrderTripPlans.map(tripPlan => (
+                                            { value: tripPlan._key, label: `Trip ${tripPlan.sequence} - ${tripPlan.vehiclePlate || 'Tanpa kendaraan'} / ${tripPlan.driverName || 'Tanpa supir'}` }
                                         ))}
-                                    </select>
+                                        placeholder="Pilih rencana trip yang belum punya SJ"
+                                        disabled={savingTripPlan}
+                                        className="form-select"
+                                    />
                                     <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                                         Ganti pilihan di sini untuk langsung memuat trip lain tanpa menutup form.
                                     </div>
@@ -2462,22 +2462,18 @@ export default function OrderDetailPage() {
                                         ))
                                     )}
                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        <select
-                                            className="form-select"
-                                            style={{ flex: '1 1 260px' }}
-                                            value={tripDraftPickupToAdd}
-                                            onChange={event => setTripDraftPickupToAdd(event.target.value)}
-                                            disabled={savingTripPlan || availableTripDraftPickupStops.length === 0}
-                                        >
-                                            <option value="">
-                                                {availableTripDraftPickupStops.length > 0 ? 'Pilih pickup untuk ditambahkan' : 'Semua pickup sudah ditambahkan'}
-                                            </option>
-                                            {availableTripDraftPickupStops.map((pickupStop, index) => (
-                                                <option key={pickupStop._key} value={pickupStop._key}>
-                                                    Pickup {index + 1}{pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}{pickupStop.pickupAddress ? ` | ${pickupStop.pickupAddress}` : ''}
-                                                </option>
+                                                                                <div style={{ flex: '1 1 260px' }}>
+                                            <Combobox
+                                                value={tripDraftPickupToAdd}
+                                                onChange={(v: string) => setTripDraftPickupToAdd(v)}
+                                                options={availableTripDraftPickupStops.map((pickupStop, index) => (
+                                                { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}${pickupStop.pickupAddress ? ` | ${pickupStop.pickupAddress}` : ''}` }
                                             ))}
-                                        </select>
+                                                placeholder={availableTripDraftPickupStops.length > 0 ? 'Pilih pickup untuk ditambahkan' : 'Semua pickup sudah ditambahkan'}
+                                                disabled={savingTripPlan || availableTripDraftPickupStops.length === 0}
+                                                className="form-select"
+                                            />
+                                        </div>
                                         <button
                                             type="button"
                                             className="btn btn-secondary"
@@ -2493,26 +2489,30 @@ export default function OrderDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kendaraan <span className="required">*</span></label>
-                                    <select className="form-select" value={tripDraft.vehicleRef} onChange={event => updateTripDraftField('vehicleRef', event.target.value)} disabled={savingTripPlan}>
-                                        <option value="">Pilih kendaraan</option>
-                                        {availableTripDraftVehicles.map(vehicle => (
-                                            <option key={vehicle._id} value={vehicle._id}>
-                                                {vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}{vehicle.plateNumber || vehicle._id}
-                                                {vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | {formatUnitCapacityLabel(vehicle)}
-                                            </option>
+                                                                        <Combobox
+                                        value={tripDraft.vehicleRef}
+                                        onChange={(v: string) => updateTripDraftField('vehicleRef', v)}
+                                        options={availableTripDraftVehicles.map(vehicle => (
+                                            { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || vehicle._id}
+                                                ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}` }
                                         ))}
-                                    </select>
+                                        placeholder="Pilih kendaraan"
+                                        disabled={savingTripPlan}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Supir <span className="required">*</span></label>
-                                    <select className="form-select" value={tripDraft.driverRef} onChange={event => updateTripDraftField('driverRef', event.target.value)} disabled={savingTripPlan}>
-                                        <option value="">Pilih supir</option>
-                                        {availableTripDraftDrivers.map(driver => (
-                                            <option key={driver._id} value={driver._id}>
-                                                {driver.name}{driver.phone ? ` - ${driver.phone}` : ''}
-                                            </option>
+                                                                        <Combobox
+                                        value={tripDraft.driverRef}
+                                        onChange={(v: string) => updateTripDraftField('driverRef', v)}
+                                        options={availableTripDraftDrivers.map(driver => (
+                                            { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}` }
                                         ))}
-                                    </select>
+                                        placeholder="Pilih supir"
+                                        disabled={savingTripPlan}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
 
@@ -2533,27 +2533,25 @@ export default function OrderDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Asal Area Trip</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={tripDraft.tripOriginArea}
-                                        onChange={event => updateTripDraftRouteSelection(event.target.value, '')}
+                                        onChange={(v: string) => updateTripDraftRouteSelection(v, '')}
+                                        options={tripDraftOriginAreaOptions.map(area => ({ value: area, label: area }))}
+                                        placeholder="Pilih asal area"
                                         disabled={savingTripPlan}
-                                    >
-                                        <option value="">Pilih asal area</option>
-                                        {tripDraftOriginAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tujuan Area Trip</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={tripDraft.tripDestinationArea}
-                                        onChange={event => updateTripDraftRouteSelection(tripDraft.tripOriginArea, event.target.value)}
+                                        onChange={(v: string) => updateTripDraftRouteSelection(tripDraft.tripOriginArea, v)}
+                                        options={tripDraftDestinationAreaOptions.map(area => ({ value: area, label: area }))}
+                                        placeholder="Pilih tujuan area"
                                         disabled={savingTripPlan || !tripDraft.tripOriginArea}
-                                    >
-                                        <option value="">Pilih tujuan area</option>
-                                        {tripDraftDestinationAreaOptions.map(area => <option key={area} value={area}>{area}</option>)}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
 
@@ -2589,14 +2587,16 @@ export default function OrderDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kas / Bank Uang Jalan <span className="required">*</span></label>
-                                    <select className="form-select" value={tripDraft.issueBankRef} onChange={event => updateTripDraftField('issueBankRef', event.target.value)} disabled={savingTripPlan}>
-                                        <option value="">Pilih sumber uang jalan</option>
-                                        {activeIssueBankAccounts.map(account => (
-                                            <option key={account._id} value={account._id}>
-                                                {account.bankName}{account.accountNumber ? ` - ${account.accountNumber}` : ''}
-                                            </option>
+                                                                        <Combobox
+                                        value={tripDraft.issueBankRef}
+                                        onChange={(v: string) => updateTripDraftField('issueBankRef', v)}
+                                        options={activeIssueBankAccounts.map(account => (
+                                            { value: account._id, label: `${account.bankName}${account.accountNumber ? ` - ${account.accountNumber}` : ''}` }
                                         ))}
-                                    </select>
+                                        placeholder="Pilih sumber uang jalan"
+                                        disabled={savingTripPlan}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Uang Jalan Awal <span className="required">*</span></label>
@@ -2643,19 +2643,16 @@ export default function OrderDetailPage() {
                         <div className="modal-body" style={{ display: 'grid', gap: '1rem' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Rencana Trip <span className="required">*</span></label>
-                                <select
-                                    className="form-select"
+                                                                <Combobox
                                     value={selectedTripPlanActionKey}
-                                    onChange={event => selectTripPlanForModalAction(event.target.value)}
-                                    disabled={Boolean(deletingTripPlanKey)}
-                                >
-                                    <option value="">Pilih rencana trip yang belum punya SJ</option>
-                                    {editableOrderTripPlans.map(tripPlan => (
-                                        <option key={tripPlan._key} value={tripPlan._key}>
-                                            Trip {tripPlan.sequence} - {tripPlan.vehiclePlate || 'Tanpa kendaraan'} / {tripPlan.driverName || 'Tanpa supir'}
-                                        </option>
+                                    onChange={(v: string) => selectTripPlanForModalAction(v)}
+                                    options={editableOrderTripPlans.map(tripPlan => (
+                                        { value: tripPlan._key, label: `Trip ${tripPlan.sequence} - ${tripPlan.vehiclePlate || 'Tanpa kendaraan'} / ${tripPlan.driverName || 'Tanpa supir'}` }
                                     ))}
-                                </select>
+                                    placeholder="Pilih rencana trip yang belum punya SJ"
+                                    disabled={Boolean(deletingTripPlanKey)}
+                                    className="form-select"
+                                />
                                 {editableOrderTripPlans.length === 0 && (
                                     <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                                         Tidak ada rencana trip yang bisa diedit atau dihapus karena semuanya sudah memiliki SJ.
@@ -2768,40 +2765,26 @@ export default function OrderDetailPage() {
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Kategori</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={cancelTripExpenseForm.categoryRef}
-                                            onChange={event => setCancelTripExpenseForm(prev => ({ ...prev, categoryRef: event.target.value }))}
+                                            onChange={(v: string) => setCancelTripExpenseForm(prev => ({ ...prev, categoryRef: v }))}
+                                            options={cancelTripOperationalCategories.map(category => ({ value: category._id, label: category.name }))}
+                                            placeholder="Tidak ada kategori pengeluaran umum aktif"
                                             disabled={cancellingTripPlan || loadingCancelExpenseRefs || cancelTripOperationalCategories.length === 0}
-                                        >
-                                            {cancelTripOperationalCategories.length === 0 ? (
-                                                <option value="">Tidak ada kategori pengeluaran umum aktif</option>
-                                            ) : (
-                                                cancelTripOperationalCategories.map(category => (
-                                                    <option key={category._id} value={category._id}>{category.name}</option>
-                                                ))
-                                            )}
-                                        </select>
+                                            className="form-select"
+                                        />
                                     </div>
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Kas / Bank</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={cancelTripExpenseForm.bankAccountRef}
-                                        onChange={event => setCancelTripExpenseForm(prev => ({ ...prev, bankAccountRef: event.target.value }))}
+                                        onChange={(v: string) => setCancelTripExpenseForm(prev => ({ ...prev, bankAccountRef: v }))}
+                                        options={cancelTripBankAccounts.map(account => ({ value: account._id, label: `${account.bankName}${account.accountNumber ? ` - ${account.accountNumber}` : ``}` }))}
+                                        placeholder="Tidak ada kas / bank aktif"
                                         disabled={cancellingTripPlan || loadingCancelExpenseRefs || cancelTripBankAccounts.length === 0}
-                                    >
-                                        {cancelTripBankAccounts.length === 0 ? (
-                                            <option value="">Tidak ada kas / bank aktif</option>
-                                        ) : (
-                                            cancelTripBankAccounts.map(account => (
-                                                <option key={account._id} value={account._id}>
-                                                    {account.bankName}{account.accountNumber ? ` - ${account.accountNumber}` : ''}
-                                                </option>
-                                            ))
-                                        )}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Deskripsi</label>
@@ -2883,11 +2866,11 @@ export default function OrderDetailPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Kendaraan</div>
-                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{selectedOrderTripPlan.vehiclePlate || '-'}</div>
+                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{canOpenVehiclePage ? <Link href={withReturnTo(`/fleet/vehicles/${selectedOrderTripPlan.vehicleRef}`)} style={{ color: 'var(--color-primary)' }}>{selectedOrderTripPlan.vehiclePlate || '-'}</Link> : (selectedOrderTripPlan.vehiclePlate || '-')}</div>
                                         </div>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Supir</div>
-                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{selectedOrderTripPlan.driverName || '-'}</div>
+                                            <div className="font-semibold" style={{ marginTop: '0.2rem' }}>{canOpenDriverPage ? <Link href={withReturnTo(`/fleet/drivers/${selectedOrderTripPlan.driverRef}`)} style={{ color: 'var(--color-primary)' }}>{selectedOrderTripPlan.driverName || '-'}</Link> : (selectedOrderTripPlan.driverName || '-')}</div>
                                         </div>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div className="text-muted text-sm">Upah Trip</div>
@@ -2904,12 +2887,10 @@ export default function OrderDetailPage() {
                                 <div className="form-group">
                                     <label className="form-label">Titik Pickup untuk Trip Ini</label>
                                     <div style={{ display: 'grid', gap: '0.75rem' }}>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value=""
-                                            disabled={creatingDO || selectablePickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
-                                            onChange={event => {
-                                                const nextKey = event.target.value;
+                                            onChange={(v: string) => {
+                                                const nextKey = v;
                                                 if (!nextKey) {
                                                     return;
                                                 }
@@ -2917,16 +2898,15 @@ export default function OrderDetailPage() {
                                                     previous.includes(nextKey) ? previous : [...previous, nextKey]
                                                 ));
                                             }}
-                                        >
-                                            <option value="">Tambah titik pickup dari master...</option>
-                                            {selectablePickupStops
+                                            options={selectablePickupStops
                                                 .filter(pickupStop => !selectedPickupStopKeys.includes(pickupStop._key))
                                                 .map((pickupStop, index) => (
-                                                    <option key={pickupStop._key} value={pickupStop._key}>
-                                                        {`Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}${'fromMaster' in pickupStop && pickupStop.fromMaster ? ' (Master)' : ''} - ${pickupStop.pickupAddress}`}
-                                                    </option>
+                                                    { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}${'fromMaster' in pickupStop && pickupStop.fromMaster ? ' (Master)' : ''} - ${pickupStop.pickupAddress}` }
                                                 ))}
-                                        </select>
+                                            placeholder="Tambah titik pickup dari master..."
+                                            disabled={creatingDO || selectablePickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
+                                            className="form-select"
+                                        />
                                         {selectedTripPickupStops.length === 0 ? (
                                             <div className="text-muted text-sm">Belum ada titik pickup dipilih.</div>
                                         ) : (
@@ -3008,15 +2988,17 @@ export default function OrderDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Kendaraan</label>
-                                        <select className="form-select" value={doVehicle} onChange={e => setDoVehicle(e.target.value)} disabled={creatingDO}>
-                                            <option value="">Pilih kendaraan</option>
-                                            {availableVehicles.map(vehicle => (
-                                                <option key={vehicle._id} value={vehicle._id}>
-                                                    {vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}{vehicle.plateNumber}
-                                                    {vehicle.serviceName ? ` (${vehicle.serviceName})` : ' (Kategori belum diisi)'} | {formatUnitCapacityLabel(vehicle)}
-                                                </option>
+                                                                                <Combobox
+                                            value={doVehicle}
+                                            onChange={(v: string) => setDoVehicle(v)}
+                                            options={availableVehicles.map(vehicle => (
+                                                { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber}
+                                                    ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ' (Kategori belum diisi)'} | ${formatUnitCapacityLabel(vehicle)}` }
                                             ))}
-                                        </select>
+                                            placeholder="Pilih kendaraan"
+                                            disabled={creatingDO}
+                                            className="form-select"
+                                        />
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                             {availableVehicles.length === 0
                                                 ? 'Tidak ada kendaraan kosong. Semua kendaraan operasional sedang dipakai DO aktif atau belum selesai.'
@@ -3104,19 +3086,16 @@ export default function OrderDetailPage() {
                                                     {resolvedOrderPickupStops.length > 0 && (
                                                         <div className="form-group" style={{ marginBottom: 0 }}>
                                                             <label className="form-label">Titik Pickup</label>
-                                                            <select
-                                                                className="form-select"
+                                                                                                                        <Combobox
                                                                 value={group.pickupStopKey}
-                                                                onChange={e => updateDirectCargoGroup(group.id, 'pickupStopKey', e.target.value)}
-                                                                disabled={creatingDO}
-                                                            >
-                                                                <option value="">Pilih titik pickup</option>
-                                                                {selectedTripPickupStops.map((pickupStop, pickupIndex) => (
-                                                                    <option key={pickupStop._key} value={pickupStop._key}>
-                                                                        {`Pickup ${pickupIndex + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}`}
-                                                                    </option>
+                                                                onChange={(v: string) => updateDirectCargoGroup(group.id, 'pickupStopKey', v)}
+                                                                options={selectedTripPickupStops.map((pickupStop, pickupIndex) => (
+                                                                    { value: pickupStop._key, label: `Pickup ${pickupIndex + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}` }
                                                                 ))}
-                                                            </select>
+                                                                placeholder="Pilih titik pickup"
+                                                                disabled={creatingDO}
+                                                                className="form-select"
+                                                            />
                                                         </div>
                                                     )}
                                                     <div className="form-group" style={{ marginBottom: 0 }}>
@@ -3134,19 +3113,16 @@ export default function OrderDetailPage() {
                                                             <div key={`${group.id}-item-${itemIndex}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
                                                                 <div style={{ flex: '1 1 240px' }}>
                                                                     <label className="form-label">Barang Customer</label>
-                                                                    <select
-                                                                        className="form-select"
-                                                                        value={item.customerProductRef}
-                                                                        onChange={e => applyDirectCargoProductSelection(group.id, itemIndex, e.target.value)}
+                                                                                                                                        <Combobox
+                                                                        value={getOrderItemPickerValue(item)}
+                                                                        onChange={(v: string) => applyDirectCargoProductSelection(group.id, itemIndex, v)}
+                                                                        options={[{ value: MANUAL_ITEM_OPTION_VALUE, label: "Tambah manual" }, ...(customerProducts.map(product => (
+                                                                            { value: product._id, label: `${product.code ? `${product.code} - ` : ''}${product.name}` }
+                                                                        )))]}
+                                                                        placeholder={customerProducts.length > 0 ? 'Pilih dari master barang customer (opsional)' : 'Belum ada master barang customer'}
                                                                         disabled={creatingDO || !order.customerRef}
-                                                                    >
-                                                                        <option value="">{customerProducts.length > 0 ? 'Pilih dari master barang customer (opsional)' : 'Belum ada master barang customer'}</option>
-                                                                        {customerProducts.map(product => (
-                                                                            <option key={product._id} value={product._id}>
-                                                                                {product.code ? `${product.code} - ` : ''}{product.name}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
+                                                                        className="form-select"
+                                                                    />
                                                                 </div>
                                                                 <div style={{ flex: '2 1 260px' }}>
                                                                     <label className="form-label">Deskripsi Barang</label>
@@ -3178,26 +3154,26 @@ export default function OrderDetailPage() {
                                                                             onValueChange={value => updateDirectCargoGroupItem(group.id, itemIndex, 'weightInputValue', value)}
                                                                             disabled={creatingDO || shouldLockOrderItemWeight(item)}
                                                                         />
-                                                                        <select
-                                                                            className="form-select"
-                                                                            value={item.weightInputUnit}
-                                                                            onChange={e => setDirectCargoGroups(previous => previous.map(entry => (
+                                                                                                                                                <div style={{ width: 92 }}>
+                                                                            <Combobox
+                                                                                value={item.weightInputUnit}
+                                                                                onChange={(v: string) => setDirectCargoGroups(previous => previous.map(entry => (
                                                                                 entry.id === group.id
                                                                                     ? {
                                                                                         ...entry,
                                                                                         items: entry.items.map((groupItem, currentItemIndex) => (
                                                                                             currentItemIndex === itemIndex
-                                                                                                ? updateOrderItemWeightUnit({ ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }, e.target.value as WeightInputUnit)
+                                                                                                ? updateOrderItemWeightUnit({ ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }, v as WeightInputUnit)
                                                                                                 : { ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }
                                                                                         )).map(groupItem => toDirectCargoGroupItem(groupItem)),
                                                                                     }
                                                                                     : entry
                                                                             )))}
-                                                                            style={{ width: 92 }}
-                                                                            disabled={creatingDO || shouldLockOrderItemVolume(item)}
-                                                                        >
-                                                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                                        </select>
+                                                                                options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                                                disabled={creatingDO || shouldLockOrderItemVolume(item)}
+                                                                                className="form-select"
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 <div style={{ flex: '1 1 180px' }}>
@@ -3210,26 +3186,26 @@ export default function OrderDetailPage() {
                                                                             onValueChange={value => updateDirectCargoGroupItem(group.id, itemIndex, 'volumeInputValue', value)}
                                                                             disabled={creatingDO}
                                                                         />
-                                                                        <select
-                                                                            className="form-select"
-                                                                            value={item.volumeInputUnit}
-                                                                            onChange={e => setDirectCargoGroups(previous => previous.map(entry => (
+                                                                                                                                                <div style={{ width: 92 }}>
+                                                                            <Combobox
+                                                                                value={item.volumeInputUnit}
+                                                                                onChange={(v: string) => setDirectCargoGroups(previous => previous.map(entry => (
                                                                                 entry.id === group.id
                                                                                     ? {
                                                                                         ...entry,
                                                                                         items: entry.items.map((groupItem, currentItemIndex) => (
                                                                                             currentItemIndex === itemIndex
-                                                                                                ? updateOrderItemVolumeUnit({ ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }, e.target.value as VolumeInputUnit)
+                                                                                                ? updateOrderItemVolumeUnit({ ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }, v as VolumeInputUnit)
                                                                                                 : { ...groupItem, pickupStopKey: entry.pickupStopKey, shipperReferenceNumber: entry.shipperReferenceNumber }
                                                                                         )).map(groupItem => toDirectCargoGroupItem(groupItem)),
                                                                                     }
                                                                                     : entry
                                                                             )))}
-                                                                            style={{ width: 92 }}
-                                                                            disabled={creatingDO}
-                                                                        >
-                                                                            {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                                        </select>
+                                                                                options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                                                disabled={creatingDO}
+                                                                                className="form-select"
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 {group.items.length > 1 && (
@@ -3469,22 +3445,21 @@ export default function OrderDetailPage() {
                                                                                                 }));
                                                                                             }}
                                                                                         />
-                                                                                        <select
-                                                                                            className="form-select"
+                                                                                                                                                                                <Combobox
                                                                                             value={selection.weightInputUnit || 'KG'}
-                                                                                            disabled={creatingDO}
-                                                                                            onChange={e => {
+                                                                                            onChange={(v: string) => {
                                                                                                 setSelectedShipments(prev => ({
                                                                                                     ...prev,
                                                                                                     [item._id]: {
                                                                                                         ...prev[item._id],
-                                                                                                        weightInputUnit: e.target.value as WeightInputUnit,
+                                                                                                        weightInputUnit: v as WeightInputUnit,
                                                                                                     },
                                                                                                 }));
                                                                                             }}
-                                                                                        >
-                                                                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                                                        </select>
+                                                                                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                                                            disabled={creatingDO}
+                                                                                            className="form-select"
+                                                                                        />
                                                                                     </div>
                                                                                 </div>
                                                                             )}
@@ -3509,22 +3484,21 @@ export default function OrderDetailPage() {
                                                                                                 }));
                                                                                             }}
                                                                                         />
-                                                                                        <select
-                                                                                            className="form-select"
+                                                                                                                                                                                <Combobox
                                                                                             value={selection.volumeInputUnit || 'M3'}
-                                                                                            disabled={creatingDO}
-                                                                                            onChange={e => {
+                                                                                            onChange={(v: string) => {
                                                                                                 setSelectedShipments(prev => ({
                                                                                                     ...prev,
                                                                                                     [item._id]: {
                                                                                                         ...prev[item._id],
-                                                                                                        volumeInputUnit: e.target.value as VolumeInputUnit,
+                                                                                                        volumeInputUnit: v as VolumeInputUnit,
                                                                                                     },
                                                                                                 }));
                                                                                             }}
-                                                                                        >
-                                                                                            {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                                                        </select>
+                                                                                            options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                                                            disabled={creatingDO}
+                                                                                            className="form-select"
+                                                                                        />
                                                                                     </div>
                                                                                 </div>
                                                                             )}
@@ -3745,9 +3719,13 @@ export default function OrderDetailPage() {
                                                     onValueChange={value => setHoldWeightInputValue(String(value))}
                                                     disabled={savingHold}
                                                 />
-                                                <select className="form-select" value={holdWeightInputUnit} onChange={e => setHoldWeightInputUnit(e.target.value as WeightInputUnit)} disabled={savingHold}>
-                                                    {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
+                                                                                                <Combobox
+                                                    value={holdWeightInputUnit}
+                                                    onChange={(v: string) => setHoldWeightInputUnit(v as WeightInputUnit)}
+                                                    options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                    disabled={savingHold}
+                                                    className="form-select"
+                                                />
                                             </div>
                                         </div>
                                     )}
@@ -3764,9 +3742,13 @@ export default function OrderDetailPage() {
                                                     onValueChange={value => setHoldVolumeInputValue(String(value))}
                                                     disabled={savingHold}
                                                 />
-                                                <select className="form-select" value={holdVolumeInputUnit} onChange={e => setHoldVolumeInputUnit(e.target.value as VolumeInputUnit)} disabled={savingHold}>
-                                                    {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
+                                                                                                <Combobox
+                                                    value={holdVolumeInputUnit}
+                                                    onChange={(v: string) => setHoldVolumeInputUnit(v as VolumeInputUnit)}
+                                                    options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                    disabled={savingHold}
+                                                    className="form-select"
+                                                />
                                             </div>
                                         </div>
                                     )}

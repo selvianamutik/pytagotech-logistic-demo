@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, Pencil, Plus, Printer, ReceiptText, Save, Trash2, Wrench, XCircle } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminData, fetchAllAdminCollectionData, fetchOptionalAdminCollectionData, fetchOptionalAdminData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
@@ -24,7 +26,7 @@ import {
     summarizeIncidentSettlements,
 } from '@/lib/fleet-incident-detail-support';
 import { fetchCompanyProfile, openBrandedPrint, openPrintWindow, resolveDocumentIssuerProfile } from '@/lib/print';
-import { hasPermission } from '@/lib/rbac';
+import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { getExpenseCategoryScopeLabel, inferExpenseCategoryScope } from '@/lib/expense-category-scope';
 import { getBusinessDateValue } from '@/lib/business-date';
 import { INVENTORY_UNIT_OPTIONS, isTireTrackedWarehouseItem } from '@/lib/inventory';
@@ -41,6 +43,7 @@ import type {
     IncidentSettlementLine,
     IncidentSettlementLineType,
     InventoryUnit,
+    Maintenance,
     TireEvent,
     TireType,
     Vehicle,
@@ -123,6 +126,8 @@ function createDefaultIncidentTireInstallForm(): IncidentTireInstallForm {
 
 type IncidentMaintenanceSourceMode = 'WAREHOUSE_STOCK' | 'DIRECT_PURCHASE';
 
+const INLINE_PURCHASE_NEW_REF = '__new_inline_purchase__';
+
 type IncidentHandlingWarehouseLine = {
     rowId: string;
     warehouseItemRef: string;
@@ -142,7 +147,6 @@ type IncidentHandlingDirectLine = {
     attachToVehicle: boolean;
     componentLabel: string;
     note: string;
-    leftoverWarehouseItemRef: string;
     leftoverQty: number;
 };
 
@@ -156,6 +160,12 @@ type IncidentHandlingForm = {
     completionNotes: string;
     warehouseMaterials: IncidentHandlingWarehouseLine[];
     directMaterials: IncidentHandlingDirectLine[];
+    inlinePurchaseCategory: 'REPAIR' | 'SPAREPART';
+    inlinePurchaseAmount: number;
+    inlinePurchaseExpenseCategoryRef: string;
+    inlinePurchaseExpenseRoute: IncidentExpenseRoute | '';
+    inlinePurchaseBankAccountRef: string;
+    inlinePurchaseDescription: string;
 };
 
 function createEmptyIncidentHandlingWarehouseLine(): IncidentHandlingWarehouseLine {
@@ -180,7 +190,6 @@ function createEmptyIncidentHandlingDirectLine(): IncidentHandlingDirectLine {
         attachToVehicle: false,
         componentLabel: '',
         note: '',
-        leftoverWarehouseItemRef: '',
         leftoverQty: 0,
     };
 }
@@ -203,7 +212,13 @@ function createDefaultIncidentHandlingForm(
             : 'Pemakaian Barang Gudang Insiden',
         completionNotes: line?.description || '',
         warehouseMaterials: [createEmptyIncidentHandlingWarehouseLine()],
-        directMaterials: line?.category === 'REPAIR' ? [] : [createEmptyIncidentHandlingDirectLine()],
+        directMaterials: [],
+        inlinePurchaseCategory: line?.category === 'REPAIR' ? 'REPAIR' : 'SPAREPART',
+        inlinePurchaseAmount: line?.amount || 0,
+        inlinePurchaseExpenseCategoryRef: '',
+        inlinePurchaseExpenseRoute: '',
+        inlinePurchaseBankAccountRef: '',
+        inlinePurchaseDescription: '',
     };
 }
 
@@ -236,7 +251,7 @@ function categoryNameIncludes(category: ExpenseCategory, keywords: string[]) {
 
 function findSuggestedIncidentExpenseCategory(
     categories: ExpenseCategory[],
-    line: IncidentSettlementLine,
+    line: Pick<IncidentSettlementLine, 'category'>,
     route: IncidentExpenseRoute | ''
 ) {
     const options = categories.filter(category =>
@@ -260,11 +275,15 @@ export default function IncidentDetailPage() {
     const { user } = useApp();
     const { addToast } = useToast();
     const incidentId = params.id as string;
-    const canManageIncident = user ? hasPermission(user.role, 'incidents', 'update') : false;
-    const canCreateExpense = user ? hasPermission(user.role, 'expenses', 'create') : false;
-    const canCreateTires = user ? hasPermission(user.role, 'tires', 'create') : false;
-    const canInstallTires = user ? hasPermission(user.role, 'tires', 'update') : false;
-    const canCreateMaintenance = user ? hasPermission(user.role, 'maintenance', 'create') : false;
+    const canManageIncident = user ? hasPermission(user, 'incidents', 'update') : false;
+    const canOpenVehicles = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDrivers = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenExpenses = user ? hasPageAccess(user, 'expenses') : false;
+    const canCreateExpense = user ? hasPermission(user, 'expenses', 'create') : false;
+    const canCreateTires = user ? hasPermission(user, 'tires', 'create') : false;
+    const canInstallTires = user ? hasPermission(user, 'tires', 'update') : false;
+    const canCreateMaintenance = user ? hasPermission(user, 'maintenance', 'create') : false;
+    const canCreateInlinePurchase = canCreateExpense && canCreateMaintenance;
 
     const [incident, setIncident] = useState<Incident | null>(null);
     const [logs, setLogs] = useState<IncidentActionLog[]>([]);
@@ -274,6 +293,7 @@ export default function IncidentDetailPage() {
     const [warehouseItems, setWarehouseItems] = useState<WarehouseItem[]>([]);
     const [trackedTireWarehouseItems, setTrackedTireWarehouseItems] = useState<WarehouseItem[]>([]);
     const [incidentVehicle, setIncidentVehicle] = useState<Vehicle | null>(null);
+    const [incidentMaintenances, setIncidentMaintenances] = useState<Maintenance[]>([]);
     const [tireEvents, setTireEvents] = useState<TireEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadNotice, setLoadNotice] = useState<AdminLoadNotice | null>(null);
@@ -301,7 +321,12 @@ export default function IncidentDetailPage() {
     const [handlingLine, setHandlingLine] = useState<IncidentSettlementLine | null>(null);
     const [handlingForm, setHandlingForm] = useState(createDefaultIncidentHandlingForm());
     const [savingHandling, setSavingHandling] = useState(false);
+    const inlinePurchaseAmountTouchedRef = useRef(false);
     const [creatingMaintenanceLineRef, setCreatingMaintenanceLineRef] = useState('');
+    const [deletingLineRef, setDeletingLineRef] = useState('');
+    const [deleteConfirmLine, setDeleteConfirmLine] = useState<IncidentSettlementLine | null>(null);
+    const [rejectConfirmLine, setRejectConfirmLine] = useState<IncidentSettlementLine | null>(null);
+    const [maintenanceFollowUpConfirmLine, setMaintenanceFollowUpConfirmLine] = useState<IncidentSettlementLine | null>(null);
 
     const loadDetail = useCallback(async () => {
         setLoading(true);
@@ -322,8 +347,11 @@ export default function IncidentDetailPage() {
                 (canCreateTires || canCreateMaintenance)
                     ? fetchOptionalAdminCollectionData<WarehouseItem>('/api/data?entity=warehouse-items', 'Gagal memuat master barang gudang', undefined, optionalFetchOptions)
                     : Promise.resolve([]),
+                canCreateMaintenance
+                    ? fetchOptionalAdminCollectionData<Maintenance>(`/api/data?entity=maintenances&filter=${encodeURIComponent(JSON.stringify({ relatedIncidentRef: incidentId }))}`, 'Gagal memuat penanganan insiden', undefined, optionalFetchOptions)
+                    : Promise.resolve([]),
             ];
-            const [incidentData, actionLogs, lineRows, categoryRows, accountRows, warehouseRows] = await Promise.all(tasks);
+            const [incidentData, actionLogs, lineRows, categoryRows, accountRows, warehouseRows, maintenanceRows] = await Promise.all(tasks);
             const nextIncident = (incidentData as Incident | null) || null;
             const [vehicleData, tireRows] = canInstallTires
                 ? await Promise.all([
@@ -350,6 +378,7 @@ export default function IncidentDetailPage() {
                 : []
             );
             setIncidentVehicle((vehicleData as Vehicle | null) || null);
+            setIncidentMaintenances(((maintenanceRows as Maintenance[]) || []).filter(m => m.status === 'DONE'));
             setTireEvents(canInstallTires ? ((tireRows as TireEvent[]) || []) : []);
         } catch (error) {
             const message = getAdminErrorMessage(error, 'Gagal memuat detail insiden');
@@ -373,6 +402,7 @@ export default function IncidentDetailPage() {
     const availableStatuses = incident ? getAvailableIncidentStatusesForContext(incident.status) : [];
     const lineCategories = getIncidentSettlementCategoryOptions(lineForm.lineType);
     const incidentClosed = incident?.status === 'CLOSED';
+    const incidentHandlingRecorded = incidentMaintenances.length > 0;
     const hasPendingDriverResolution = Boolean(
         incident?.pendingDriverResolutionRequestedAt
     );
@@ -403,11 +433,14 @@ export default function IncidentDetailPage() {
         [lines]
     );
     const selectedHandlingLine = useMemo(
-        () => handlingForm.settlementLineRef
+        () => handlingForm.settlementLineRef && handlingForm.settlementLineRef !== INLINE_PURCHASE_NEW_REF
             ? lines.find(line => line._id === handlingForm.settlementLineRef) || null
-            : handlingLine,
+            : handlingForm.settlementLineRef === INLINE_PURCHASE_NEW_REF
+                ? null
+                : handlingLine,
         [handlingForm.settlementLineRef, handlingLine, lines]
     );
+    const isNewInlinePurchase = handlingForm.sourceMode === 'DIRECT_PURCHASE' && !selectedHandlingLine;
     const directAllocatedTotal = useMemo(
         () => handlingForm.directMaterials.reduce((sum, row) => {
             const quantity = Number(row.quantity || 0);
@@ -417,9 +450,25 @@ export default function IncidentDetailPage() {
         }, 0),
         [handlingForm.directMaterials]
     );
-    const directExpenseAmount = Math.max(Number(selectedHandlingLine?.linkedExpenseAmount ?? selectedHandlingLine?.amount ?? 0) || 0, 0);
+    const directExpenseAmount = selectedHandlingLine
+        ? Math.max(Number(selectedHandlingLine.linkedExpenseAmount ?? selectedHandlingLine.amount ?? 0) || 0, 0)
+        : Math.max(Number(handlingForm.inlinePurchaseAmount || 0) || 0, 0);
     const directUnallocatedAmount = Math.max(directExpenseAmount - directAllocatedTotal, 0);
     const directOverAllocatedAmount = Math.max(directAllocatedTotal - directExpenseAmount, 0);
+    const inlineExpenseCategoryOptions = useMemo(() => {
+        if (!handlingForm.inlinePurchaseExpenseRoute) return [];
+        const allowedScopes = getExpenseCategoryRouteScopes(handlingForm.inlinePurchaseExpenseRoute);
+        return expenseCategories.filter(category => allowedScopes.has(inferExpenseCategoryScope(category)));
+    }, [expenseCategories, handlingForm.inlinePurchaseExpenseRoute]);
+
+    useEffect(() => {
+        if (handlingForm.sourceMode !== 'DIRECT_PURCHASE') return;
+        if (selectedHandlingLine) return;
+        if (inlinePurchaseAmountTouchedRef.current) return;
+        setHandlingForm(prev => prev.inlinePurchaseAmount === directAllocatedTotal
+            ? prev
+            : { ...prev, inlinePurchaseAmount: directAllocatedTotal });
+    }, [directAllocatedTotal, handlingForm.sourceMode, selectedHandlingLine]);
     const resolvedTireEvents = useMemo(() => resolveFleetTireEvents(tireEvents), [tireEvents]);
     const tireById = useMemo(
         () => new Map(resolvedTireEvents.map(tire => [tire._id, tire])),
@@ -594,7 +643,8 @@ export default function IncidentDetailPage() {
 
     const deleteLine = async (line: IncidentSettlementLine) => {
         if (!line._rev) return addToast('error', 'Revisi detail insiden tidak tersedia. Refresh halaman lalu coba lagi.');
-        if (!window.confirm('Hapus detail insiden draft ini?')) return;
+        if (deletingLineRef === line._id) return;
+        setDeletingLineRef(line._id);
         try {
             const res = await fetch('/api/data', {
                 method: 'POST',
@@ -604,9 +654,12 @@ export default function IncidentDetailPage() {
             const payload = await res.json();
             if (!res.ok) return addToast('error', payload.error || 'Gagal menghapus detail insiden');
             addToast('success', 'Detail insiden dihapus');
+            setDeleteConfirmLine(null);
             await loadDetail();
         } catch {
             addToast('error', 'Gagal menghapus detail insiden');
+        } finally {
+            setDeletingLineRef('');
         }
     };
 
@@ -751,6 +804,7 @@ export default function IncidentDetailPage() {
         const nextLine = sourceMode === 'DIRECT_PURCHASE'
             ? line || directPurchaseLineOptions[0] || null
             : null;
+        inlinePurchaseAmountTouchedRef.current = false;
         setHandlingLine(nextLine);
         setHandlingForm(createDefaultIncidentHandlingForm(incident, sourceMode, nextLine));
         setShowHandlingModal(true);
@@ -767,21 +821,34 @@ export default function IncidentDetailPage() {
         const nextLine = sourceMode === 'DIRECT_PURCHASE'
             ? selectedHandlingLine || directPurchaseLineOptions[0] || null
             : null;
+        if (sourceMode === 'DIRECT_PURCHASE') inlinePurchaseAmountTouchedRef.current = false;
         setHandlingLine(nextLine);
         setHandlingForm(prev => ({
             ...createDefaultIncidentHandlingForm(incident, sourceMode, nextLine),
+            settlementLineRef: nextLine ? nextLine._id : (sourceMode === 'DIRECT_PURCHASE' ? INLINE_PURCHASE_NEW_REF : ''),
             completedDate: prev.completedDate || getBusinessDateValue(),
             odometerAtService: prev.odometerAtService,
             vendor: sourceMode === 'DIRECT_PURCHASE' ? (nextLine?.payeeName || prev.vendor) : prev.vendor,
             completionNotes: prev.completionNotes,
             warehouseMaterials: prev.warehouseMaterials.length > 0 ? prev.warehouseMaterials : [createEmptyIncidentHandlingWarehouseLine()],
-            directMaterials: sourceMode === 'DIRECT_PURCHASE'
-                ? (prev.directMaterials.length > 0 ? prev.directMaterials : (nextLine?.category === 'REPAIR' ? [] : [createEmptyIncidentHandlingDirectLine()]))
-                : prev.directMaterials,
+            directMaterials: prev.directMaterials,
         }));
     };
 
     const selectHandlingSettlementLine = (settlementLineRef: string) => {
+        if (settlementLineRef === INLINE_PURCHASE_NEW_REF) {
+            inlinePurchaseAmountTouchedRef.current = false;
+            setHandlingLine(null);
+            setHandlingForm(prev => ({
+                ...prev,
+                settlementLineRef: INLINE_PURCHASE_NEW_REF,
+                inlinePurchaseAmount: 0,
+                inlinePurchaseExpenseCategoryRef: '',
+                inlinePurchaseExpenseRoute: '',
+                inlinePurchaseBankAccountRef: '',
+            }));
+            return;
+        }
         const line = directPurchaseLineOptions.find(item => item._id === settlementLineRef) || null;
         setHandlingLine(line);
         setHandlingForm(prev => ({
@@ -791,7 +858,28 @@ export default function IncidentDetailPage() {
             vendor: line?.payeeName || prev.vendor,
             maintenanceType: line?.category === 'REPAIR' ? 'Penanganan Perbaikan Insiden' : 'Penanganan Sparepart Insiden',
             completionNotes: line?.description || prev.completionNotes,
-            directMaterials: line?.category === 'REPAIR' ? prev.directMaterials : (prev.directMaterials.length > 0 ? prev.directMaterials : [createEmptyIncidentHandlingDirectLine()]),
+            directMaterials: prev.directMaterials,
+        }));
+    };
+
+    const chooseInlinePurchaseCategory = (category: 'REPAIR' | 'SPAREPART') => {
+        setHandlingForm(prev => ({
+            ...prev,
+            inlinePurchaseCategory: category,
+            maintenanceType: category === 'REPAIR' ? 'Penanganan Perbaikan Insiden' : 'Penanganan Sparepart Insiden',
+            inlinePurchaseExpenseCategoryRef: prev.inlinePurchaseExpenseRoute
+                ? findSuggestedIncidentExpenseCategory(expenseCategories, { category }, prev.inlinePurchaseExpenseRoute)
+                : prev.inlinePurchaseExpenseCategoryRef,
+            directMaterials: prev.directMaterials,
+        }));
+    };
+
+    const chooseInlinePurchaseExpenseRoute = (route: IncidentExpenseRoute) => {
+        setHandlingForm(prev => ({
+            ...prev,
+            inlinePurchaseExpenseRoute: route,
+            inlinePurchaseExpenseCategoryRef: findSuggestedIncidentExpenseCategory(expenseCategories, { category: prev.inlinePurchaseCategory }, route),
+            inlinePurchaseBankAccountRef: route === 'DRIVER_VOUCHER' ? '' : prev.inlinePurchaseBankAccountRef,
         }));
     };
 
@@ -801,10 +889,6 @@ export default function IncidentDetailPage() {
             warehouseMaterials: prev.warehouseMaterials.map(row => {
                 if (row.rowId !== rowId) return row;
                 const next = { ...row, ...updates };
-                if (updates.warehouseItemRef) {
-                    const item = standardWarehouseItems.find(option => option._id === updates.warehouseItemRef);
-                    if (item && !next.componentLabel) next.componentLabel = item.name;
-                }
                 return next;
             }),
         }));
@@ -819,15 +903,11 @@ export default function IncidentDetailPage() {
                 const linkedItem = updates.linkedWarehouseItemRef
                     ? standardWarehouseItems.find(option => option._id === updates.linkedWarehouseItemRef)
                     : null;
-                const leftoverItem = updates.leftoverWarehouseItemRef
-                    ? standardWarehouseItems.find(option => option._id === updates.leftoverWarehouseItemRef)
-                    : null;
-                const item = linkedItem || leftoverItem;
+                const item = linkedItem;
                 if (item) {
                     next.itemName = next.itemName || item.name;
                     next.unit = item.unit || next.unit;
                     next.unitCost = next.unitCost || item.defaultPurchasePrice || 0;
-                    if (!next.componentLabel) next.componentLabel = item.name;
                 }
                 return next;
             }),
@@ -879,7 +959,7 @@ export default function IncidentDetailPage() {
                 note: row.note.trim() || undefined,
             }));
         const directMaterials = handlingForm.directMaterials
-            .filter(row => row.linkedWarehouseItemRef || row.leftoverWarehouseItemRef || row.itemName.trim() || row.quantity > 0 || row.leftoverQty > 0 || row.unitCost > 0)
+            .filter(row => row.linkedWarehouseItemRef || row.itemName.trim() || row.quantity > 0 || row.leftoverQty > 0 || row.unitCost > 0)
             .map(row => ({
                 linkedWarehouseItemRef: row.linkedWarehouseItemRef || undefined,
                 itemName: row.itemName.trim() || undefined,
@@ -889,7 +969,6 @@ export default function IncidentDetailPage() {
                 attachToVehicle: row.attachToVehicle,
                 componentLabel: row.componentLabel.trim() || undefined,
                 note: row.note.trim() || undefined,
-                leftoverWarehouseItemRef: row.leftoverWarehouseItemRef || undefined,
                 leftoverQty: row.leftoverQty,
             }));
 
@@ -897,14 +976,34 @@ export default function IncidentDetailPage() {
             return addToast('error', 'Minimal satu barang gudang wajib dipilih');
         }
         if (handlingForm.sourceMode === 'DIRECT_PURCHASE') {
-            if (!selectedHandlingLine?._id || !selectedHandlingLine._rev) {
+            if (isNewInlinePurchase) {
+                if (!canCreateInlinePurchase) {
+                    return addToast('error', 'Tidak punya akses mencatat pengeluaran untuk beli lokal');
+                }
+                if (!handlingForm.inlinePurchaseExpenseRoute) {
+                    return addToast('error', 'Sumber pembayaran beli lokal wajib dipilih');
+                }
+                if (!handlingForm.inlinePurchaseExpenseCategoryRef) {
+                    return addToast('error', 'Kategori pengeluaran beli lokal wajib dipilih');
+                }
+                if (handlingForm.inlinePurchaseExpenseRoute === 'COMPANY_EXPENSE' && !handlingForm.inlinePurchaseBankAccountRef) {
+                    return addToast('error', 'Rekening / kas pembayaran pengeluaran perusahaan wajib dipilih');
+                }
+                if (!(handlingForm.inlinePurchaseAmount > 0)) {
+                    return addToast('error', 'Total pembelian beli lokal wajib diisi');
+                }
+                if (handlingForm.inlinePurchaseCategory === 'SPAREPART' && directMaterials.length === 0) {
+                    return addToast('error', 'Sparepart beli lokal wajib mencatat barang dipakai atau sisa masuk gudang');
+                }
+            } else if (!selectedHandlingLine?._id || !selectedHandlingLine._rev) {
                 return addToast('error', 'Detail biaya posted wajib dipilih dan direfresh');
-            }
-            if (selectedHandlingLine.category === 'SPAREPART' && directMaterials.length === 0) {
+            } else if (selectedHandlingLine.category === 'SPAREPART' && directMaterials.length === 0) {
                 return addToast('error', 'Sparepart beli lokal wajib mencatat barang dipakai atau sisa masuk gudang');
             }
             if (directOverAllocatedAmount > 0) {
-                return addToast('error', 'Total alokasi material tidak boleh melebihi biaya insiden yang sudah diposting');
+                return addToast('error', isNewInlinePurchase
+                    ? 'Total alokasi material tidak boleh melebihi total pembelian beli lokal'
+                    : 'Total alokasi material tidak boleh melebihi biaya insiden yang sudah diposting');
             }
         }
 
@@ -920,8 +1019,18 @@ export default function IncidentDetailPage() {
                         incidentRef: incident._id,
                         revision: incident._rev,
                         sourceMode: handlingForm.sourceMode,
-                        settlementLineRef: handlingForm.sourceMode === 'DIRECT_PURCHASE' ? selectedHandlingLine?._id : undefined,
-                        settlementLineRevision: handlingForm.sourceMode === 'DIRECT_PURCHASE' ? selectedHandlingLine?._rev : undefined,
+                        settlementLineRef: handlingForm.sourceMode === 'DIRECT_PURCHASE' && !isNewInlinePurchase ? selectedHandlingLine?._id : undefined,
+                        settlementLineRevision: handlingForm.sourceMode === 'DIRECT_PURCHASE' && !isNewInlinePurchase ? selectedHandlingLine?._rev : undefined,
+                        inlinePurchase: isNewInlinePurchase ? {
+                            category: handlingForm.inlinePurchaseCategory,
+                            amount: handlingForm.inlinePurchaseAmount,
+                            expenseCategoryRef: handlingForm.inlinePurchaseExpenseCategoryRef,
+                            expenseRoute: handlingForm.inlinePurchaseExpenseRoute,
+                            bankAccountRef: handlingForm.inlinePurchaseExpenseRoute === 'COMPANY_EXPENSE' ? handlingForm.inlinePurchaseBankAccountRef : undefined,
+                            description: handlingForm.inlinePurchaseDescription.trim() || undefined,
+                            payeeName: handlingForm.vendor.trim() || undefined,
+                            note: handlingForm.completionNotes.trim() || undefined,
+                        } : undefined,
                         completedDate: handlingForm.completedDate,
                         odometerAtService: handlingForm.odometerAtService || undefined,
                         vendor: handlingForm.vendor.trim() || undefined,
@@ -1022,7 +1131,6 @@ export default function IncidentDetailPage() {
 
     const createMaintenanceFollowUp = async (line: IncidentSettlementLine) => {
         if (!line._rev) return addToast('error', 'Detail biaya insiden perlu direfresh sebelum membuat follow-up maintenance');
-        if (!window.confirm('Buat jadwal maintenance dari detail biaya insiden ini? Biaya yang sudah diposting dari insiden tidak akan diposting ulang.')) return;
         setCreatingMaintenanceLineRef(line._id);
         try {
             const res = await fetch('/api/data', {
@@ -1040,6 +1148,7 @@ export default function IncidentDetailPage() {
             const payload = await res.json();
             if (!res.ok) return addToast('error', payload.error || 'Gagal membuat follow-up maintenance');
             addToast('success', 'Follow-up maintenance insiden dibuat');
+            setMaintenanceFollowUpConfirmLine(null);
             await loadDetail();
         } catch {
             addToast('error', 'Gagal membuat follow-up maintenance');
@@ -1061,18 +1170,17 @@ export default function IncidentDetailPage() {
     };
 
     const renderActions = (line: IncidentSettlementLine) => (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div className="table-actions-col" style={{ minWidth: 150 }}>
             {canManageIncident && !incidentClosed && canEditIncidentSettlementLine(line) && <button className="table-action-btn" onClick={() => openLineModal(line)}><Pencil size={14} /> Edit</button>}
             {canManageIncident && !incidentClosed && line.status === 'DRAFT' && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'APPROVED')}><CheckCircle2 size={14} /> Setujui</button>}
-            {canManageIncident && !incidentClosed && line.status === 'APPROVED' && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'DRAFT')}><XCircle size={14} /> Draft</button>}
             {canCreateExpense && canPostIncidentSettlementLine(line) && <button className="table-action-btn" onClick={() => openExpenseModal(line)}><ReceiptText size={14} /> Post Expense</button>}
             {canCreateTires && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedTireEventRef && <button className="table-action-btn" onClick={() => openTireFollowUpModal(line)}><Plus size={14} /> Catat Aset Ban</button>}
             {canInstallIncidentTire(line) && <button className="table-action-btn" onClick={() => openTireInstallModal(line)}><Wrench size={14} /> Pasang Ban</button>}
             {canCreateMaintenance && !incidentClosed && line.lineType === 'COST' && (line.category === 'REPAIR' || line.category === 'SPAREPART') && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => openHandlingModal(line, 'DIRECT_PURCHASE')}><Wrench size={14} /> Catat Penanganan</button>}
-            {canCreateMaintenance && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => void createMaintenanceFollowUp(line)} disabled={creatingMaintenanceLineRef === line._id}><Wrench size={14} /> {creatingMaintenanceLineRef === line._id ? 'Membuat...' : 'Follow-up Maintenance'}</button>}
+            {canCreateMaintenance && line.lineType === 'COST' && line.category === 'TIRE' && line.status === 'POSTED' && line.linkedExpenseRef && !line.linkedMaintenanceRef && <button className="table-action-btn" onClick={() => setMaintenanceFollowUpConfirmLine(line)} disabled={creatingMaintenanceLineRef === line._id}><Wrench size={14} /> {creatingMaintenanceLineRef === line._id ? 'Membuat...' : 'Follow-up Maintenance'}</button>}
             {canManageIncident && canMarkIncidentRecoveryPosted(line) && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'POSTED')}><CheckCircle2 size={14} /> Tandai Diterima</button>}
-            {canManageIncident && line.status !== 'VOID' && line.status !== 'POSTED' && <button className="table-action-btn" onClick={() => void updateLineStatus(line, 'VOID')}><XCircle size={14} /> Tolak</button>}
-            {canManageIncident && !incidentClosed && canDeleteIncidentSettlementLine(line) && <button className="table-action-btn danger" onClick={() => void deleteLine(line)}><Trash2 size={14} /> Hapus</button>}
+            {canManageIncident && ((line.status === 'DRAFT') || (incidentClosed && line.status !== 'VOID' && line.status !== 'POSTED')) && <button className="table-action-btn" onClick={() => setRejectConfirmLine(line)}><XCircle size={14} /> Tolak</button>}
+            {canManageIncident && !incidentClosed && canDeleteIncidentSettlementLine(line) && <button className="table-action-btn danger" onClick={() => setDeleteConfirmLine(line)}><Trash2 size={14} /> Hapus</button>}
         </div>
     );
 
@@ -1093,7 +1201,7 @@ export default function IncidentDetailPage() {
                 <div className="page-actions">
                     {canManageIncident && availableStatuses.length > 0 && <button className="btn btn-primary" onClick={openStatusModal}><Save size={16} /> Ubah Status</button>}
                     {canManageIncident && !incidentClosed && <button className="btn btn-secondary" onClick={() => openLineModal()}><Plus size={16} /> Tambah Detail Biaya</button>}
-                    {canCreateMaintenance && !incidentClosed && <button className="btn btn-secondary" onClick={() => openHandlingModal(undefined, 'WAREHOUSE_STOCK')}><Wrench size={16} /> Catat Pemakaian</button>}
+                    {canCreateMaintenance && !incidentClosed && !incidentHandlingRecorded && <button className="btn btn-secondary" onClick={() => openHandlingModal(undefined)}><Wrench size={16} /> Catat Penanganan</button>}
                     <button className="btn btn-secondary" onClick={handlePrint}><Printer size={16} /> Print</button>
                 </div>
             </div>
@@ -1121,9 +1229,9 @@ export default function IncidentDetailPage() {
             <div className="detail-grid">
                 <div className="card"><div className="card-header"><span className="card-header-title">Detail Insiden</span></div><div className="card-body">
                     <div className="detail-row"><div className="detail-item"><div className="detail-label">Tipe</div><div className="detail-value">{INCIDENT_TYPE_MAP[incident.incidentType] || incident.incidentType}</div></div><div className="detail-item"><div className="detail-label">Waktu</div><div className="detail-value">{formatDateTime(incident.dateTime)}</div></div></div>
-                    <div className="detail-row"><div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value font-semibold">{incident.vehiclePlate}</div></div><div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{incident.driverName || '-'}</div></div></div>
+                    <div className="detail-row"><div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value font-semibold">{incident.vehicleRef && canOpenVehicles ? <Link href={`/fleet/vehicles/${incident.vehicleRef}`} style={{ color: 'var(--color-primary)' }}>{incident.vehiclePlate}</Link> : incident.vehiclePlate}</div></div><div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{incident.driverRef && canOpenDrivers ? <Link href={`/fleet/drivers/${incident.driverRef}`} style={{ color: 'var(--color-primary)' }}>{incident.driverName || '-'}</Link> : (incident.driverName || '-')}</div></div></div>
                     <div className="detail-row"><div className="detail-item"><div className="detail-label">Lokasi</div><div className="detail-value">{incident.locationText}</div></div><div className="detail-item"><div className="detail-label">Odometer</div><div className="detail-value">{incident.odometer ? `${formatQuantity(incident.odometer, 0)} km` : '-'}</div></div></div>
-                    {incident.relatedDONumber && <div className="mt-2"><div className="detail-label">DO Internal Terkait</div><div className="detail-value"><a href={`/delivery-orders/${incident.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{incident.relatedDONumber}</a></div></div>}
+                    {incident.relatedDONumber && <div className="mt-2"><div className="detail-label">DO Internal Terkait</div><div className="detail-value"><Link href={`/delivery-orders/${incident.relatedDeliveryOrderRef}`} style={{ color: 'var(--color-primary)' }}>{incident.relatedDONumber}</Link></div></div>}
                 </div></div>
                 <div className="card"><div className="card-header"><span className="card-header-title">Kronologi</span></div><div className="card-body"><p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.8 }}>{incident.description}</p></div></div>
             </div>
@@ -1157,7 +1265,7 @@ export default function IncidentDetailPage() {
                             <td className="text-muted">{formatDate(line.date)}</td>
                             <td><span className={`badge badge-${INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.color}`}>{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></td>
                             <td>{INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category] || line.category}</td>
-                            <td><div className="font-semibold">{line.description}</div>{line.note && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>{line.note}</div>}{line.linkedExpenseRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.25rem' }}>Expense {line.linkedExpenseRef}</div>}{(line.linkedDriverVoucherItemRef || line.linkedExpenseRoute) && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.15rem' }}>{line.linkedDriverVoucherItemRef ? 'Masuk biaya lain-lain uang jalan' : getIncidentExpenseRouteLabel(line.linkedExpenseRoute)}</div>}{line.linkedTireEventRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><a href={`/fleet/tires/${line.linkedTireEventRef}`}>Aset ban {line.linkedTireCode || line.linkedTireEventRef}</a></div>}{line.linkedMaintenanceRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><a href="/fleet/maintenance">Maintenance {line.linkedMaintenanceType || line.linkedMaintenanceRef}</a></div>}</td>
+                            <td><div className="font-semibold">{line.description}</div>{line.note && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>{line.note}</div>}{line.linkedExpenseRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.25rem' }}>{canOpenExpenses ? <Link href={`/expenses/${line.linkedExpenseRef}`} style={{ color: 'var(--color-success)' }}>Expense {line.linkedExpenseRef}</Link> : <>Expense {line.linkedExpenseRef}</>}</div>}{(line.linkedDriverVoucherItemRef || line.linkedExpenseRoute) && <div style={{ fontSize: '0.72rem', color: 'var(--color-success)', marginTop: '0.15rem' }}>{line.linkedDriverVoucherItemRef ? 'Masuk biaya lain-lain uang jalan' : getIncidentExpenseRouteLabel(line.linkedExpenseRoute)}</div>}{line.linkedTireEventRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><Link href={`/fleet/tires/${line.linkedTireEventRef}`}>Aset ban {line.linkedTireCode || line.linkedTireEventRef}</Link></div>}{line.linkedMaintenanceRef && <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.15rem' }}><Link href={`/fleet/maintenance/${line.linkedMaintenanceRef}`}>Maintenance {line.linkedMaintenanceType || line.linkedMaintenanceRef}</Link></div>}</td>
                             <td><div>{line.payeeName || '-'}</div>{line.recipientType && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</div>}</td>
                             <td><span className={`badge badge-${INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.color}`}>{INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.label}</span></td>
                             <td className="font-semibold">{formatCurrency(line.amount)}</td>
@@ -1169,7 +1277,7 @@ export default function IncidentDetailPage() {
                     {lines.length === 0 ? <div className="mobile-record-card"><div className="mobile-record-title">Belum ada detail biaya insiden</div><div className="mobile-record-subtitle">Tambahkan dari halaman ini.</div></div> : lines.map(line => (
                         <div key={line._id} className="mobile-record-card">
                             <div className="mobile-record-header"><div><div className="mobile-record-title">{line.description}</div><div className="mobile-record-subtitle">{formatDate(line.date)} | {INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category] || line.category}</div></div><div className="text-right"><div className="font-semibold">{formatCurrency(line.amount)}</div><div style={{ marginTop: 4 }}><span className={`badge badge-${INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.color}`}>{INCIDENT_SETTLEMENT_STATUS_MAP[line.status]?.label}</span></div></div></div>
-                            <div className="mobile-record-meta"><div className="mobile-record-kv"><span className="mobile-record-label">Tipe</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></div><div className="mobile-record-kv"><span className="mobile-record-label">Pihak</span><span className="mobile-record-value">{line.payeeName || '-'}</span></div>{line.recipientType && <div className="mobile-record-kv"><span className="mobile-record-label">Kategori Pihak</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</span></div>}{line.note && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{line.note}</span></div>}{line.linkedTireEventRef && <div className="mobile-record-kv"><span className="mobile-record-label">Aset Ban</span><span className="mobile-record-value">{line.linkedTireCode || line.linkedTireEventRef}</span></div>}{line.linkedMaintenanceRef && <div className="mobile-record-kv"><span className="mobile-record-label">Maintenance</span><span className="mobile-record-value">{line.linkedMaintenanceType || line.linkedMaintenanceRef}</span></div>}</div>
+                            <div className="mobile-record-meta"><div className="mobile-record-kv"><span className="mobile-record-label">Tipe</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_LINE_TYPE_MAP[line.lineType]?.label}</span></div><div className="mobile-record-kv"><span className="mobile-record-label">Pihak</span><span className="mobile-record-value">{line.payeeName || '-'}</span></div>{line.recipientType && <div className="mobile-record-kv"><span className="mobile-record-label">Kategori Pihak</span><span className="mobile-record-value">{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[line.recipientType] || line.recipientType}</span></div>}{line.note && <div className="mobile-record-kv"><span className="mobile-record-label">Catatan</span><span className="mobile-record-value">{line.note}</span></div>}{line.linkedTireEventRef && <div className="mobile-record-kv"><span className="mobile-record-label">Aset Ban</span><span className="mobile-record-value"><Link href={`/fleet/tires/${line.linkedTireEventRef}`}>{line.linkedTireCode || line.linkedTireEventRef}</Link></span></div>}{line.linkedMaintenanceRef && <div className="mobile-record-kv"><span className="mobile-record-label">Maintenance</span><span className="mobile-record-value"><Link href={`/fleet/maintenance/${line.linkedMaintenanceRef}`}>{line.linkedMaintenanceType || line.linkedMaintenanceRef}</Link></span></div>}</div>
                             {(canManageIncident || canCreateExpense || canCreateTires || canCreateMaintenance) && <div className="mobile-record-actions">{renderActions(line)}</div>}
                         </div>
                     ))}
@@ -1178,37 +1286,37 @@ export default function IncidentDetailPage() {
 
             <div className="card mt-6"><div className="card-header"><span className="card-header-title">Timeline Penanganan</span></div><div className="card-body"><div className="timeline">{logs.map((item, idx) => <div key={item._id} className="timeline-item"><div className={`timeline-dot ${idx === logs.length - 1 ? 'active' : ''}`} /><div className="timeline-content"><div className="timeline-title">{item.note}</div><div className="timeline-meta">{formatDateTime(item.timestamp)} {item.userName ? `oleh ${item.userName}` : ''}</div></div></div>)}</div></div></div>
 
-            {showStatusModal && <div className="modal-overlay" onClick={() => { if (!savingStatus) setShowStatusModal(false); }}><div className="modal" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">Ubah Status Insiden</h3></div><div className="modal-body"><div className="form-group"><label className="form-label">Status Baru</label><select className="form-select" value={newStatus} onChange={event => setNewStatus(event.target.value)}>{availableStatuses.map(status => <option key={status} value={status}>{INCIDENT_STATUS_MAP[status]?.label}</option>)}</select></div><div className="form-group"><label className="form-label">Catatan <span className="required">*</span></label><textarea className="form-textarea" rows={3} value={actionNote} onChange={event => setActionNote(event.target.value)} placeholder="Jelaskan tindakan yang dilakukan..." /></div></div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowStatusModal(false)} disabled={savingStatus}>Batal</button><button className="btn btn-primary" onClick={handleIncidentStatusSave} disabled={savingStatus || !newStatus || !actionNote.trim()}><Save size={16} /> {savingStatus ? 'Menyimpan...' : 'Simpan'}</button></div></div></div>}
+            {showStatusModal && <div className="modal-overlay" onClick={() => { if (!savingStatus) setShowStatusModal(false); }}><div className="modal" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">Ubah Status Insiden</h3></div><div className="modal-body"><div className="form-group"><label className="form-label">Status Baru</label><Combobox className="form-select" value={newStatus} onChange={(v: string) => setNewStatus(v)} options={availableStatuses.map(status => ({ value: status, label: INCIDENT_STATUS_MAP[status]?.label || status }))} /></div><div className="form-group"><label className="form-label">Catatan <span className="required">*</span></label><textarea className="form-textarea" rows={3} value={actionNote} onChange={event => setActionNote(event.target.value)} placeholder="Jelaskan tindakan yang dilakukan..." /></div></div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowStatusModal(false)} disabled={savingStatus}>Batal</button><button className="btn btn-primary" onClick={handleIncidentStatusSave} disabled={savingStatus || !newStatus || !actionNote.trim()}><Save size={16} /> {savingStatus ? 'Menyimpan...' : 'Simpan'}</button></div></div></div>}
 
             {showLineModal && <div className="modal-overlay" onClick={() => { if (!savingLine) resetLineModal(); }}><div className="modal" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">{editingLine ? 'Edit Detail Insiden' : 'Tambah Detail Insiden'}</h3></div><div className="modal-body">
-                <div className="form-row"><div className="form-group"><label className="form-label">Tipe Detail</label><select className="form-select" value={lineForm.lineType} onChange={event => setLineType(event.target.value as IncidentSettlementLineType)}>{TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={lineForm.date} onChange={event => setLineForm(prev => ({ ...prev, date: event.target.value }))} /></div></div>
-                <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><select className="form-select" value={lineForm.category} onChange={event => setLineForm(prev => ({ ...prev, category: event.target.value as IncidentSettlementCategory }))}>{lineCategories.map(category => <option key={category} value={category}>{INCIDENT_SETTLEMENT_CATEGORY_MAP[category]}</option>)}</select></div><div className="form-group"><label className="form-label">Nominal</label><FormattedNumberInput allowDecimal={false} value={lineForm.amount} onValueChange={value => setLineForm(prev => ({ ...prev, amount: value }))} placeholder="Masukkan nominal" /></div></div>
+                <div className="form-row"><div className="form-group"><label className="form-label">Tipe Detail</label><Combobox className="form-select" value={lineForm.lineType} onChange={(v: string) => setLineType(v as IncidentSettlementLineType)} options={TYPE_OPTIONS} /></div><div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={lineForm.date} onChange={event => setLineForm(prev => ({ ...prev, date: event.target.value }))} /></div></div>
+                <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><Combobox className="form-select" value={lineForm.category} onChange={(v: string) => setLineForm(prev => ({ ...prev, category: v as IncidentSettlementCategory }))} options={lineCategories.map(category => ({ value: category, label: INCIDENT_SETTLEMENT_CATEGORY_MAP[category] }))} /></div><div className="form-group"><label className="form-label">Nominal</label><FormattedNumberInput allowDecimal={false} value={lineForm.amount} onValueChange={value => setLineForm(prev => ({ ...prev, amount: value }))} placeholder="Masukkan nominal" /></div></div>
                 <div className="form-group"><label className="form-label">Deskripsi <span className="required">*</span></label><input className="form-input" value={lineForm.description} onChange={event => setLineForm(prev => ({ ...prev, description: event.target.value }))} placeholder="Contoh: Derek ke bengkel, santunan driver, recovery asuransi" /></div>
-                <div className="form-row"><div className="form-group"><label className="form-label">{lineForm.lineType === 'COMPENSATION' ? 'Penerima Santunan' : lineForm.lineType === 'RECOVERY' ? 'Sumber Recovery' : 'Vendor / Pihak Terkait'}{lineForm.lineType !== 'COST' && <span className="required"> *</span>}</label><input className="form-input" value={lineForm.payeeName} onChange={event => setLineForm(prev => ({ ...prev, payeeName: event.target.value }))} placeholder={lineForm.lineType === 'RECOVERY' ? 'Contoh: PT Asuransi ABC' : 'Nama pihak terkait'} /></div>{lineForm.lineType === 'COMPENSATION' && <div className="form-group"><label className="form-label">Jenis Penerima <span className="required">*</span></label><select className="form-select" value={lineForm.recipientType} onChange={event => setLineForm(prev => ({ ...prev, recipientType: event.target.value }))}><option value="">Pilih</option>{RECIPIENT_OPTIONS.map(option => <option key={option} value={option}>{INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[option]}</option>)}</select></div>}</div>
+                <div className="form-row"><div className="form-group"><label className="form-label">{lineForm.lineType === 'COMPENSATION' ? 'Penerima Santunan' : lineForm.lineType === 'RECOVERY' ? 'Sumber Recovery' : 'Vendor / Pihak Terkait'}{lineForm.lineType !== 'COST' && <span className="required"> *</span>}</label><input className="form-input" value={lineForm.payeeName} onChange={event => setLineForm(prev => ({ ...prev, payeeName: event.target.value }))} placeholder={lineForm.lineType === 'RECOVERY' ? 'Contoh: PT Asuransi ABC' : 'Nama pihak terkait'} /></div>{lineForm.lineType === 'COMPENSATION' && <div className="form-group"><label className="form-label">Jenis Penerima <span className="required">*</span></label><Combobox className="form-select" value={lineForm.recipientType} onChange={(v: string) => setLineForm(prev => ({ ...prev, recipientType: v }))} options={RECIPIENT_OPTIONS.map(option => ({ value: option, label: INCIDENT_SETTLEMENT_RECIPIENT_TYPE_MAP[option] }))} placeholder="Pilih" /></div>}</div>
                 <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={3} value={lineForm.note} onChange={event => setLineForm(prev => ({ ...prev, note: event.target.value }))} placeholder="Keterangan tambahan, nomor kuitansi, atau konteks approval" /></div>
             </div><div className="modal-footer"><button className="btn btn-secondary" onClick={resetLineModal} disabled={savingLine}>Batal</button><button className="btn btn-primary" onClick={handleLineSave} disabled={savingLine}><Save size={16} /> {savingLine ? 'Menyimpan...' : 'Simpan'}</button></div></div></div>}
 
             {showExpenseModal && postingLine && <div className="modal-overlay" onClick={() => { if (!postingExpense) { setShowExpenseModal(false); setPostingLine(null); } }}><div className="modal" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">Posting Biaya Insiden</h3></div><div className="modal-body">
                 <div style={{ padding: '0.85rem 1rem', borderRadius: 12, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', marginBottom: '1rem' }}><div style={{ fontWeight: 700 }}>{postingLine.description}</div><div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>{INCIDENT_SETTLEMENT_CATEGORY_MAP[postingLine.category]} | {formatCurrency(postingLine.amount)}</div></div>
                 <div className="form-group"><label className="form-label">Sumber Penyelesaian Biaya <span className="required">*</span></label><div style={{ display: 'grid', gap: '0.5rem' }}>{INCIDENT_EXPENSE_ROUTE_OPTIONS.map(option => <button key={option.value} type="button" className={expenseForm.incidentExpenseRoute === option.value ? 'btn btn-primary' : 'btn btn-secondary'} style={{ justifyContent: 'flex-start', textAlign: 'left', alignItems: 'flex-start', flexDirection: 'column', gap: 4 }} onClick={() => chooseIncidentExpenseRoute(option.value)} disabled={postingExpense || (option.value === 'DRIVER_VOUCHER' && !incident.relatedDeliveryOrderRef)}><span>{option.label}</span><span style={{ fontSize: '0.75rem', fontWeight: 400, opacity: 0.8 }}>{option.hint}</span></button>)}</div></div>
-                <div className="form-row"><div className="form-group"><label className="form-label">Tanggal Posting</label><input type="date" className="form-input" value={expenseForm.date} onChange={event => setExpenseForm(prev => ({ ...prev, date: event.target.value }))} /></div><div className="form-group"><label className="form-label">Kategori Pengeluaran <span className="required">*</span></label><select className="form-select" value={expenseForm.categoryRef} onChange={event => setExpenseForm(prev => ({ ...prev, categoryRef: event.target.value }))} disabled={!expenseForm.incidentExpenseRoute}><option value="">Pilih kategori</option>{expenseCategoryOptions.map(category => <option key={category._id} value={category._id}>{category.name} ({getExpenseCategoryScopeLabel(inferExpenseCategoryScope(category))})</option>)}</select></div></div>
-                {expenseForm.incidentExpenseRoute === 'COMPANY_EXPENSE' ? <div className="form-group"><label className="form-label">Bayar dari Rekening / Kas <span className="required">*</span></label><select className="form-select" value={expenseForm.bankAccountRef} onChange={event => setExpenseForm(prev => ({ ...prev, bankAccountRef: event.target.value }))}><option value="">Pilih rekening atau kas</option>{bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}</select></div> : expenseForm.incidentExpenseRoute === 'DRIVER_VOUCHER' ? <div style={{ padding: '0.75rem 0.85rem', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Tidak memakai rekening / kas di posting ini. Biaya akan masuk biaya lain-lain uang jalan driver pada bon trip terkait.</div> : null}
+                <div className="form-row"><div className="form-group"><label className="form-label">Tanggal Posting</label><input type="date" className="form-input" value={expenseForm.date} onChange={event => setExpenseForm(prev => ({ ...prev, date: event.target.value }))} /></div><div className="form-group"><label className="form-label">Kategori Pengeluaran <span className="required">*</span></label><Combobox className="form-select" value={expenseForm.categoryRef} onChange={(v: string) => setExpenseForm(prev => ({ ...prev, categoryRef: v }))} options={expenseCategoryOptions.map(category => ({ value: category._id, label: `${category.name} (${getExpenseCategoryScopeLabel(inferExpenseCategoryScope(category))})` }))} placeholder="Pilih kategori" disabled={!expenseForm.incidentExpenseRoute} /></div></div>
+                {expenseForm.incidentExpenseRoute === 'COMPANY_EXPENSE' ? <div className="form-group"><label className="form-label">Bayar dari Rekening / Kas <span className="required">*</span></label><Combobox className="form-select" value={expenseForm.bankAccountRef} onChange={(v: string) => setExpenseForm(prev => ({ ...prev, bankAccountRef: v }))} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder="Pilih rekening atau kas" /></div> : expenseForm.incidentExpenseRoute === 'DRIVER_VOUCHER' ? <div style={{ padding: '0.75rem 0.85rem', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Tidak memakai rekening / kas di posting ini. Biaya akan masuk biaya lain-lain uang jalan driver pada bon trip terkait.</div> : null}
                 <div className="form-group"><label className="form-label">Catatan Pengeluaran</label><input className="form-input" value={expenseForm.note} onChange={event => setExpenseForm(prev => ({ ...prev, note: event.target.value }))} placeholder="Catatan singkat pengeluaran" /></div>
                 <div className="form-group"><label className="form-label">Deskripsi Pengeluaran</label><textarea className="form-textarea" rows={3} value={expenseForm.description} onChange={event => setExpenseForm(prev => ({ ...prev, description: event.target.value }))} placeholder="Deskripsi yang akan tersimpan di modul pengeluaran" /></div>
             </div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => { setShowExpenseModal(false); setPostingLine(null); }} disabled={postingExpense}>Batal</button><button className="btn btn-primary" onClick={postExpense} disabled={postingExpense || !expenseForm.incidentExpenseRoute || !expenseForm.categoryRef || (expenseForm.incidentExpenseRoute === 'COMPANY_EXPENSE' && !expenseForm.bankAccountRef)}><ReceiptText size={16} /> {postingExpense ? 'Memposting...' : 'Posting Pengeluaran'}</button></div></div></div>}
 
             {showHandlingModal && <div className="modal-overlay" onClick={() => closeHandlingModal()}><div className="modal modal-lg" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">Catat Penanganan Maintenance Insiden</h3></div><div className="modal-body">
-                <div className="form-group"><label className="form-label">Sumber Material</label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button type="button" className={handlingForm.sourceMode === 'WAREHOUSE_STOCK' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => switchHandlingSourceMode('WAREHOUSE_STOCK')} disabled={savingHandling}><Wrench size={16} /> Ambil dari Gudang</button><button type="button" className={handlingForm.sourceMode === 'DIRECT_PURCHASE' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => switchHandlingSourceMode('DIRECT_PURCHASE')} disabled={savingHandling || directPurchaseLineOptions.length === 0}><ReceiptText size={16} /> Beli di Lokasi</button></div></div>
-                {handlingForm.sourceMode === 'DIRECT_PURCHASE' && <div className="form-group"><label className="form-label">Detail Biaya Posted <span className="required">*</span></label><select className="form-select" value={handlingForm.settlementLineRef} onChange={event => selectHandlingSettlementLine(event.target.value)} disabled={savingHandling}><option value="">Pilih detail biaya</option>{directPurchaseLineOptions.map(line => <option key={line._id} value={line._id}>{INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category]} - {line.description} ({formatCurrency(line.linkedExpenseAmount ?? line.amount)})</option>)}</select>{selectedHandlingLine && <div className={directOverAllocatedAmount > 0 ? 'text-danger' : 'text-muted'} style={{ fontSize: '0.75rem', marginTop: 4 }}>Alokasi material {formatCurrency(directAllocatedTotal)} dari {formatCurrency(directExpenseAmount)}{directOverAllocatedAmount > 0 ? ` - melebihi ${formatCurrency(directOverAllocatedAmount)}` : directUnallocatedAmount > 0 ? ` - sisa biaya/jasa ${formatCurrency(directUnallocatedAmount)}` : ' - pas'}</div>}</div>}
+                <div className="form-group"><label className="form-label">Sumber Material</label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button type="button" className={handlingForm.sourceMode === 'WAREHOUSE_STOCK' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => switchHandlingSourceMode('WAREHOUSE_STOCK')} disabled={savingHandling}><Wrench size={16} /> Ambil dari Gudang</button><button type="button" className={handlingForm.sourceMode === 'DIRECT_PURCHASE' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => switchHandlingSourceMode('DIRECT_PURCHASE')} disabled={savingHandling || (!canCreateInlinePurchase && directPurchaseLineOptions.length === 0)}><ReceiptText size={16} /> Beli di Lokasi</button></div></div>
+                {handlingForm.sourceMode === 'DIRECT_PURCHASE' && <><div className="form-group"><label className="form-label">Detail Biaya Posted</label><Combobox className="form-select" value={handlingForm.settlementLineRef} onChange={(v: string) => selectHandlingSettlementLine(v)} options={[...(canCreateInlinePurchase ? [{ value: INLINE_PURCHASE_NEW_REF, label: 'Belum ada biaya posted \u2014 catat & posting beli lokal baru' }] : []), ...directPurchaseLineOptions.map(line => ({ value: line._id, label: `${INCIDENT_SETTLEMENT_CATEGORY_MAP[line.category]} - ${line.description} (${formatCurrency(line.linkedExpenseAmount ?? line.amount)})` }))]} disabled={savingHandling} />{selectedHandlingLine && <div className={directOverAllocatedAmount > 0 ? 'text-danger' : 'text-muted'} style={{ fontSize: '0.75rem', marginTop: 4 }}>Alokasi material {formatCurrency(directAllocatedTotal)} dari {formatCurrency(directExpenseAmount)}{directOverAllocatedAmount > 0 ? ` - melebihi ${formatCurrency(directOverAllocatedAmount)}` : directUnallocatedAmount > 0 ? ` - sisa biaya/jasa ${formatCurrency(directUnallocatedAmount)}` : ' - pas'}</div>}</div>{isNewInlinePurchase && <><div className="form-group"><label className="form-label">Kategori Beli Lokal <span className="required">*</span></label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button type="button" className={handlingForm.inlinePurchaseCategory === 'SPAREPART' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => chooseInlinePurchaseCategory('SPAREPART')} disabled={savingHandling}>Sparepart &amp; Material</button><button type="button" className={handlingForm.inlinePurchaseCategory === 'REPAIR' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => chooseInlinePurchaseCategory('REPAIR')} disabled={savingHandling}>Jasa Perbaikan</button></div></div><div className="form-row"><div className="form-group"><label className="form-label">Total Pembelian <span className="required">*</span></label><FormattedNumberInput allowDecimal={false} value={handlingForm.inlinePurchaseAmount} onValueChange={value => { inlinePurchaseAmountTouchedRef.current = true; setHandlingForm(prev => ({ ...prev, inlinePurchaseAmount: value })); }} disabled={savingHandling} /><small className="form-hint">Saran dari total material di bawah: {formatCurrency(directAllocatedTotal)}</small></div><div className="form-group"><label className="form-label">Sumber Pembayaran <span className="required">*</span></label><Combobox className="form-select" value={handlingForm.inlinePurchaseExpenseRoute} onChange={(v: string) => chooseInlinePurchaseExpenseRoute(v as IncidentExpenseRoute)} options={INCIDENT_EXPENSE_ROUTE_OPTIONS.filter(option => option.value === 'DRIVER_VOUCHER' ? Boolean(incident.relatedDeliveryOrderRef) : true).map(option => ({ value: option.value, label: option.label }))} placeholder="Pilih sumber" disabled={savingHandling} /></div></div><div className="form-group"><label className="form-label">Kategori Pengeluaran <span className="required">*</span></label><Combobox className="form-select" value={handlingForm.inlinePurchaseExpenseCategoryRef} onChange={(v: string) => setHandlingForm(prev => ({ ...prev, inlinePurchaseExpenseCategoryRef: v }))} options={inlineExpenseCategoryOptions.map(category => ({ value: category._id, label: category.name }))} placeholder="Pilih kategori" disabled={savingHandling} />{handlingForm.inlinePurchaseExpenseRoute && inlineExpenseCategoryOptions.length === 0 && <small className="text-danger">Belum ada kategori pengeluaran untuk sumber ini.</small>}</div>{handlingForm.inlinePurchaseExpenseRoute === 'COMPANY_EXPENSE' && <div className="form-group"><label className="form-label">Rekening / Kas Perusahaan <span className="required">*</span></label><Combobox className="form-select" value={handlingForm.inlinePurchaseBankAccountRef} onChange={(v: string) => setHandlingForm(prev => ({ ...prev, inlinePurchaseBankAccountRef: v }))} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder="Pilih rekening / kas" disabled={savingHandling} /></div>}{handlingForm.inlinePurchaseExpenseRoute === 'DRIVER_VOUCHER' && <div className="info-banner" style={{ marginTop: '0.25rem' }}><div className="info-banner-text">Biaya tercatat sebagai uang jalan driver. Pastikan DO insiden (bon trip) sudah dibuat dan belum lunas.</div></div>}<div className="form-row"><div className="form-group"><label className="form-label">Keterangan Pembelian</label><input className="form-input" value={handlingForm.inlinePurchaseDescription} onChange={event => setHandlingForm(prev => ({ ...prev, inlinePurchaseDescription: event.target.value }))} placeholder="Opsional, mis. nama toko / nomor nota" disabled={savingHandling} /></div></div></>}</>}
                 <div className="form-row"><div className="form-group"><label className="form-label">Tanggal Penanganan</label><input type="date" className="form-input" value={handlingForm.completedDate} onChange={event => setHandlingForm(prev => ({ ...prev, completedDate: event.target.value }))} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Odometer</label><FormattedNumberInput allowDecimal={false} value={handlingForm.odometerAtService} onValueChange={value => setHandlingForm(prev => ({ ...prev, odometerAtService: value || 0 }))} disabled={savingHandling} /></div></div>
                 <div className="form-row"><div className="form-group"><label className="form-label">Vendor / Bengkel</label><input className="form-input" value={handlingForm.vendor} onChange={event => setHandlingForm(prev => ({ ...prev, vendor: event.target.value }))} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Tipe Maintenance</label><input className="form-input" value={handlingForm.maintenanceType} onChange={event => setHandlingForm(prev => ({ ...prev, maintenanceType: event.target.value }))} disabled={savingHandling} /></div></div>
 
-                {handlingForm.sourceMode === 'WAREHOUSE_STOCK' && <div className="form-group"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}><label className="form-label" style={{ marginBottom: 0 }}>Barang Gudang <span className="required">*</span></label><button type="button" className="btn btn-secondary" onClick={addWarehouseHandlingLine} disabled={savingHandling}><Plus size={16} /> Tambah Barang</button></div><div style={{ display: 'grid', gap: 10 }}>{handlingForm.warehouseMaterials.map((row, index) => { const selectedItem = standardWarehouseItems.find(item => item._id === row.warehouseItemRef); return <div key={row.rowId} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12 }}><div className="form-row"><div className="form-group"><label className="form-label">Barang #{index + 1}</label><select className="form-select" value={row.warehouseItemRef} onChange={event => updateWarehouseHandlingLine(row.rowId, { warehouseItemRef: event.target.value })} disabled={savingHandling}><option value="">Pilih barang</option>{stockedStandardWarehouseItems.map(item => <option key={item._id} value={item._id}>{item.itemCode} - {item.name} | Stok {formatQuantity(item.currentStockQty || 0, 3)} {item.unit}</option>)}</select>{selectedItem && <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Stok tersedia {formatQuantity(selectedItem.currentStockQty || 0, 3)} {selectedItem.unit}</div>}</div><div className="form-group"><label className="form-label">Qty Dipakai</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.quantity} onValueChange={value => updateWarehouseHandlingLine(row.rowId, { quantity: value || 0 })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Komponen Unit</label><input className="form-input" value={row.componentLabel} onChange={event => updateWarehouseHandlingLine(row.rowId, { componentLabel: event.target.value })} disabled={savingHandling || !row.attachToVehicle} /></div><div className="form-group"><label className="form-label">Catatan</label><input className="form-input" value={row.note} onChange={event => updateWarehouseHandlingLine(row.rowId, { note: event.target.value })} disabled={savingHandling} /></div></div><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '0.85rem' }}><input type="checkbox" checked={row.attachToVehicle} onChange={event => updateWarehouseHandlingLine(row.rowId, { attachToVehicle: event.target.checked })} disabled={savingHandling} /> Digunakan di unit</label><button type="button" className="table-action-btn danger" onClick={() => removeWarehouseHandlingLine(row.rowId)} disabled={savingHandling}><Trash2 size={14} /> Hapus</button></div></div>; })}</div></div>}
+                {handlingForm.sourceMode === 'WAREHOUSE_STOCK' && <div className="form-group"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}><label className="form-label" style={{ marginBottom: 0 }}>Barang Gudang <span className="required">*</span></label><button type="button" className="btn btn-secondary" onClick={addWarehouseHandlingLine} disabled={savingHandling}><Plus size={16} /> Tambah Barang</button></div><div style={{ display: 'grid', gap: 10 }}>{handlingForm.warehouseMaterials.map((row, index) => { const selectedItem = standardWarehouseItems.find(item => item._id === row.warehouseItemRef); return <div key={row.rowId} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12 }}><div className="form-row"><div className="form-group"><label className="form-label">Barang #{index + 1}</label><Combobox className="form-select" value={row.warehouseItemRef} onChange={(v: string) => updateWarehouseHandlingLine(row.rowId, { warehouseItemRef: v })} options={stockedStandardWarehouseItems.map(item => ({ value: item._id, label: `${item.itemCode} - ${item.name} | Stok ${formatQuantity(item.currentStockQty || 0, 3)} ${item.unit}` }))} placeholder="Pilih barang" disabled={savingHandling} />{selectedItem && <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Stok tersedia {formatQuantity(selectedItem.currentStockQty || 0, 3)} {selectedItem.unit}</div>}</div><div className="form-group"><label className="form-label">Qty Dipakai</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.quantity} onValueChange={value => updateWarehouseHandlingLine(row.rowId, { quantity: value || 0 })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Komponen Unit</label><input className="form-input" value={row.componentLabel} onChange={event => updateWarehouseHandlingLine(row.rowId, { componentLabel: event.target.value })} disabled={savingHandling} /><div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Nama komponen yang terpasang di unit (contoh: Filter solar kanan). Terpakai saat "Digunakan di unit" dicentang.</div></div><div className="form-group"><label className="form-label">Catatan</label><input className="form-input" value={row.note} onChange={event => updateWarehouseHandlingLine(row.rowId, { note: event.target.value })} disabled={savingHandling} /></div></div><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '0.85rem' }}><input type="checkbox" checked={row.attachToVehicle} onChange={event => updateWarehouseHandlingLine(row.rowId, { attachToVehicle: event.target.checked })} disabled={savingHandling} /> Digunakan di unit</label><button type="button" className="table-action-btn danger" onClick={() => removeWarehouseHandlingLine(row.rowId)} disabled={savingHandling}><Trash2 size={14} /> Hapus</button></div></div>; })}</div></div>}
 
-                {handlingForm.sourceMode === 'DIRECT_PURCHASE' && <div className="form-group"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}><label className="form-label" style={{ marginBottom: 0 }}>Material Beli Lokal</label><button type="button" className="btn btn-secondary" onClick={addDirectHandlingLine} disabled={savingHandling}><Plus size={16} /> Tambah Material</button></div>{handlingForm.directMaterials.length === 0 ? <div className="empty-state" style={{ padding: '1rem' }}><div className="empty-state-title">Tanpa material</div><div className="empty-state-text">Gunakan untuk perbaikan jasa saja.</div></div> : <div style={{ display: 'grid', gap: 10 }}>{handlingForm.directMaterials.map((row, index) => <div key={row.rowId} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12 }}><div className="form-row"><div className="form-group"><label className="form-label">Acuan Barang #{index + 1}</label><select className="form-select" value={row.linkedWarehouseItemRef} onChange={event => updateDirectHandlingLine(row.rowId, { linkedWarehouseItemRef: event.target.value })} disabled={savingHandling}><option value="">Tidak ada acuan</option>{standardWarehouseItems.map(item => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select></div><div className="form-group"><label className="form-label">Nama Barang</label><input className="form-input" value={row.itemName} onChange={event => updateDirectHandlingLine(row.rowId, { itemName: event.target.value })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={row.unit} onChange={event => updateDirectHandlingLine(row.rowId, { unit: event.target.value as InventoryUnit })} disabled={savingHandling}>{INVENTORY_UNIT_OPTIONS.map(unit => <option key={unit} value={unit}>{unit}</option>)}</select></div><div className="form-group"><label className="form-label">Harga Satuan</label><FormattedNumberInput allowDecimal={false} value={row.unitCost} onValueChange={value => updateDirectHandlingLine(row.rowId, { unitCost: value || 0 })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Qty Dipakai</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.quantity} onValueChange={value => updateDirectHandlingLine(row.rowId, { quantity: value || 0 })} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Qty Sisa Masuk Gudang</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.leftoverQty} onValueChange={value => updateDirectHandlingLine(row.rowId, { leftoverQty: value || 0 })} disabled={savingHandling} /><div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Isi jumlah barang sisa, bukan nominal rupiah.</div></div></div><div className="form-row"><div className="form-group"><label className="form-label">Barang Gudang Tujuan Sisa</label><select className="form-select" value={row.leftoverWarehouseItemRef} onChange={event => updateDirectHandlingLine(row.rowId, { leftoverWarehouseItemRef: event.target.value })} disabled={savingHandling || row.leftoverQty <= 0}><option value="">Pilih jika ada sisa</option>{standardWarehouseItems.map(item => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select></div><div className="form-group"><label className="form-label">Komponen Unit</label><input className="form-input" value={row.componentLabel} onChange={event => updateDirectHandlingLine(row.rowId, { componentLabel: event.target.value })} disabled={savingHandling || !row.attachToVehicle} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Catatan</label><input className="form-input" value={row.note} onChange={event => updateDirectHandlingLine(row.rowId, { note: event.target.value })} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Subtotal Material</label><input className="form-input" value={formatCurrency((Math.max(row.quantity, 0) + Math.max(row.leftoverQty, 0)) * Math.max(row.unitCost, 0))} readOnly /></div></div><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '0.85rem' }}><input type="checkbox" checked={row.attachToVehicle} onChange={event => updateDirectHandlingLine(row.rowId, { attachToVehicle: event.target.checked })} disabled={savingHandling} /> Digunakan di unit</label><button type="button" className="table-action-btn danger" onClick={() => removeDirectHandlingLine(row.rowId)} disabled={savingHandling}><Trash2 size={14} /> Hapus</button></div></div>)}</div>}</div>}
+                {handlingForm.sourceMode === 'DIRECT_PURCHASE' && <div className="form-group"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}><label className="form-label" style={{ marginBottom: 0 }}>Material Beli Lokal</label><button type="button" className="btn btn-secondary" onClick={addDirectHandlingLine} disabled={savingHandling}><Plus size={16} /> Tambah Material</button></div>{handlingForm.directMaterials.length === 0 ? <div className="empty-state" style={{ padding: '1rem' }}><div className="empty-state-title">Belum ada material</div><div className="empty-state-text">Klik "Tambah Material" untuk mencatat barang atau sparepart yang dibeli di lokasi.</div></div> : <div style={{ display: 'grid', gap: 10 }}>{handlingForm.directMaterials.map((row, index) => <div key={row.rowId} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12 }}><div className="form-row"><div className="form-group"><label className="form-label">Acuan Barang #{index + 1}</label><Combobox className="form-select" value={row.linkedWarehouseItemRef} onChange={(v: string) => updateDirectHandlingLine(row.rowId, { linkedWarehouseItemRef: v })} options={standardWarehouseItems.map(item => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))} placeholder="Tidak ada acuan" disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Nama Barang</label><input className="form-input" value={row.itemName} onChange={event => updateDirectHandlingLine(row.rowId, { itemName: event.target.value })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><Combobox className="form-select" value={row.unit} onChange={(v: string) => updateDirectHandlingLine(row.rowId, { unit: v as InventoryUnit })} options={[...INVENTORY_UNIT_OPTIONS]} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Harga Satuan</label><FormattedNumberInput allowDecimal={false} value={row.unitCost} onValueChange={value => updateDirectHandlingLine(row.rowId, { unitCost: value || 0 })} disabled={savingHandling} /></div></div><div className="form-row"><div className="form-group"><label className="form-label">Qty Dipakai</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.quantity} onValueChange={value => updateDirectHandlingLine(row.rowId, { quantity: value || 0 })} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Qty Sisa Masuk Gudang</label><FormattedNumberInput allowDecimal maxFractionDigits={3} value={row.leftoverQty} onValueChange={value => updateDirectHandlingLine(row.rowId, { leftoverQty: value || 0 })} disabled={savingHandling} /><div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Isi jumlah barang sisa, bukan nominal rupiah.</div></div></div><div className="form-row"><div className="form-group"><label className="form-label">Komponen Unit</label><input className="form-input" value={row.componentLabel} onChange={event => updateDirectHandlingLine(row.rowId, { componentLabel: event.target.value })} disabled={savingHandling} /><div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Nama komponen yang terpasang di unit (contoh: Filter solar kanan). Terpakai saat "Digunakan di unit" dicentang.</div></div></div><div className="form-row"><div className="form-group"><label className="form-label">Catatan</label><input className="form-input" value={row.note} onChange={event => updateDirectHandlingLine(row.rowId, { note: event.target.value })} disabled={savingHandling} /></div><div className="form-group"><label className="form-label">Subtotal Material</label><input className="form-input" value={formatCurrency((Math.max(row.quantity, 0) + Math.max(row.leftoverQty, 0)) * Math.max(row.unitCost, 0))} readOnly /></div></div><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '0.85rem' }}><input type="checkbox" checked={row.attachToVehicle} onChange={event => updateDirectHandlingLine(row.rowId, { attachToVehicle: event.target.checked })} disabled={savingHandling} /> Digunakan di unit</label><button type="button" className="table-action-btn danger" onClick={() => removeDirectHandlingLine(row.rowId)} disabled={savingHandling}><Trash2 size={14} /> Hapus</button></div></div>)}</div>}</div>}
 
                 <div className="form-group"><label className="form-label">Catatan Selesai</label><textarea className="form-textarea" rows={3} value={handlingForm.completionNotes} onChange={event => setHandlingForm(prev => ({ ...prev, completionNotes: event.target.value }))} disabled={savingHandling} /></div>
-            </div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => closeHandlingModal()} disabled={savingHandling}>Batal</button><button className="btn btn-primary" onClick={saveIncidentHandling} disabled={savingHandling || !handlingForm.completedDate || (handlingForm.sourceMode === 'DIRECT_PURCHASE' && (!selectedHandlingLine || directOverAllocatedAmount > 0))}><Save size={16} /> {savingHandling ? 'Menyimpan...' : 'Simpan Penanganan'}</button></div></div></div>}
+            </div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => closeHandlingModal()} disabled={savingHandling}>Batal</button><button className="btn btn-primary" onClick={saveIncidentHandling} disabled={savingHandling || !handlingForm.completedDate || (handlingForm.sourceMode === 'DIRECT_PURCHASE' && (directOverAllocatedAmount > 0 || (isNewInlinePurchase ? (!handlingForm.inlinePurchaseExpenseRoute || !handlingForm.inlinePurchaseExpenseCategoryRef || !(handlingForm.inlinePurchaseAmount > 0) || (handlingForm.inlinePurchaseExpenseRoute === 'COMPANY_EXPENSE' && !handlingForm.inlinePurchaseBankAccountRef)) : !selectedHandlingLine)))}><Save size={16} /> {savingHandling ? 'Menyimpan...' : (isNewInlinePurchase ? 'Catat & Posting Beli Lokal' : 'Simpan Penanganan')}</button></div></div></div>}
 
             {showTireFollowUpModal && tireFollowUpLine && <div className="modal-overlay" onClick={() => closeTireFollowUpModal()}><div className="modal modal-lg" onClick={event => event.stopPropagation()}><div className="modal-header"><h3 className="modal-title">Catat Aset Ban dari Insiden</h3></div><div className="modal-body">
                 <div style={{ padding: '0.85rem 1rem', borderRadius: 12, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', marginBottom: '1rem' }}>
@@ -1217,8 +1325,8 @@ export default function IncidentDetailPage() {
                         Biaya sudah diposting dari insiden. Form ini hanya mencatat aset ban tertracking ke Gudang Ban agar perpindahan, pemasangan, dan persentase pemakaiannya tetap ditangani modul Ban.
                     </div>
                 </div>
-                <div className="form-row"><div className="form-group"><label className="form-label">Master Barang Ban Tertracking <span className="required">*</span></label><select className="form-select" value={tireFollowUpForm.linkedWarehouseItemRef} onChange={event => updateTireFollowUpWarehouseItem(event.target.value)} disabled={savingTireFollowUp}><option value="">Pilih master barang</option>{trackedTireWarehouseItems.map(item => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select>{selectedTireWarehouseItem && <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Stok aktif {selectedTireWarehouseItem.currentStockQty || 0} {selectedTireWarehouseItem.unit || ''}. Pencatatan aset ban baru akan menambah stok gudang ban tertracking.</div>}</div><div className="form-group"><label className="form-label">Kode Ban <span className="required">*</span></label><input className="form-input" value={tireFollowUpForm.tireCode} onChange={event => setTireFollowUpForm(prev => ({ ...prev, tireCode: event.target.value.toUpperCase() }))} placeholder="Contoh: BAN-INC-0001" disabled={savingTireFollowUp} /></div></div>
-                <div className="form-row"><div className="form-group"><label className="form-label">Jenis Ban</label><select className="form-select" value={tireFollowUpForm.tireType} onChange={event => setTireFollowUpForm(prev => ({ ...prev, tireType: event.target.value as IncidentTireFollowUpForm['tireType'] }))} disabled={savingTireFollowUp}>{TIRE_TYPE_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}</select></div><div className="form-group"><label className="form-label">Tanggal Pencatatan</label><input type="date" className="form-input" value={tireFollowUpForm.installDate} onChange={event => setTireFollowUpForm(prev => ({ ...prev, installDate: event.target.value }))} disabled={savingTireFollowUp} /></div></div>
+                <div className="form-row"><div className="form-group"><label className="form-label">Master Barang Ban Tertracking <span className="required">*</span></label><Combobox className="form-select" value={tireFollowUpForm.linkedWarehouseItemRef} onChange={(v: string) => updateTireFollowUpWarehouseItem(v)} options={trackedTireWarehouseItems.map(item => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))} placeholder="Pilih master barang" disabled={savingTireFollowUp} />{selectedTireWarehouseItem && <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Stok aktif {selectedTireWarehouseItem.currentStockQty || 0} {selectedTireWarehouseItem.unit || ''}. Pencatatan aset ban baru akan menambah stok gudang ban tertracking.</div>}</div><div className="form-group"><label className="form-label">Kode Ban <span className="required">*</span></label><input className="form-input" value={tireFollowUpForm.tireCode} onChange={event => setTireFollowUpForm(prev => ({ ...prev, tireCode: event.target.value.toUpperCase() }))} placeholder="Contoh: BAN-INC-0001" disabled={savingTireFollowUp} /></div></div>
+                <div className="form-row"><div className="form-group"><label className="form-label">Jenis Ban</label><Combobox className="form-select" value={tireFollowUpForm.tireType} onChange={(v: string) => setTireFollowUpForm(prev => ({ ...prev, tireType: v as IncidentTireFollowUpForm['tireType'] }))} options={[...TIRE_TYPE_OPTIONS]} disabled={savingTireFollowUp} /></div><div className="form-group"><label className="form-label">Tanggal Pencatatan</label><input type="date" className="form-input" value={tireFollowUpForm.installDate} onChange={event => setTireFollowUpForm(prev => ({ ...prev, installDate: event.target.value }))} disabled={savingTireFollowUp} /></div></div>
                 <div className="form-row"><div className="form-group"><label className="form-label">Merk Ban <span className="required">*</span></label><input className="form-input" value={tireFollowUpForm.tireBrand} onChange={event => setTireFollowUpForm(prev => ({ ...prev, tireBrand: event.target.value }))} disabled={savingTireFollowUp} /></div><div className="form-group"><label className="form-label">Ukuran Ban <span className="required">*</span></label><input className="form-input" value={tireFollowUpForm.tireSize} onChange={event => setTireFollowUpForm(prev => ({ ...prev, tireSize: event.target.value }))} disabled={savingTireFollowUp} /></div></div>
                 <div className="form-row"><div className="form-group"><label className="form-label">Nilai Awal Aset Ban</label><FormattedNumberInput allowDecimal={false} value={tireFollowUpForm.originalCost} onValueChange={value => setTireFollowUpForm(prev => ({ ...prev, originalCost: value }))} disabled={savingTireFollowUp} /></div><div className="form-group"><label className="form-label">Lokasi Awal</label><input className="form-input" value="Gudang Ban" readOnly /></div></div>
                 <div className="form-row"><div className="form-group"><label className="form-label">Sumber Aset Ban</label><input className="form-input" value="Ban mandiri / beli saat DO" readOnly /></div><div className="form-group"><label className="form-label">Status Awal</label><input className="form-input" value="Masuk Gudang Ban tertracking" readOnly /></div></div>
@@ -1232,10 +1340,55 @@ export default function IncidentDetailPage() {
                     </div>
                 </div>
                 <div className="form-row"><div className="form-group"><label className="form-label">Unit Armada</label><input className="form-input" value={incidentVehicle ? `${incidentVehicle.plateNumber || incident?.vehiclePlate || '-'}${incidentVehicle.unitCode ? ` - ${incidentVehicle.unitCode}` : ''}` : (incident?.vehiclePlate || '-')} readOnly /></div><div className="form-group"><label className="form-label">Tanggal Pasang</label><input type="date" className="form-input" value={tireInstallForm.maintenanceDate} onChange={event => setTireInstallForm(prev => ({ ...prev, maintenanceDate: event.target.value }))} disabled={savingTireInstall} /></div></div>
-                <div className="form-row"><div className="form-group"><label className="form-label">Slot Ban <span className="required">*</span></label><select className="form-select" value={tireInstallForm.slotCode} onChange={event => setTireInstallForm(prev => ({ ...prev, slotCode: event.target.value, oldTireUsagePercent: null }))} disabled={savingTireInstall}><option value="">Pilih slot</option>{incidentTireSlotOptions.map(slotCode => { const occupied = installedVehicleTires.find(tire => resolveTireSlotCode(tire) === slotCode); return <option key={slotCode} value={slotCode}>{slotCode} - {formatTireSlotLabel(slotCode)}{occupied ? ` | Terisi ${occupied.tireCodeLabel}` : ' | Kosong'}</option>; })}</select></div><div className="form-group"><label className="form-label">Sumber Aset Ban</label><input className="form-input" value="Ban mandiri / beli saat DO" readOnly /></div></div>
-                {oldTireInInstallSlot && <div className="info-banner" style={{ marginBottom: '1rem' }}><div className="info-banner-title">Slot tujuan sudah berisi ban lama</div><div className="info-banner-text" style={{ display: 'grid', gap: '0.65rem' }}><div>{oldTireInInstallSlot.tireCodeLabel || oldTireInInstallSlot.tireCode} akan keluar dari slot {tireInstallForm.slotCode}. Isi pemakaian ban lama sebelum diganti agar sisa nilai dan histori tetap benar.</div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Ban Lama Dipindahkan Ke</label><select className="form-select" value={tireInstallForm.oldTireDestination} onChange={event => setTireInstallForm(prev => ({ ...prev, oldTireDestination: event.target.value as IncidentTireInstallForm['oldTireDestination'] }))} disabled={savingTireInstall}><option value="WAREHOUSE">Gudang Ban</option><option value="SCRAPPED">Afkir</option></select></div><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Persentase Pemakaian Ban Lama</label><FormattedNumberInput allowDecimal maxFractionDigits={2} value={tireInstallForm.oldTireUsagePercent} onValueChange={value => setTireInstallForm(prev => ({ ...prev, oldTireUsagePercent: value }))} placeholder={`Maks ${formatQuantity(oldTireRemainingPercent, 2)}%`} disabled={savingTireInstall} /></div></div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Preview Biaya Ban Lama</label><input className="form-input" value={`${formatCurrency(oldTireUsageCostPreview)} | sisa ${formatQuantity(oldTireRemainingPercentAfter, 2)}% (${formatCurrency(oldTireRemainingValueAfter)})`} readOnly /></div></div></div></div>}
+                <div className="form-row"><div className="form-group"><label className="form-label">Slot Ban <span className="required">*</span></label><Combobox className="form-select" value={tireInstallForm.slotCode} onChange={(v: string) => setTireInstallForm(prev => ({ ...prev, slotCode: v, oldTireUsagePercent: null }))} options={incidentTireSlotOptions.map(slotCode => { const occupied = installedVehicleTires.find(tire => resolveTireSlotCode(tire) === slotCode); return { value: slotCode, label: `${slotCode} - ${formatTireSlotLabel(slotCode)}${occupied ? ` | Terisi ${occupied.tireCodeLabel}` : ' | Kosong'}` }; })} placeholder="Pilih slot" disabled={savingTireInstall} /></div><div className="form-group"><label className="form-label">Sumber Aset Ban</label><input className="form-input" value="Ban mandiri / beli saat DO" readOnly /></div></div>
+                {oldTireInInstallSlot && <div className="info-banner" style={{ marginBottom: '1rem' }}><div className="info-banner-title">Slot tujuan sudah berisi ban lama</div><div className="info-banner-text" style={{ display: 'grid', gap: '0.65rem' }}><div>{oldTireInInstallSlot.tireCodeLabel || oldTireInInstallSlot.tireCode} akan keluar dari slot {tireInstallForm.slotCode}. Isi pemakaian ban lama sebelum diganti agar sisa nilai dan histori tetap benar.</div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Ban Lama Dipindahkan Ke</label><Combobox className="form-select" value={tireInstallForm.oldTireDestination} onChange={(v: string) => setTireInstallForm(prev => ({ ...prev, oldTireDestination: v as IncidentTireInstallForm['oldTireDestination'] }))} options={[{ value: 'WAREHOUSE', label: 'Gudang Ban' }, { value: 'SCRAPPED', label: 'Afkir' }]} disabled={savingTireInstall} /></div><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Persentase Pemakaian Ban Lama</label><FormattedNumberInput allowDecimal maxFractionDigits={2} value={tireInstallForm.oldTireUsagePercent} onValueChange={value => setTireInstallForm(prev => ({ ...prev, oldTireUsagePercent: value }))} placeholder={`Maks ${formatQuantity(oldTireRemainingPercent, 2)}%`} disabled={savingTireInstall} /></div></div><div className="form-row" style={{ marginBottom: 0 }}><div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Preview Biaya Ban Lama</label><input className="form-input" value={`${formatCurrency(oldTireUsageCostPreview)} | sisa ${formatQuantity(oldTireRemainingPercentAfter, 2)}% (${formatCurrency(oldTireRemainingValueAfter)})`} readOnly /></div></div></div></div>}
                 <div className="form-group"><label className="form-label">Catatan Pemasangan</label><textarea className="form-textarea" rows={3} value={tireInstallForm.note} onChange={event => setTireInstallForm(prev => ({ ...prev, note: event.target.value }))} placeholder="Opsional: lokasi pemasangan, kondisi ban lama, atau nomor kuitansi" disabled={savingTireInstall} /></div>
             </div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => closeTireInstallModal()} disabled={savingTireInstall}>Batal</button><button className="btn btn-primary" onClick={saveTireInstall} disabled={savingTireInstall || !tireInstallForm.slotCode || !tireInstallForm.maintenanceDate || Boolean(oldTireInInstallSlot && tireInstallForm.oldTireUsagePercent === null)}><Save size={16} /> {savingTireInstall ? 'Memasang...' : 'Pasang Ban'}</button></div></div></div>}
+
+            {deleteConfirmLine && (
+                <div className="modal-overlay" onClick={() => { if (!deletingLineRef) setDeleteConfirmLine(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Hapus Detail Insiden?</h3></div>
+                        <div className="modal-body"><p>Hapus detail insiden <strong>{deleteConfirmLine.description || 'tanpa deskripsi'}</strong>? Detail yang sudah diposting tidak bisa dihapus, gunakan penolakan jika detail sudah terposting.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmLine(null)} disabled={deletingLineRef === deleteConfirmLine._id}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => void deleteLine(deleteConfirmLine)} disabled={deletingLineRef === deleteConfirmLine._id}>
+                                <Trash2 size={16} /> {deletingLineRef === deleteConfirmLine._id ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {rejectConfirmLine && (
+                <div className="modal-overlay" onClick={() => setRejectConfirmLine(null)}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Tolak Detail Insiden?</h3></div>
+                        <div className="modal-body"><p>Tolak detail insiden <strong>{rejectConfirmLine.description || 'tanpa deskripsi'}</strong>? Detail akan ditandai ditolak dan tidak dapat diposting.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setRejectConfirmLine(null)}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => { const line = rejectConfirmLine; setRejectConfirmLine(null); void updateLineStatus(line, 'VOID'); }}>
+                                <XCircle size={16} /> Tolak
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {maintenanceFollowUpConfirmLine && (
+                <div className="modal-overlay" onClick={() => { if (creatingMaintenanceLineRef !== maintenanceFollowUpConfirmLine._id) setMaintenanceFollowUpConfirmLine(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header"><h3 className="modal-title">Buat Jadwal Maintenance?</h3></div>
+                        <div className="modal-body"><p>Buat jadwal maintenance dari detail biaya insiden ini? Biaya yang sudah diposting dari insiden tidak akan diposting ulang.</p></div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setMaintenanceFollowUpConfirmLine(null)} disabled={creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id}>Batal</button>
+                            <button className="btn btn-primary" onClick={() => void createMaintenanceFollowUp(maintenanceFollowUpConfirmLine)} disabled={creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id}>
+                                <Wrench size={16} /> {creatingMaintenanceLineRef === maintenanceFollowUpConfirmLine._id ? 'Membuat...' : 'Buat Maintenance'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

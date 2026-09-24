@@ -4,6 +4,9 @@ export type LedgerLine = JournalLine & {
   entryDate?: string;
   entryNumber?: string;
   sourceLabel?: string;
+  sourceType?: string;
+  sourceRef?: string;
+  sourceNumber?: string;
   status?: string;
 };
 
@@ -75,6 +78,9 @@ export function buildJournalLineLookup(entries: JournalEntry[], lines: JournalLi
       entryDate: entry?.entryDate,
       entryNumber: entry?.entryNumber,
       sourceLabel: entry?.sourceLabel,
+      sourceType: entry?.sourceType,
+      sourceRef: entry?.sourceRef,
+      sourceNumber: entry?.sourceNumber,
       status: entry?.status,
     };
   });

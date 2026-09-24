@@ -3,12 +3,26 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast, useApp } from '../layout';
-import { Plus, Search, Wallet, Save, X } from 'lucide-react';
+import { Eye, Pencil, Plus, Save, Search, Trash2, Wallet, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
-import { fetchAdminCollectionData, fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
+import ExpenseEditModal from '@/components/ExpenseEditModal';
+import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
+import {
+    fetchExpenseReferences,
+    fetchOptionalCollection,
+    getExpenseAccountLabel,
+    getExpenseDescriptionLabel,
+    getExpenseRelatedDocuments,
+    getExpenseSource,
+    getExpenseVehicleLabel,
+    mapById,
+    type ExpenseLinkPermissions,
+    type ExpenseReferenceMaps,
+} from '@/lib/expense-related-docs';
 import {
     getDefaultInventoryReportPeriod,
     getInventoryReportDateRange,
@@ -29,31 +43,6 @@ type ExpenseCategoryTotal = {
     total: number;
 };
 
-type ExpenseReferenceMaps = {
-    accountMap: Map<string, BankAccount>;
-    boronganMap: Map<string, DriverBorongan>;
-    incidentMap: Map<string, Incident>;
-    maintenanceMap: Map<string, Maintenance>;
-    vehicleMap: Map<string, Vehicle>;
-    voucherMap: Map<string, DriverVoucher>;
-};
-
-type ExpenseLinkPermissions = {
-    canOpenBankAccountPage: boolean;
-    canOpenDriverBoronganPage: boolean;
-    canOpenDriverVoucherPage: boolean;
-    canOpenIncidentPage: boolean;
-    canOpenMaintenancePage: boolean;
-    canOpenVehiclePage: boolean;
-};
-
-type ExpenseRelatedDocumentLink = {
-    key: string;
-    kind: string;
-    label: string;
-    href?: string;
-};
-
 const DEFAULT_EXPENSE_FORM = () => ({
     categoryRef: '',
     date: getBusinessDateValue(),
@@ -67,122 +56,6 @@ const DEFAULT_EXPENSE_FORM = () => ({
 });
 
 const LINK_STYLE = { color: 'var(--color-primary)', fontWeight: 600 } as const;
-const REFERENCE_FETCH_CHUNK_SIZE = 80;
-
-function uniqueNonEmpty(values: Array<string | undefined>) {
-    return Array.from(new Set(values.map(value => value?.trim()).filter((value): value is string => Boolean(value))));
-}
-
-function mapById<T extends { _id: string }>(items: T[]) {
-    return new Map(items.map(item => [item._id, item]));
-}
-
-async function fetchOptionalCollection<T>(url: string, fallbackData: T): Promise<T> {
-    try {
-        return await fetchAdminCollectionData<T>(url, 'Gagal memuat data pengeluaran');
-    } catch (error) {
-        if (error instanceof Error && /403|forbidden|akses/i.test(error.message)) {
-            return fallbackData;
-        }
-        throw error;
-    }
-}
-
-async function fetchReferencedCollection<T extends { _id: string }>(entity: string, refs: Array<string | undefined>): Promise<T[]> {
-    const ids = uniqueNonEmpty(refs);
-    if (ids.length === 0) return [];
-
-    const rows: T[] = [];
-    for (let index = 0; index < ids.length; index += REFERENCE_FETCH_CHUNK_SIZE) {
-        const chunk = ids.slice(index, index + REFERENCE_FETCH_CHUNK_SIZE);
-        const filter = encodeURIComponent(JSON.stringify({ _id: chunk }));
-        rows.push(...await fetchOptionalCollection<T[]>(`/api/data?entity=${entity}&filter=${filter}`, []));
-    }
-    return rows;
-}
-
-async function fetchExpenseReferences(expenses: Expense[]) {
-    const [voucherRows, boronganRows, incidentRows, maintenanceRows] = await Promise.all([
-        fetchReferencedCollection<DriverVoucher>('driver-vouchers', expenses.map(expense => expense.voucherRef)),
-        fetchReferencedCollection<DriverBorongan>('driver-borongans', expenses.map(expense => expense.boronganRef)),
-        fetchReferencedCollection<Incident>('incidents', expenses.map(expense => expense.relatedIncidentRef)),
-        fetchReferencedCollection<Maintenance>('maintenances', expenses.map(expense => expense.relatedMaintenanceRef)),
-    ]);
-
-    return {
-        voucherRows,
-        boronganRows,
-        incidentRows,
-        maintenanceRows,
-    };
-}
-
-function getExpenseDescriptionLabel(expense: Expense) {
-    return expense.note || expense.description || 'Pengeluaran tanpa catatan';
-}
-
-function getExpenseVehicleLabel(expense: Expense, vehicleMap: Map<string, Vehicle>) {
-    const currentVehicle = expense.relatedVehicleRef ? vehicleMap.get(expense.relatedVehicleRef) : undefined;
-    return currentVehicle?.plateNumber || expense.relatedVehiclePlate || '';
-}
-
-function getExpenseAccountLabel(expense: Expense, accountMap: Map<string, BankAccount>) {
-    const currentAccount = expense.bankAccountRef ? accountMap.get(expense.bankAccountRef) : undefined;
-    if (currentAccount) {
-        return `${currentAccount.bankName} - ${currentAccount.accountNumber}${currentAccount.accountType === 'CASH' ? ' (Kas Tunai)' : ''}`;
-    }
-    if (expense.bankAccountName) {
-        return `${expense.bankAccountName}${expense.bankAccountNumber ? ` - ${expense.bankAccountNumber}` : ''}`;
-    }
-    return '';
-}
-
-function getExpenseRelatedDocuments(
-    expense: Expense,
-    maps: ExpenseReferenceMaps,
-    permissions: ExpenseLinkPermissions
-): ExpenseRelatedDocumentLink[] {
-    const links: ExpenseRelatedDocumentLink[] = [];
-    if (expense.voucherRef) {
-        const voucher = maps.voucherMap.get(expense.voucherRef);
-        links.push({
-            key: `voucher:${expense.voucherRef}`,
-            kind: 'Bon trip',
-            label: voucher?.bonNumber || expense.voucherRef,
-            href: permissions.canOpenDriverVoucherPage ? `/driver-vouchers/${expense.voucherRef}` : undefined,
-        });
-    }
-    if (expense.boronganRef) {
-        const borongan = maps.boronganMap.get(expense.boronganRef);
-        links.push({
-            key: `borongan:${expense.boronganRef}`,
-            kind: 'Borongan',
-            label: borongan?.boronganNumber || expense.boronganRef,
-            href: permissions.canOpenDriverBoronganPage ? `/borongan/${expense.boronganRef}` : undefined,
-        });
-    }
-    if (expense.relatedIncidentRef) {
-        const incident = maps.incidentMap.get(expense.relatedIncidentRef);
-        links.push({
-            key: `incident:${expense.relatedIncidentRef}`,
-            kind: 'Insiden',
-            label: incident?.incidentNumber || expense.relatedIncidentRef,
-            href: permissions.canOpenIncidentPage ? `/fleet/incidents/${expense.relatedIncidentRef}` : undefined,
-        });
-    }
-    if (expense.relatedMaintenanceRef) {
-        const maintenance = maps.maintenanceMap.get(expense.relatedMaintenanceRef);
-        links.push({
-            key: `maintenance:${expense.relatedMaintenanceRef}`,
-            kind: 'Maintenance',
-            label: maintenance?.vehiclePlate || maintenance?.type || expense.relatedMaintenanceRef,
-            href: permissions.canOpenMaintenancePage
-                ? `/fleet/maintenance${maintenance?.vehicleRef ? `?vehicleRef=${maintenance.vehicleRef}` : ''}`
-                : undefined,
-        });
-    }
-    return links;
-}
 
 export default function ExpensesPage() {
     const { addToast } = useToast();
@@ -206,6 +79,9 @@ export default function ExpensesPage() {
     const [categoryTotals, setCategoryTotals] = useState<ExpenseCategoryTotal[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState(false);
+    const [editExpense, setEditExpense] = useState<Expense | null>(null);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>('desc');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [bankAccountFilter, setBankAccountFilter] = useState('');
@@ -217,14 +93,17 @@ export default function ExpensesPage() {
     const [dateTo, setDateTo] = useState(getBusinessDateValue());
     const [form, setForm] = useState(DEFAULT_EXPENSE_FORM);
 
-    const isOwner = user?.role === 'OWNER';
-    const canCreateExpenses = user ? hasPermission(user.role, 'expenses', 'create') : false;
-    const canOpenVehiclePage = user ? hasPageAccess(user.role, 'vehicles') : false;
-    const canOpenBankAccountPage = user ? hasPageAccess(user.role, 'bankAccounts') : false;
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
-    const canOpenDriverBoronganPage = user ? hasPageAccess(user.role, 'driverBorongans') : false;
-    const canOpenIncidentPage = user ? hasPageAccess(user.role, 'incidents') : false;
-    const canOpenMaintenancePage = user ? hasPageAccess(user.role, 'maintenance') : false;
+    const isOwner = user ? hasPermission(user, 'expenses', 'update') : false;
+    const canCreateExpenses = user ? hasPermission(user, 'expenses', 'create') : false;
+    const canDeleteExpenses = user ? hasPermission(user, 'expenses', 'delete') : false;
+    const canUpdateExpenses = user ? hasPermission(user, 'expenses', 'update') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenBankAccountPage = user ? hasPageAccess(user, 'bankAccounts') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenDriverBoronganPage = user ? hasPageAccess(user, 'driverBorongans') : false;
+    const canOpenIncidentPage = user ? hasPageAccess(user, 'incidents') : false;
+    const canOpenMaintenancePage = user ? hasPageAccess(user, 'maintenance') : false;
+    const canOpenOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const vehicleMap = useMemo(() => new Map(vehicles.map(vehicle => [vehicle._id, vehicle])), [vehicles]);
     const accountMap = useMemo(() => new Map(bankAccounts.map(account => [account._id, account])), [bankAccounts]);
     const voucherMap = useMemo(() => mapById(driverVouchers), [driverVouchers]);
@@ -245,8 +124,9 @@ export default function ExpensesPage() {
         canOpenDriverVoucherPage,
         canOpenIncidentPage,
         canOpenMaintenancePage,
+        canOpenOrderPage,
         canOpenVehiclePage,
-    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenVehiclePage]);
+    }), [canOpenBankAccountPage, canOpenDriverBoronganPage, canOpenDriverVoucherPage, canOpenIncidentPage, canOpenMaintenancePage, canOpenOrderPage, canOpenVehiclePage]);
     const manualCategories = useMemo(
         () => categories.filter(isManualExpenseCategory),
         [categories]
@@ -362,9 +242,9 @@ export default function ExpensesPage() {
                 }>(`/api/data?${buildExpensesSummaryQuery()}`, 'Gagal memuat ringkasan pengeluaran'),
                 fetchOptionalCollection<ExpenseCategory[]>('/api/data?entity=expense-categories', []),
                 fetchOptionalCollection<BankAccount[]>('/api/data?entity=bank-accounts', []),
-                user.role === 'FINANCE'
-                    ? Promise.resolve([] as Vehicle[])
-                    : fetchOptionalCollection<Vehicle[]>('/api/data?entity=vehicles', []),
+                hasPermission(user, 'vehicles', 'view')
+                    ? fetchOptionalCollection<Vehicle[]>('/api/data?entity=vehicles', [])
+                    : Promise.resolve([] as Vehicle[]),
             ]);
 
             const listItems = (listPayload.data || []) as Expense[];
@@ -457,6 +337,30 @@ export default function ExpensesPage() {
         }
     };
 
+    const handleDelete = async (id: string) => {
+        if (!canDeleteExpenses) return;
+        setDeletingId(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entity: 'expenses', action: 'delete', data: { id } }),
+            });
+            const payload = await res.json();
+            if (!res.ok) {
+                addToast('error', payload.error || 'Gagal menghapus pengeluaran');
+                return;
+            }
+            addToast('success', 'Pengeluaran dihapus');
+            setDeleteId(null);
+            setItems(prev => prev.filter(expense => expense._id !== id));
+        } catch {
+            addToast('error', 'Gagal menghapus pengeluaran');
+        } finally {
+            setDeletingId(false);
+        }
+    };
+
     return (
         <div>
             <div className="page-header"><div className="page-header-left"><h1 className="page-title">Pengeluaran</h1></div>
@@ -510,35 +414,17 @@ export default function ExpensesPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari catatan, kategori, kendaraan..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select finance-filter" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
-                            <option value="">Semua Kategori</option>
-                            {categories.map(category => <option key={category._id} value={category._id}>{category.name}</option>)}
-                        </select>
-                        <select className="form-select finance-filter" value={bankAccountFilter} onChange={event => setBankAccountFilter(event.target.value)}>
-                            <option value="">Semua Rekening/Kas</option>
-                            {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                        </select>
+                        <Combobox className="form-select finance-filter" value={categoryFilter} onChange={(v: string) => setCategoryFilter(v)} options={categories.map(category => ({ value: category._id, label: category.name }))} placeholder="Semua Kategori" />
+                        <Combobox className="form-select finance-filter" value={bankAccountFilter} onChange={(v: string) => setBankAccountFilter(v)} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder="Semua Rekening/Kas" />
                         {isOwner && (
-                            <select className="form-select finance-filter" value={privacyFilter} onChange={event => setPrivacyFilter(event.target.value)}>
-                                <option value="">Semua Privasi</option>
-                                <option value="internal">Internal</option>
-                                <option value="ownerOnly">Owner Only</option>
-                            </select>
+                            <Combobox className="form-select finance-filter" value={privacyFilter} onChange={(v: string) => setPrivacyFilter(v)} options={[{ value: 'internal', label: 'Internal' }, { value: 'ownerOnly', label: 'Owner Only' }]} placeholder="Semua Privasi" />
                         )}
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as InventoryReportPeriodMode)}>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as InventoryReportPeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {INVENTORY_REPORT_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={INVENTORY_REPORT_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => ({ value: String(option), label: String(option) }))} />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -568,20 +454,21 @@ export default function ExpensesPage() {
                 </div>
                 <div className="table-wrapper table-desktop-only">
                     <table>
-                        <thead><tr><th><SortableTableHeader label="Tanggal" direction={dateSortDir} onToggle={() => setDateSortDir(current => current === 'desc' ? 'asc' : 'desc')} /></th><th>Kategori</th><th>Deskripsi</th><th>Jumlah</th>{isOwner && <th>Privacy</th>}</tr></thead>
+                        <thead><tr><th><SortableTableHeader label="Tanggal" direction={dateSortDir} onToggle={() => setDateSortDir(current => current === 'desc' ? 'asc' : 'desc')} /></th><th>Kategori</th><th>Deskripsi</th><th>Jumlah</th>{isOwner && <th>Privacy</th>}<th>Aksi</th></tr></thead>
                         <tbody>
-                            {loading ? [1, 2, 3].map(i => <tr key={i}>{Array.from({ length: isOwner ? 5 : 4 }, (_, j) => <td key={j}><div className="skeleton skeleton-text" /></td>)}</tr>) :
-                                filteredTotalExpenses === 0 ? <tr><td colSpan={isOwner ? 5 : 4}><div className="empty-state"><Wallet size={48} className="empty-state-icon" /><div className="empty-state-title">Belum ada pengeluaran</div></div></td></tr> :
+                            {loading ? [1, 2, 3].map(i => <tr key={i}>{Array.from({ length: isOwner ? 6 : 5 }, (_, j) => <td key={j}><div className="skeleton skeleton-text" /></td>)}</tr>) :
+                                filteredTotalExpenses === 0 ? <tr><td colSpan={isOwner ? 6 : 5}><div className="empty-state"><Wallet size={48} className="empty-state-icon" /><div className="empty-state-title">Belum ada pengeluaran</div></div></td></tr> :
                                     items.map(expense => {
                                         const relatedDocs = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
                                         const vehicleLabel = getExpenseVehicleLabel(expense, vehicleMap);
                                         const accountLabel = getExpenseAccountLabel(expense, accountMap);
+                                        const expenseSource = getExpenseSource(expense, referenceMaps, linkPermissions);
                                         return (
                                             <tr key={expense._id}>
                                                 <td className="text-muted">{formatDate(expense.date)}</td>
                                                 <td><span className="badge badge-gray">{expense.categoryName}</span></td>
                                                 <td>
-                                                    <div>{getExpenseDescriptionLabel(expense)}</div>
+                                                    <div><Link href={`/expenses/${expense._id}`} style={LINK_STYLE}>{getExpenseDescriptionLabel(expense)}</Link></div>
                                                     {relatedDocs.length > 0 && (
                                                         <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>
                                                             dokumen{' '}
@@ -627,6 +514,23 @@ export default function ExpensesPage() {
                                                 </td>
                                                 <td className="font-medium">{formatCurrency(expense.amount)}</td>
                                                 {isOwner && <td><span className={`badge ${expense.privacyLevel === 'ownerOnly' ? 'badge-purple' : 'badge-info'}`}>{expense.privacyLevel === 'ownerOnly' ? 'Owner Only' : 'Internal'}</span></td>}
+                                                <td>
+                                                    <div className="table-actions-col">
+                                                        <Link href={`/expenses/${expense._id}`} className="table-action-btn">
+                                                            <Eye size={14} /> Lihat Detail
+                                                        </Link>
+                                                        {canUpdateExpenses && expenseSource.editable && (
+                                                            <button className="table-action-btn" onClick={() => setEditExpense(expense)} aria-label={`Edit ${getExpenseDescriptionLabel(expense)}`}>
+                                                                <Pencil size={14} /> Edit
+                                                            </button>
+                                                        )}
+                                                        {canDeleteExpenses && (
+                                                            <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
+                                                                <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -635,6 +539,7 @@ export default function ExpensesPage() {
                                     <td colSpan={3} className="font-semibold" style={{ textAlign: 'right', color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>TOTAL</td>
                                     <td className="font-semibold" style={{ color: 'var(--color-danger)', fontSize: '1rem' }}>{formatCurrency(grandTotal)}</td>
                                     {isOwner && <td />}
+                                    <td />
                                 </tr>
                             )}
                         </tbody>
@@ -652,11 +557,12 @@ export default function ExpensesPage() {
                                 const relatedDocs = getExpenseRelatedDocuments(expense, referenceMaps, linkPermissions);
                                 const vehicleLabel = getExpenseVehicleLabel(expense, vehicleMap);
                                 const accountLabel = getExpenseAccountLabel(expense, accountMap);
+                                const expenseSource = getExpenseSource(expense, referenceMaps, linkPermissions);
                                 return (
                                     <div key={expense._id} className="mobile-record-card">
                                         <div className="mobile-record-header">
                                             <div>
-                                                <div className="mobile-record-title">{getExpenseDescriptionLabel(expense)}</div>
+                                                <div className="mobile-record-title"><Link href={`/expenses/${expense._id}`} style={LINK_STYLE}>{getExpenseDescriptionLabel(expense)}</Link></div>
                                                 <div className="mobile-record-subtitle">{formatDate(expense.date)} | {expense.categoryName || 'Tanpa kategori'}</div>
                                             </div>
                                             <div style={{ textAlign: 'right' }}>
@@ -718,6 +624,21 @@ export default function ExpensesPage() {
                                                 </div>
                                             )}
                                         </div>
+                                        <div className="mobile-record-actions">
+                                            <Link href={`/expenses/${expense._id}`} className="table-action-btn">
+                                                <Eye size={14} /> Lihat Detail
+                                            </Link>
+                                            {canUpdateExpenses && expenseSource.editable && (
+                                                <button className="table-action-btn" onClick={() => setEditExpense(expense)} aria-label={`Edit ${getExpenseDescriptionLabel(expense)}`}>
+                                                    <Pencil size={14} /> Edit
+                                                </button>
+                                            )}
+                                            {canDeleteExpenses && (
+                                                <button className="table-action-btn" onClick={() => setDeleteId(expense._id)} disabled={deletingId} aria-label={`Hapus ${getExpenseDescriptionLabel(expense)}`}>
+                                                    <Trash2 size={14} style={{ color: '#ef4444' }} /> Hapus
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })
@@ -746,9 +667,7 @@ export default function ExpensesPage() {
                         <div className="modal-header"><h3 className="modal-title">Tambah Pengeluaran</h3><button className="modal-close" onClick={() => setShowModal(false)} disabled={saving}><X size={20} /></button></div>
                         <div className="modal-body">
                             <div className="form-group"><label className="form-label">Kategori <span className="required">*</span></label>
-                                <select className="form-select" value={form.categoryRef} onChange={event => setForm({ ...form, categoryRef: event.target.value })} disabled={saving}>
-                                    <option value="">Pilih kategori umum</option>{manualCategories.map(category => <option key={category._id} value={category._id}>{category.name}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={form.categoryRef} onChange={(v: string) => setForm({ ...form, categoryRef: v })} options={manualCategories.map(category => ({ value: category._id, label: category.name }))} placeholder="Pilih kategori umum" disabled={saving} />
                             </div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} disabled={saving} /></div>
@@ -756,17 +675,14 @@ export default function ExpensesPage() {
                             </div>
                             <div className="form-group"><label className="form-label">Catatan/Deskripsi</label><textarea className="form-textarea" rows={2} value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} disabled={saving} /></div>
                             <div className="form-group"><label className="form-label">Status Pembayaran <span className="required">*</span></label>
-                                <select className="form-select" value={form.paymentMode} onChange={event => {
-                                    const nextMode = event.target.value as ExpensePaymentMode;
+                                <Combobox className="form-select" value={form.paymentMode} onChange={(v: string) => {
+                                    const nextMode = v as ExpensePaymentMode;
                                     setForm(current => ({
                                         ...current,
                                         paymentMode: nextMode,
                                         ...(nextMode === 'payable' ? { bankAccountRef: '', bankAccountName: '' } : {}),
                                     }));
-                                }} disabled={saving}>
-                                    <option value="paid">Sudah dibayar dari rekening/kas</option>
-                                    <option value="payable">Belum dibayar (catat hutang biaya)</option>
-                                </select>
+                                }} options={[{ value: 'paid', label: 'Sudah dibayar dari rekening/kas' }, { value: 'payable', label: 'Belum dibayar (catat hutang biaya)' }]} disabled={saving} />
                                 <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
                                     {isPaidNow
                                         ? 'Saldo rekening/kas akan langsung berkurang.'
@@ -774,23 +690,45 @@ export default function ExpensesPage() {
                                 </div>
                             </div>
                             <div className="form-group"><label className="form-label">Rekening / Kas Pembayaran {isPaidNow && <span className="required">*</span>}</label>
-                                <select className="form-select" value={isPaidNow ? form.bankAccountRef : ''} onChange={event => {
-                                    const account = bankAccounts.find(item => item._id === event.target.value);
-                                    setForm({ ...form, bankAccountRef: event.target.value, bankAccountName: account?.bankName || '' });
-                                }} disabled={saving || !isPaidNow}>
-                                    <option value="">{isPaidNow ? 'Pilih rekening/kas' : 'Tidak dipakai karena belum dibayar'}</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={isPaidNow ? form.bankAccountRef : ''} onChange={(v: string) => {
+                                    const account = bankAccounts.find(item => item._id === v);
+                                    setForm({ ...form, bankAccountRef: v, bankAccountName: account?.bankName || '' });
+                                }} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder={isPaidNow ? 'Pilih rekening/kas' : 'Tidak dipakai karena belum dibayar'} disabled={saving || !isPaidNow} />
                             </div>
                             {isOwner && <div className="form-group"><label className="form-label">Privacy Level</label>
-                                <select className="form-select" value={form.privacyLevel} onChange={event => setForm({ ...form, privacyLevel: event.target.value as 'internal' | 'ownerOnly' })} disabled={saving}>
-                                    <option value="internal">Internal</option><option value="ownerOnly">Owner Only</option>
-                                </select>
+                                <Combobox className="form-select" value={form.privacyLevel} onChange={(v: string) => setForm({ ...form, privacyLevel: v as 'internal' | 'ownerOnly' })} options={[{ value: 'internal', label: 'Internal' }, { value: 'ownerOnly', label: 'Owner Only' }]} disabled={saving} />
                             </div>}
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving || !isFormValid}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
                     </div>
                 </div>
+            )}
+            {canDeleteExpenses && deleteId && (
+                <div className="modal-overlay" onClick={() => { if (!deletingId) setDeleteId(null); }}>
+                    <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Hapus Pengeluaran?</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p>Catatan pengeluaran akan dihapus permanen dan jurnal akunting serta transaksi kas terkait akan dibatalkan. Jika sudah terhubung ke detail insiden atau bon trip, sistem akan menolak penghapusan ini.</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setDeleteId(null)} disabled={deletingId}>Batal</button>
+                            <button className="btn btn-danger" onClick={() => handleDelete(deleteId)} disabled={deletingId}>
+                                <Trash2 size={16} /> {deletingId ? 'Menghapus...' : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {editExpense && (
+                <ExpenseEditModal
+                    expense={editExpense}
+                    open={Boolean(editExpense)}
+                    isOwner={canUpdateExpenses}
+                    onClose={() => setEditExpense(null)}
+                    onSaved={() => void loadExpenses()}
+                />
             )}
         </div>
     );

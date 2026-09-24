@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Truck } from 'lucide-react';
+import { Search, Truck, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
@@ -13,6 +13,7 @@ import type { CargoSummary, Trip } from '@/lib/trip-document-types';
 import type { DriverVoucher } from '@/lib/types';
 import { hasPageAccess } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
+import Combobox from '@/components/Combobox';
 
 type TripBonStatusMeta = { label: string; color: string };
 type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'completed' | 'bon-open';
@@ -127,8 +128,11 @@ export default function TripsPage() {
     const [page, setPage] = useState(1);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const [voucherByDeliveryOrderRef, setVoucherByDeliveryOrderRef] = useState<Record<string, DriverVoucher>>({});
-    const canOpenSourceOrderPage = user ? hasPageAccess(user.role, 'orders') : false;
-    const canOpenDriverVoucherPage = user ? hasPageAccess(user.role, 'driverVouchers') : false;
+    const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
+    const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
+    const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
+    const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
 
     const loadTrips = useCallback(async () => {
         setLoading(true);
@@ -227,20 +231,24 @@ export default function TripsPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari trip, resi, customer, kendaraan, driver..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(DO_STATUS_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={conditionFilter} onChange={event => setConditionFilter(event.target.value as TripConditionFilter)}>
-                            <option value="">Semua Kondisi</option>
-                            <option value="driver-approval">Butuh approval driver</option>
-                            <option value="has-hold">Ada hold</option>
-                            <option value="multi-sj">Multi-SJ</option>
-                            <option value="no-sj">Belum ada SJ</option>
-                            <option value="unfinished">Belum final</option>
-                            <option value="completed">Selesai</option>
-                            <option value="bon-open">Bon belum selesai</option>
-                        </select>
+                                                <div style={{ width: 'auto', minWidth: 150 }}>
+                            <Combobox
+                                value={statusFilter}
+                                onChange={(v: string) => setStatusFilter(v)}
+                                options={Object.entries(DO_STATUS_MAP).map(([key, value]) => ({ value: key, label: value.label }))}
+                                placeholder="Semua Status"
+                                className="form-select"
+                            />
+                        </div>
+                                                <div style={{ width: 'auto', minWidth: 180 }}>
+                            <Combobox
+                                value={conditionFilter}
+                                onChange={(v: string) => setConditionFilter(v as TripConditionFilter)}
+                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
+                                placeholder="Semua Kondisi"
+                                className="form-select"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">
@@ -287,10 +295,10 @@ export default function TripsPage() {
                                     <tr key={item._id}>
                                         <td><Link className="font-semibold" style={{ color: 'var(--color-primary)' }} href={`/trips/${item._id}`}>{item.tripNumber}</Link></td>
                                         <td>{canOpenSourceOrderPage ? <Link href={`/orders/${item.orderRef}`}>{item.masterResi || '-'}</Link> : (item.masterResi || '-')}</td>
-                                        <td>{item.customerName || '-'}</td>
+                                        <td>{item.customerRef && canOpenCustomerPage ? <Link href={`/customers/${item.customerRef}`}>{item.customerName || '-'}</Link> : (item.customerName || '-')}</td>
                                         <td>{item.tripOriginArea && item.tripDestinationArea ? `${item.tripOriginArea} -> ${item.tripDestinationArea}` : `${item.pickupAddress || '-'} -> ${item.receiverAddress || '-'}`}</td>
-                                        <td>{item.vehiclePlate || '-'}</td>
-                                        <td>{item.driverName || '-'}</td>
+                                        <td>{item.vehicleRef && canOpenVehiclePage ? <Link href={`/fleet/vehicles/${item.vehicleRef}`}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
+                                        <td>{item.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${item.driverRef}`}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</td>
                                         <td>{formatDate(item.date)}</td>
                                         <td>
                                             {renderTripSuratJalanLinks(item)}
@@ -309,7 +317,7 @@ export default function TripsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td><Link className="table-action-btn" href={`/trips/${item._id}`}>Lihat</Link></td>
+                                        <td><Link className="table-action-btn" href={`/trips/${item._id}`}><Eye size={14} /> Detail</Link></td>
                                     </tr>
                                 );
                             })}

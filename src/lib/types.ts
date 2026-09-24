@@ -6,6 +6,9 @@
 import type { VolumeInputUnit, WeightInputUnit } from './measurement';
 
 export type UserRole = 'OWNER' | 'OPERASIONAL' | 'FINANCE' | 'ARMADA' | 'DRIVER' | 'ADMIN';
+export type ModuleAction = 'view' | 'create' | 'update' | 'delete' | 'export' | 'print';
+export type ModulePermissions = Record<ModuleAction, boolean>;
+export type PerUserModulePermissions = Partial<Record<string, boolean>>;
 export type TireAxleLayoutMode = 'NONE' | 'SINGLE' | 'DUAL';
 
 export interface TireLayoutConfig {
@@ -25,6 +28,7 @@ export interface User {
   active: boolean;
   createdAt: string;
   lastLoginAt?: string;
+  modulePermissions?: PerUserModulePermissions;
 }
 
 export interface SessionUser {
@@ -34,6 +38,7 @@ export interface SessionUser {
   role: UserRole;
   driverRef?: string;
   driverName?: string;
+  modulePermissions?: PerUserModulePermissions;
 }
 
 export interface Employee {
@@ -434,6 +439,7 @@ export type StockMovementSourceType =
   | 'MANUAL_IN'
   | 'MANUAL_OUT'
   | 'ADJUSTMENT'
+  | 'STOCK_OPENING'
   | 'MAINTENANCE_USAGE'
   | 'TIRE_DEPLOYMENT'
   | 'TIRE_RETURN';
@@ -1605,6 +1611,7 @@ export interface AuditLog {
   action: string;
   entityType: string;
   entityRef?: string;
+  entityLabel?: string;
   changesSummary: string;
   timestamp: string;
 }
@@ -1695,12 +1702,13 @@ export interface BankAccount {
   systemKey?: string;
   initialBalance: number;
   currentBalance: number;
+  transactionCount?: number;
   active: boolean;
   notes?: string;
 }
 
 // ── Bank Transaction ──
-export type BankTransactionType = 'CREDIT' | 'DEBIT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+export type BankTransactionType = 'CREDIT' | 'DEBIT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'ADJUSTMENT' | 'ADJUSTMENT_DEBIT';
 
 export interface BankTransaction {
   _id: string;
@@ -1721,8 +1729,10 @@ export interface BankTransaction {
   relatedOverpaymentRefundRef?: string;
   relatedPurchasePaymentRef?: string;
   relatedPurchaseRef?: string;
+  relatedAdjustmentRef?: string;
   reversesBankTransactionRef?: string;
   replacesBankTransactionRef?: string;
+  replacedByBankTransactionRef?: string;
   _createdAt?: string;
 }
 

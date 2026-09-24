@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, Receipt } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Plus, Receipt, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import { formatDate, formatCurrency, formatQuantity } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
@@ -17,7 +18,8 @@ import {
     isFinancePeriodRangeReady,
     type FinancePeriodMode,
 } from '@/lib/finance-period';
-import { normalizeUserRole } from '@/lib/rbac';
+import { hasPageAccess, normalizeUserRole } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import type { DriverBorongan } from '@/lib/types';
 import { useApp, useToast } from '../layout';
@@ -31,6 +33,7 @@ export default function BoronganListPage() {
     const router = useRouter();
     const { addToast } = useToast();
     const { user } = useApp();
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const defaultPeriod = useMemo(() => getDefaultFinancePeriod(), []);
     const [items, setItems] = useState<DriverBorongan[]>([]);
     const [loading, setLoading] = useState(true);
@@ -213,25 +216,13 @@ export default function BoronganListPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari slip, supir..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select finance-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(STATUS_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                        </select>
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as FinancePeriodMode)}>
-                            <option value="all">Semua Tanggal</option>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} placeholder="Semua Status" options={Object.entries(STATUS_MAP).map(([key, value]) => ({ value: key, label: value.label }))} />
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as FinancePeriodMode)} options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'all' && periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => String(option))} />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -294,16 +285,15 @@ export default function BoronganListPage() {
                             ) : items.map(borongan => (
                                 <tr key={borongan._id}>
                                     <td>
-                                        <button
-                                            type="button"
+                                        <Link
+                                            href={`/borongan/${borongan._id}`}
                                             className="btn btn-ghost btn-sm"
                                             style={{ padding: 0, color: 'var(--color-primary)', fontWeight: 600 }}
-                                            onClick={() => router.push(`/borongan/${borongan._id}`)}
                                         >
                                             {borongan.boronganNumber}
-                                        </button>
+                                        </Link>
                                     </td>
-                                    <td className="font-semibold">{borongan.driverName}</td>
+                                    <td className="font-semibold">{borongan.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${borongan.driverRef}`} style={{ color: 'var(--color-primary)' }}>{borongan.driverName}</Link> : borongan.driverName}</td>
                                     <td className="text-muted">{formatDate(borongan.periodStart)} - {formatDate(borongan.periodEnd)}</td>
                                     <td>{formatQuantity(borongan.totalCollie || 0)}</td>
                                     <td>{formatQuantity(borongan.totalWeightKg || 0)} kg</td>
@@ -315,7 +305,7 @@ export default function BoronganListPage() {
                                     </td>
                                     <td>
                                         <button type="button" className="table-action-btn" onClick={() => router.push(`/borongan/${borongan._id}`)}>
-                                            Lihat
+                                            <Eye size={14} /> Detail
                                         </button>
                                     </td>
                                 </tr>

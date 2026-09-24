@@ -58,6 +58,7 @@ export const STOCK_MOVEMENT_SOURCE_LABELS: Record<StockMovementSourceType, strin
   MANUAL_IN: 'Stok Masuk Manual',
   MANUAL_OUT: 'Stok Keluar Manual',
   ADJUSTMENT: 'Penyesuaian Stok',
+  STOCK_OPENING: 'Stok Awal',
   MAINTENANCE_USAGE: 'Pemakaian Maintenance',
   TIRE_DEPLOYMENT: 'Ban Keluar Gudang',
   TIRE_RETURN: 'Ban Kembali ke Gudang',

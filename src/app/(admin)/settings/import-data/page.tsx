@@ -9,6 +9,7 @@ import {
   type MasterDataImportMode,
   type MasterDataImportTarget,
 } from '@/lib/master-data-import-config';
+import Combobox from '@/components/Combobox';
 import { hasPermission } from '@/lib/rbac';
 
 import { useApp, useToast } from '../../layout';
@@ -83,7 +84,7 @@ export default function ImportDataPage() {
   const availableTargets = useMemo(
     () => MASTER_DATA_IMPORT_TARGETS.filter((target) => (
       user &&
-      (hasPermission(user.role, target.module, 'create') || hasPermission(user.role, target.module, 'update'))
+      (hasPermission(user, target.module, 'create') || hasPermission(user, target.module, 'update'))
     )),
     [user],
   );
@@ -289,7 +290,7 @@ export default function ImportDataPage() {
           </div>
           <div className="table-toolbar-right">
             <button className="btn btn-secondary" onClick={() => void submitImportRequest('preview')} disabled={loadingPreview || importing || rows.length === 0}>
-              <RefreshCw size={16} /> {loadingPreview ? 'Validasi...' : 'Preview'}
+              <RefreshCw size={16} /> {loadingPreview ? 'Validasi...' : 'Validasi'}
             </button>
             <button className="btn btn-primary" onClick={() => void submitImportRequest('commit')} disabled={!canCommit}>
               <Save size={16} /> {importing ? 'Mengimport...' : 'Commit Import'}
@@ -300,15 +301,11 @@ export default function ImportDataPage() {
         <div className="form-row" style={{ padding: '1rem 1rem 0' }}>
           <div className="form-group">
             <label className="form-label">Target Data</label>
-            <select className="form-select" value={target} onChange={(event) => handleTargetChange(event.target.value as MasterDataImportTarget)}>
-              {availableTargets.map((item) => <option key={item.target} value={item.target}>{item.label}</option>)}
-            </select>
+            <Combobox className="form-select" value={target} onChange={(v: string) => handleTargetChange(v as MasterDataImportTarget)} options={availableTargets.map((item) => ({ value: item.target, label: item.label }))} />
           </div>
           <div className="form-group">
             <label className="form-label">Mode Import</label>
-            <select className="form-select" value={mode} onChange={(event) => handleModeChange(event.target.value as MasterDataImportMode)}>
-              {MASTER_DATA_IMPORT_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
+            <Combobox className="form-select" value={mode} onChange={(v: string) => handleModeChange(v as MasterDataImportMode)} options={MASTER_DATA_IMPORT_MODES.map((item) => ({ value: item.value, label: item.label }))} />
             <div className="text-muted text-xs" style={{ marginTop: '0.35rem' }}>{selectedMode.description}</div>
           </div>
         </div>

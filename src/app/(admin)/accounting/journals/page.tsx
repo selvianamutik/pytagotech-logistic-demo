@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import Link from "next/link";
 
 import AppPagination from "@/components/AppPagination";
+import Combobox from "@/components/Combobox";
 import FormattedNumberInput from "@/components/FormattedNumberInput";
 import { fetchAdminListPayload, fetchAllAdminCollectionData } from "@/lib/api/admin-client";
 import { formatAccountingCurrency } from "@/lib/accounting-reports";
@@ -20,7 +22,8 @@ import {
   type FinancePeriodMode,
 } from "@/lib/finance-period";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
-import { hasPermission } from "@/lib/rbac";
+import { hasPageAccess, hasPermission } from "@/lib/rbac";
+import { resolveJournalSourceLink } from "@/lib/journal-source-links";
 import type { ChartOfAccount, JournalEntry, JournalLine } from "@/lib/types";
 import { useApp, useToast } from "../../layout";
 
@@ -85,6 +88,7 @@ export default function JournalEntriesPage() {
   const [referenceLoading, setReferenceLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [voidId, setVoidId] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     entryDate: getBusinessDateValue(),
@@ -93,8 +97,16 @@ export default function JournalEntriesPage() {
     lines: [createDraftLine(), createDraftLine()],
   });
 
-  const canCreateManualJournal = user ? hasPermission(user.role, "reports", "create") : false;
-  const canVoidManualJournal = user ? hasPermission(user.role, "reports", "update") : false;
+  const canCreateManualJournal = user ? hasPermission(user, "reports", "create") : false;
+  const canVoidManualJournal = user ? hasPermission(user, "reports", "update") : false;
+  const journalSourcePermissions = {
+    canOpenInvoices: user ? hasPageAccess(user, "invoices") : false,
+    canOpenExpenses: user ? hasPageAccess(user, "expenses") : false,
+    canOpenDriverVouchers: user ? hasPageAccess(user, "driverVouchers") : false,
+    canOpenPurchases: user ? hasPageAccess(user, "purchases") : false,
+    canOpenBankAccounts: user ? hasPageAccess(user, "bankAccounts") : false,
+    canOpenWarehouseItems: user ? hasPageAccess(user, "warehouseItems") : false,
+  };
   const dateRange = useMemo(
     () => getFinancePeriodDateRange({ mode: periodMode, monthIndex, year, dateFrom, dateTo }),
     [dateFrom, dateTo, monthIndex, periodMode, year],
@@ -356,9 +368,7 @@ export default function JournalEntriesPage() {
   };
 
   const handleVoidManualJournal = async (entry: JournalEntry) => {
-    if (!window.confirm(`Batalkan jurnal manual ${entry.entryNumber}? Jurnal tidak dihapus, hanya dibatalkan dari perhitungan laporan.`)) {
-      return;
-    }
+    if (voidingId) return;
     setVoidingId(entry._id);
     try {
       const res = await fetch("/api/data", {
@@ -376,6 +386,7 @@ export default function JournalEntriesPage() {
         return;
       }
       addToast("success", "Jurnal manual dibatalkan");
+      setVoidId(null);
       await loadReferenceData();
       await load();
     } catch {
@@ -418,58 +429,45 @@ export default function JournalEntriesPage() {
                 placeholder="Cari nomor jurnal, memo, sumber..."
               />
             </label>
-            <select
+            <Combobox
               className="form-select accounting-filter"
               value={statusFilter}
-              onChange={event => {
-                setStatusFilter(event.target.value as JournalStatusFilter);
+              onChange={(v: string) => {
+                setStatusFilter(v as JournalStatusFilter);
                 setEntryPage(1);
               }}
-            >
-              <option value="POSTED">Posted ({entrySummary.posted})</option>
-              <option value="VOID">Dibatalkan ({entrySummary.void})</option>
-              <option value="ALL">Semua Jurnal ({entrySummary.all})</option>
-            </select>
-            <select
+              options={[{ value: 'POSTED', label: `Posted (${entrySummary.posted})` }, { value: 'VOID', label: `Dibatalkan (${entrySummary.void})` }, { value: 'ALL', label: `Semua Jurnal (${entrySummary.all})` }]}
+            />
+            <Combobox
               className="form-select accounting-filter"
               value={periodMode}
-              onChange={event => {
-                setPeriodMode(event.target.value as FinancePeriodMode);
+              onChange={(v: string) => {
+                setPeriodMode(v as FinancePeriodMode);
                 setEntryPage(1);
               }}
-            >
-              <option value="all">Semua Tanggal</option>
-              <option value="month">Bulanan</option>
-              <option value="year">Tahunan</option>
-              <option value="custom">Rentang Tanggal</option>
-            </select>
+              options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]}
+            />
             {periodMode === "month" && (
-              <select
+              <Combobox
                 className="form-select accounting-filter"
-                value={monthIndex}
-                onChange={event => {
-                  setMonthIndex(Number(event.target.value));
+                value={String(monthIndex)}
+                onChange={(v: string) => {
+                  setMonthIndex(Number(v));
                   setEntryPage(1);
                 }}
-              >
-                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => (
-                  <option key={name} value={index}>{name}</option>
-                ))}
-              </select>
+                options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))}
+              />
             )}
             {periodMode !== "all" && periodMode !== "custom" && (
-              <select
+              <Combobox
                 className="form-select accounting-filter"
-                value={year}
-                onChange={event => {
-                  setYear(Number(event.target.value));
+                value={String(year)}
+                onChange={(v: string) => {
+                  setYear(Number(v));
                   setEntryPage(1);
                 }}
-              >
-                {yearOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                options={yearOptions.map(option => ({ value: String(option), label: String(option) }))}
+              />
             )}
             {periodMode === "custom" && (
               <>
@@ -542,6 +540,7 @@ export default function JournalEntriesPage() {
             const entryLines = linesByEntry.get(entry._id) || [];
             const isVoid = entry.status === "VOID";
             const isManual = entry.sourceType === "MANUAL_JOURNAL";
+            const sourceLink = resolveJournalSourceLink(entry, journalSourcePermissions);
             return (
               <article
                 key={entry._id}
@@ -563,9 +562,11 @@ export default function JournalEntriesPage() {
                     <p style={{ fontSize: "0.875rem", color: "var(--color-gray-500)" }}>
                       {entry.entryDate} | {entry.memo}
                     </p>
-                    {entry.sourceNumber && (
+                    {(entry.sourceNumber || sourceLink) && (
                       <p style={{ fontSize: "0.8125rem", color: "var(--color-gray-500)" }}>
-                        Ref: {entry.sourceNumber}
+                        Ref: {sourceLink ? (
+                          <Link href={sourceLink.href} style={{ color: "var(--color-primary)", fontWeight: 600 }}>{entry.sourceNumber || sourceLink.label}</Link>
+                        ) : entry.sourceNumber}
                       </p>
                     )}
                     {isVoid && entry.voidedByName && (
@@ -581,7 +582,7 @@ export default function JournalEntriesPage() {
                     {canVoidManualJournal && isManual && !isVoid && (
                       <button
                         className="btn btn-secondary btn-sm"
-                        onClick={() => handleVoidManualJournal(entry)}
+                        onClick={() => setVoidId(entry._id)}
                         disabled={voidingId === entry._id}
                       >
                         <RotateCcw size={14} /> {voidingId === entry._id ? "Memproses..." : "Batalkan"}
@@ -720,17 +721,14 @@ export default function JournalEntriesPage() {
                       <div className="form-row">
                         <div className="form-group">
                           <label className="form-label">Akun <span className="required">*</span></label>
-                          <select
+                          <Combobox
                             className="form-select"
                             value={line.accountRef}
-                            onChange={event => updateDraftLine(line.id, { accountRef: event.target.value })}
+                            onChange={(v: string) => updateDraftLine(line.id, { accountRef: v })}
+                            options={journalAccountOptions.map(item => ({ value: item._id, label: `${item.code} - ${item.name}` }))}
+                            placeholder="Pilih akun"
                             disabled={saving}
-                          >
-                            <option value="">Pilih akun</option>
-                            {journalAccountOptions.map(item => (
-                              <option key={item._id} value={item._id}>{item.code} - {item.name}</option>
-                            ))}
-                          </select>
+                          />
                         </div>
                         <div className="form-group">
                           <label className="form-label">Debit</label>
@@ -800,6 +798,26 @@ export default function JournalEntriesPage() {
           </div>
         </div>
       )}
+
+      {canVoidManualJournal && voidId && (() => {
+        const voidEntry = entries.find(entry => entry._id === voidId);
+        return voidEntry ? (
+          <div className="modal-overlay" onClick={() => { if (voidingId !== voidId) setVoidId(null); }}>
+            <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 420 }}>
+              <div className="modal-header"><h3 className="modal-title">Batalkan Jurnal?</h3></div>
+              <div className="modal-body">
+                <p>Jurnal manual <strong>{voidEntry.entryNumber}</strong> akan dibatalkan. Jurnal tidak dihapus, hanya dibatalkan dari perhitungan laporan.</p>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setVoidId(null)} disabled={voidingId === voidId}>Batal</button>
+                <button className="btn btn-danger" onClick={() => handleVoidManualJournal(voidEntry)} disabled={voidingId === voidId}>
+                  <RotateCcw size={16} /> {voidingId === voidId ? "Memproses..." : "Batalkan Jurnal"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null;
+      })()}
     </div>
   );
 }

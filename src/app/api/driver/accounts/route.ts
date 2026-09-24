@@ -76,7 +76,7 @@ function normalizeText(value: unknown) {
 }
 
 export async function GET(request: Request) {
-    const auth = await requireInternalSession(['OWNER', 'ARMADA']);
+    const auth = await requireInternalSession(['OWNER', 'ARMADA', 'FINANCE', 'OPERASIONAL']);
     if ('error' in auth) {
         return jsonNoStore({ error: auth.error }, { status: auth.status });
     }

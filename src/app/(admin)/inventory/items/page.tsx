@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownCircle, ArrowUpCircle, Edit, Package, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { ArrowLeftRight, Edit, Eye, FileDown, Package, Plus, Save, Search, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
-import { getBusinessDateValue } from '@/lib/business-date';
+import { exportToExcel } from '@/lib/export';
+import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import {
   formatInventoryQuantity,
   INVENTORY_UNIT_OPTIONS,
@@ -22,6 +24,7 @@ import { normalizeTireType, TIRE_TYPE_OPTIONS } from '@/lib/tire-types';
 import type { Supplier, WarehouseItem } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 
+import StockMovementBulkModal from '../_components/StockMovementBulkModal';
 import { useApp, useToast } from '../../layout';
 
 type ItemFormState = {
@@ -33,18 +36,12 @@ type ItemFormState = {
   minStockQty: number;
   defaultSupplierRef: string;
   defaultPurchasePrice: number;
+  stockQty: number;
   tireTypeDefault: string;
   tireBrandDefault: string;
   tireSizeDefault: string;
   notes: string;
   active: boolean;
-};
-
-type MovementFormState = {
-  movementDate: string;
-  sourceType: 'MANUAL_IN' | 'MANUAL_OUT';
-  quantity: number;
-  note: string;
 };
 
 const createItemForm = (item?: Partial<WarehouseItem>): ItemFormState => ({
@@ -56,18 +53,12 @@ const createItemForm = (item?: Partial<WarehouseItem>): ItemFormState => ({
   minStockQty: typeof item?.minStockQty === 'number' ? item.minStockQty : 0,
   defaultSupplierRef: item?.defaultSupplierRef || '',
   defaultPurchasePrice: typeof item?.defaultPurchasePrice === 'number' ? item.defaultPurchasePrice : 0,
+  stockQty: typeof item?.currentStockQty === 'number' ? item.currentStockQty : 0,
   tireTypeDefault: normalizeTireType(item?.tireTypeDefault),
   tireBrandDefault: item?.tireBrandDefault || '',
   tireSizeDefault: item?.tireSizeDefault || '',
   notes: item?.notes || '',
   active: item?.active !== false,
-});
-
-const createMovementForm = (sourceType: 'MANUAL_IN' | 'MANUAL_OUT' = 'MANUAL_IN'): MovementFormState => ({
-  movementDate: getBusinessDateValue(),
-  sourceType,
-  quantity: 0,
-  note: '',
 });
 
 function getStockBadge(item: WarehouseItem) {
@@ -91,18 +82,17 @@ export default function WarehouseItemsPage() {
   const [page, setPage] = useState(1);
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
-  const [showMovementModal, setShowMovementModal] = useState(false);
+  const [showBulkMovementModal, setShowBulkMovementModal] = useState(false);
   const [editItem, setEditItem] = useState<WarehouseItem | null>(null);
-  const [movementItem, setMovementItem] = useState<WarehouseItem | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savingMovement, setSavingMovement] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemFormState>(createItemForm());
-  const [movementForm, setMovementForm] = useState<MovementFormState>(createMovementForm());
 
-  const canManage = user ? hasPermission(user.role, 'warehouseItems', 'create') || hasPermission(user.role, 'warehouseItems', 'update') : false;
-  const canOpenSuppliers = user ? hasPageAccess(user.role, 'suppliers') : false;
-  const canOpenItemDetail = user ? hasPageAccess(user.role, 'warehouseItems') : false;
+  const canManage = user ? hasPermission(user, 'warehouseItems', 'create') || hasPermission(user, 'warehouseItems', 'update') : false;
+  const canExportItems = user ? hasPermission(user, 'warehouseItems', 'export') : false;
+  const canOpenSuppliers = user ? hasPageAccess(user, 'suppliers') : false;
+  const canOpenItemDetail = user ? hasPageAccess(user, 'warehouseItems') : false;
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active !== false), [suppliers]);
   const activeItemCount = allItems.filter((item) => item.active !== false).length;
   const lowStockCount = allItems.filter((item) => {
@@ -148,11 +138,55 @@ export default function WarehouseItemsPage() {
     setSearch((current) => current === nextSearch ? current : nextSearch);
   }, [searchParams]);
 
+  const handleExport = async () => {
+    if (!canExportItems) return;
+    try {
+      const rows = await fetchAllAdminCollectionData<WarehouseItem>(
+        `/api/data?${buildQuery(1, 500)}`,
+        'Gagal memuat barang gudang untuk export',
+        500,
+      );
+      const supplierCodeByRef = new Map((suppliers || []).map((supplier) => [supplier._id, supplier.supplierCode]));
+      await exportToExcel(
+        (rows || []).map((item) => ({
+          itemCode: item.itemCode,
+          name: item.name,
+          category: item.category || '',
+          unit: item.unit,
+          trackingMode: item.trackingMode || 'STANDARD',
+          minStockQty: Number(item.minStockQty || 0),
+          defaultSupplierCode: item.defaultSupplierRef ? supplierCodeByRef.get(item.defaultSupplierRef) || '' : '',
+          defaultSupplierName: item.defaultSupplierName || '',
+          defaultPurchasePrice: Number(item.defaultPurchasePrice || 0),
+          tireTypeDefault: item.tireTypeDefault || '',
+          tireBrandDefault: item.tireBrandDefault || '',
+          tireSizeDefault: item.tireSizeDefault || '',
+          notes: item.notes || '',
+          active: item.active !== false ? 'Aktif' : 'Nonaktif',
+        })),
+        getMasterDataImportExportColumns('warehouse-items').map((column, index) => ({
+          ...column,
+          width: [16, 30, 18, 10, 16, 12, 16, 24, 18, 20, 18, 14, 28, 12][index] || 18,
+          ...(column.key === 'defaultPurchasePrice'
+            ? { formatter: (value: unknown) => Number(value || 0).toLocaleString('id-ID') }
+            : {}),
+        })),
+        `barang-gudang-${new Date().toISOString().slice(0, 10)}`,
+        'Barang Gudang',
+        {
+          title: 'Daftar Barang Gudang',
+          subtitle: search.trim() ? `Hasil pencarian: ${search.trim()}` : 'Semua barang gudang',
+        },
+      );
+      addToast('success', 'Excel barang gudang berhasil di-download');
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel barang gudang');
+    }
+  };
+
   const closeModal = () => { if (!saving) { setShowModal(false); setEditItem(null); setForm(createItemForm()); } };
-  const closeMovementModal = () => { if (!savingMovement) { setShowMovementModal(false); setMovementItem(null); setMovementForm(createMovementForm()); } };
   const openCreate = () => { setEditItem(null); setForm(createItemForm()); setShowModal(true); };
   const openEdit = (item: WarehouseItem) => { setEditItem(item); setForm(createItemForm(item)); setShowModal(true); };
-  const openMovement = (item: WarehouseItem, sourceType: 'MANUAL_IN' | 'MANUAL_OUT') => { setMovementItem(item); setMovementForm(createMovementForm(sourceType)); setShowMovementModal(true); };
   const handleSave = async () => {
     if (!canManage) return addToast('error', 'Anda tidak punya hak mengubah barang gudang');
     if (!form.itemCode || !form.name || !form.unit) return addToast('error', 'Kode, nama barang, dan satuan wajib diisi');
@@ -167,6 +201,9 @@ export default function WarehouseItemsPage() {
         minStockQty: form.minStockQty,
         defaultSupplierRef: form.defaultSupplierRef || undefined,
         defaultPurchasePrice: form.defaultPurchasePrice,
+        ...(editItem
+          ? { currentStockQty: form.trackingMode === 'TIRE_ASSET' ? undefined : form.stockQty }
+          : { initialStockQty: form.trackingMode === 'TIRE_ASSET' ? undefined : form.stockQty }),
         tireTypeDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireTypeDefault : undefined,
         tireBrandDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireBrandDefault : undefined,
         tireSizeDefault: form.trackingMode === 'TIRE_ASSET' ? form.tireSizeDefault : undefined,
@@ -190,46 +227,24 @@ export default function WarehouseItemsPage() {
     }
   };
 
-  const handleStockMovement = async () => {
-    if (!canManage || !movementItem) return addToast('error', 'Anda tidak punya hak mencatat mutasi stok');
-    if (isTireTrackedWarehouseItem(movementItem)) return addToast('error', 'Mutasi stok ban tertracking dikelola lewat modul Ban dan pembelian supplier');
-    if (!movementForm.quantity || Number(movementForm.quantity) <= 0) return addToast('error', 'Qty mutasi stok wajib diisi');
-    setSavingMovement(true);
+  const handleDelete = async (id: string) => {
+    if (!canManage) return addToast('error', 'Anda tidak punya hak menghapus barang gudang');
+    setDeletingId(id);
     try {
       const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'stock-movements', data: { warehouseItemRef: movementItem._id, movementDate: movementForm.movementDate, sourceType: movementForm.sourceType, quantity: movementForm.quantity, note: movementForm.note || undefined } }),
+        body: JSON.stringify({ entity: 'warehouse-items', action: 'delete', data: { id } }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Gagal mencatat mutasi stok');
-      addToast('success', movementForm.sourceType === 'MANUAL_OUT' ? 'Stok keluar dicatat' : 'Stok masuk dicatat');
-      closeMovementModal();
+      if (!res.ok) throw new Error(result.error || 'Gagal menghapus barang gudang');
+      addToast('success', 'Barang gudang dihapus');
+      setDeleteId(null);
       await loadItems();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Gagal mencatat mutasi stok');
+      addToast('error', error instanceof Error ? error.message : 'Gagal menghapus barang gudang');
     } finally {
-      setSavingMovement(false);
-    }
-  };
-
-  const toggleActive = async (item: WarehouseItem) => {
-    if (!canManage) return addToast('error', 'Anda tidak punya hak mengubah status barang gudang');
-    setTogglingId(item._id);
-    try {
-      const res = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'warehouse-items', action: 'update', data: { id: item._id, updates: { active: item.active === false } } }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Gagal memperbarui status barang gudang');
-      addToast('success', item.active === false ? 'Barang gudang diaktifkan' : 'Barang gudang dinonaktifkan');
-      await loadItems();
-    } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Gagal memperbarui status barang gudang');
-    } finally {
-      setTogglingId((current) => current === item._id ? null : current);
+      setDeletingId(null);
     }
   };
 
@@ -238,6 +253,8 @@ export default function WarehouseItemsPage() {
       <div className="page-header">
         <div className="page-header-left"><h1 className="page-title">Barang Gudang</h1></div>
         <div className="page-actions">
+          {canExportItems && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
+          {canManage && <button className="btn btn-secondary" onClick={() => setShowBulkMovementModal(true)}><ArrowLeftRight size={18} /> Input / Keluar Stok</button>}
           {canManage && <button className="btn btn-primary" onClick={openCreate}><Plus size={18} /> Tambah Barang</button>}
         </div>
       </div>
@@ -307,14 +324,12 @@ export default function WarehouseItemsPage() {
                     <td>{Number(item.defaultPurchasePrice || 0) > 0 ? formatCurrency(Number(item.defaultPurchasePrice || 0)) : '-'}</td>
                     <td><span className={`badge ${badge.className}`}>{badge.label}</span></td>
                     <td>
-                      <div className="table-actions">
-                        {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="table-action-btn">Detail</Link> : null}
+                      <div className="table-actions-col">
+                        {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="table-action-btn"><Eye size={14} /> Detail</Link> : null}
                         {canManage ? (
                           <>
                             <button className="table-action-btn" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button>
-                            {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button>}
-                            {!isTireTrackedWarehouseItem(item) && <button className="table-action-btn" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button>}
-                            <button className="table-action-btn" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                            <button className="table-action-btn danger" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button>
                           </>
                         ) : null}
                       </div>
@@ -368,11 +383,9 @@ export default function WarehouseItemsPage() {
                     )}
                   </div>
                   <div className="mobile-record-actions">
-                    {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="btn btn-secondary">Detail</Link> : null}
+                    {canOpenItemDetail ? <Link href={`/inventory/items/${item._id}`} className="btn btn-secondary"><Eye size={14} /> Detail</Link> : null}
                     {canManage ? <button className="btn btn-secondary" onClick={() => openEdit(item)}><Edit size={14} /> Edit</button> : null}
-                    {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_IN')}><ArrowDownCircle size={14} /> Masuk</button> : null}
-                    {canManage && !isTireTrackedWarehouseItem(item) ? <button className="btn btn-secondary" onClick={() => openMovement(item, 'MANUAL_OUT')}><ArrowUpCircle size={14} /> Keluar</button> : null}
-                    {canManage ? <button className="btn btn-secondary" onClick={() => toggleActive(item)} disabled={togglingId === item._id}><RefreshCw size={14} />{togglingId === item._id ? 'Menyimpan...' : item.active !== false ? 'Nonaktifkan' : 'Aktifkan'}</button> : null}
+                    {canManage ? <button className="btn btn-secondary" onClick={() => setDeleteId(item._id)}><Trash2 size={14} /> Hapus</button> : null}
                   </div>
                 </div>
               );
@@ -400,10 +413,10 @@ export default function WarehouseItemsPage() {
             </div>
             <div className="modal-body">
               <div className="form-row"><div className="form-group"><label className="form-label">Kode Barang</label><input className="form-input" value={form.itemCode} onChange={(event) => setForm((current) => ({ ...current, itemCode: event.target.value }))} /></div><div className="form-group"><label className="form-label">Nama Barang</label><input className="form-input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><input className="form-input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} /></div><div className="form-group"><label className="form-label">Mode Tracking</label><select className="form-select" value={form.trackingMode} onChange={(event) => setForm((current) => ({ ...current, trackingMode: event.target.value as ItemFormState['trackingMode'], unit: event.target.value === 'TIRE_ASSET' && current.unit !== 'PCS' && current.unit !== 'UNIT' ? 'PCS' : current.unit }))}>{WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => <option key={option} value={option}>{WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option]}</option>)}</select></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value as WarehouseItem['unit'] }))}>{INVENTORY_UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div><div className="form-group"><label className="form-label">Min. Stok</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} value={form.minStockQty} onValueChange={(value) => setForm((current) => ({ ...current, minStockQty: value }))} /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Supplier Default</label><select className="form-select" value={form.defaultSupplierRef} onChange={(event) => setForm((current) => ({ ...current, defaultSupplierRef: event.target.value }))}><option value="">-- Tidak dipilih --</option>{activeSuppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} - {supplier.name}</option>)}</select></div><div className="form-group"><label className="form-label">Harga Beli Default (Rp)</label><FormattedNumberInput allowDecimal={false} value={form.defaultPurchasePrice} onValueChange={(value) => setForm((current) => ({ ...current, defaultPurchasePrice: value }))} placeholder="Ketik harga beli default" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Status</label><select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Kategori</label><input className="form-input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} /></div><div className="form-group"><label className="form-label">Mode Tracking</label><Combobox className="form-select" value={form.trackingMode} onChange={(v: string) => setForm((current) => ({ ...current, trackingMode: v as ItemFormState['trackingMode'], unit: v === 'TIRE_ASSET' && current.unit !== 'PCS' && current.unit !== 'UNIT' ? 'PCS' : current.unit }))} options={WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => ({ value: option, label: WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option] }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Satuan</label><Combobox className="form-select" value={form.unit} onChange={(v: string) => setForm((current) => ({ ...current, unit: v as WarehouseItem['unit'] }))} options={[...INVENTORY_UNIT_OPTIONS]} /></div><div className="form-group"><label className="form-label">Min. Stok</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} value={form.minStockQty} onValueChange={(value) => setForm((current) => ({ ...current, minStockQty: value }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Supplier Default</label><Combobox className="form-select" value={form.defaultSupplierRef} onChange={(v: string) => setForm((current) => ({ ...current, defaultSupplierRef: v }))} placeholder="-- Tidak dipilih --" options={activeSuppliers.map((supplier) => ({ value: supplier._id, label: `${supplier.supplierCode} - ${supplier.name}` }))} /></div><div className="form-group"><label className="form-label">Harga Beli Default (Rp)</label><FormattedNumberInput allowDecimal={false} value={form.defaultPurchasePrice} onValueChange={(value) => setForm((current) => ({ ...current, defaultPurchasePrice: value }))} placeholder="Ketik harga beli default" /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">{editItem ? 'Stok Saat Ini' : 'Stok Awal'}</label><FormattedNumberInput min={0} maxFractionDigits={form.trackingMode === 'TIRE_ASSET' ? 0 : 3} allowDecimal={form.trackingMode !== 'TIRE_ASSET'} disabled={form.trackingMode === 'TIRE_ASSET'} value={form.stockQty} onValueChange={(value) => setForm((current) => ({ ...current, stockQty: value }))} /><div className="text-muted text-xs">{editItem ? 'Edit stok membuat mutasi penyesuaian otomatis' : 'Stok awal dicatat sebagai riwayat mutasi masuk'}</div></div><div className="form-group"><label className="form-label">Status</label><Combobox className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(v: string) => setForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} /></div></div>
               {form.trackingMode === 'TIRE_ASSET' && (
                 <>
                   <div className="info-banner" style={{ marginBottom: '1rem' }}>
@@ -413,7 +426,7 @@ export default function WarehouseItemsPage() {
                     </div>
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">Jenis Ban Default</label><select className="form-select" value={form.tireTypeDefault} onChange={(event) => setForm((current) => ({ ...current, tireTypeDefault: event.target.value }))}>{TIRE_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+                    <div className="form-group"><label className="form-label">Jenis Ban Default</label><Combobox className="form-select" value={form.tireTypeDefault} onChange={(v: string) => setForm((current) => ({ ...current, tireTypeDefault: v }))} options={[...TIRE_TYPE_OPTIONS]} /></div>
                     <div className="form-group"><label className="form-label">Merk Ban Default</label><input className="form-input" value={form.tireBrandDefault} onChange={(event) => setForm((current) => ({ ...current, tireBrandDefault: event.target.value }))} /></div>
                   </div>
                   <div className="form-row">
@@ -429,19 +442,32 @@ export default function WarehouseItemsPage() {
         </div>
       )}
 
-      {showMovementModal && movementItem && (
-        <div className="modal-overlay" onClick={closeMovementModal}>
+      {showBulkMovementModal && (
+        <StockMovementBulkModal
+          items={allItems}
+          canManage={canManage}
+          onClose={() => setShowBulkMovementModal(false)}
+          onSaved={loadItems}
+        />
+      )}
+
+      {deleteId && (
+        <div className="modal-overlay" onClick={() => { if (deletingId !== deleteId) setDeleteId(null); }}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{movementForm.sourceType === 'MANUAL_OUT' ? 'Catat Stok Keluar' : 'Catat Stok Masuk'}</h3>
-              <button className="modal-close" onClick={closeMovementModal} disabled={savingMovement}><X size={20} /></button>
+              <h3 className="modal-title">Hapus Barang Gudang</h3>
+              <button className="modal-close" onClick={() => setDeleteId(null)} disabled={deletingId === deleteId}><X size={20} /></button>
             </div>
             <div className="modal-body">
-              <div className="form-row"><div className="form-group"><label className="form-label">Tanggal Mutasi</label><input type="date" className="form-input" value={movementForm.movementDate} onChange={(event) => setMovementForm((current) => ({ ...current, movementDate: event.target.value }))} /></div><div className="form-group"><label className="form-label">Qty</label><FormattedNumberInput min={0} maxFractionDigits={3} value={movementForm.quantity} onValueChange={(value) => setMovementForm((current) => ({ ...current, quantity: value }))} /></div></div>
-              <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={3} value={movementForm.note} onChange={(event) => setMovementForm((current) => ({ ...current, note: event.target.value }))} placeholder="Contoh: dipakai ke lapangan atau stok tambahan supplier." /></div>
-              <div className="info-banner" style={{ marginTop: '0.5rem' }}><div className="info-banner-title">Stok Saat Ini</div><div className="info-banner-text">{formatInventoryQuantity(movementItem.currentStockQty || 0)} {movementItem.unit}</div></div>
+              <div className="info-banner">
+                <div className="info-banner-title">Yakin ingin menghapus barang ini?</div>
+                <div className="info-banner-text">Barang yang sudah punya histori pembelian, stok, atau harga supplier tidak bisa dihapus. Aksi ini tidak bisa dibatalkan.</div>
+              </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-secondary" onClick={closeMovementModal} disabled={savingMovement}>Batal</button><button className="btn btn-primary" onClick={handleStockMovement} disabled={savingMovement}><Save size={16} /> {savingMovement ? 'Menyimpan...' : 'Simpan Mutasi'}</button></div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDeleteId(null)} disabled={deletingId === deleteId}>Batal</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(deleteId)} disabled={deletingId === deleteId}><Trash2 size={16} /> {deletingId === deleteId ? 'Menghapus...' : 'Hapus'}</button>
+            </div>
           </div>
         </div>
       )}

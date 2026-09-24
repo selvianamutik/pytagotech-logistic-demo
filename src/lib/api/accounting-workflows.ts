@@ -10,7 +10,7 @@ import {
     updateDocument,
 } from '@/lib/repositories/document-store';
 import { clearRelationalReadCache } from '@/lib/supabase-relational';
-import type { AccountingPeriod, ChartOfAccount, JournalEntry, JournalLine } from '@/lib/types';
+import type { AccountingAccountType, AccountingNormalBalance, AccountingPeriod, ChartOfAccount, JournalEntry, JournalLine } from '@/lib/types';
 
 import {
     assertIsoDate,
@@ -59,7 +59,11 @@ function cleanAmount(value: unknown) {
     return Math.max(normalizeLedgerAmount(value), 0);
 }
 
-async function buildManualJournalNumber(entryDate: string) {
+/**
+ * Build journal number after collision - starts from lastAttemptedSequence + 1
+ * to avoid reusing a number that just caused a collision.
+ */
+async function buildManualJournalNumberAfterCollision(entryDate: string, lastAttemptedSequence: number) {
     const monthPrefix = entryDate.replace(/-/g, '').slice(0, 6);
     const existingEntries = await getAllDocuments<JournalEntry>('journalEntry');
     const maxSequence = existingEntries.reduce((max, entry) => {
@@ -68,7 +72,12 @@ async function buildManualJournalNumber(entryDate: string) {
         const sequence = Number.parseInt(entryNumber.slice(`JRN-${monthPrefix}-`.length), 10);
         return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
     }, 0);
-    return formatJournalNumber(entryDate, maxSequence + 1);
+    // After collision, MUST start from max+1 to avoid stale reads
+    return formatJournalNumber(entryDate, Math.max(maxSequence + 1, lastAttemptedSequence + 1));
+}
+
+async function buildManualJournalNumber(entryDate: string) {
+    return buildManualJournalNumberAfterCollision(entryDate, 0);
 }
 
 function isDuplicateJournalNumberError(error: unknown) {
@@ -78,10 +87,21 @@ function isDuplicateJournalNumberError(error: unknown) {
 
 async function createManualJournalEntryWithRetry(entryDoc: JournalEntry, entryDate: string) {
     let lastError: unknown = null;
+    let lastAttemptedSequence = 0;
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
+        // After collision, rebuild from collision point to avoid stale reads
+        const entryNumber = attempt === 0
+            ? await buildManualJournalNumber(entryDate)
+            : await buildManualJournalNumberAfterCollision(entryDate, lastAttemptedSequence);
+
+        // Track sequence for next retry
+        const match = entryNumber.match(/JRN-\d{6}-(\d+)/);
+        lastAttemptedSequence = match ? Number.parseInt(match[1], 10) : lastAttemptedSequence + 1;
+
         const nextEntry = {
             ...entryDoc,
-            entryNumber: await buildManualJournalNumber(entryDate),
+            entryNumber,
         };
         try {
             await createDocument(nextEntry as unknown as { _type: string; [key: string]: unknown });
@@ -92,6 +112,7 @@ async function createManualJournalEntryWithRetry(entryDoc: JournalEntry, entryDa
                 throw error;
             }
             clearRelationalReadCache();
+            // After collision, rebuild number from current max to avoid stale reads
         }
     }
     throw lastError instanceof Error
@@ -370,5 +391,140 @@ export async function handleAccountingPeriodOpen(
     }, 'accountingPeriod');
 
     await addAuditLog(session, 'UPDATE', 'accounting-periods', existing._id, `Periode ${period} dibuka kembali`);
+    return NextResponse.json({ data: updated });
+}
+
+const ACCOUNT_TYPES: AccountingAccountType[] = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE', 'CONTRA_REVENUE'];
+const NORMAL_BALANCES: AccountingNormalBalance[] = ['DEBIT', 'CREDIT'];
+
+function normalizeAccountType(value: unknown): AccountingAccountType {
+    const normalized = normalizeText(value).toUpperCase() as AccountingAccountType;
+    if (!ACCOUNT_TYPES.includes(normalized)) {
+        throw new Error(`Tipe akun tidak valid. Pilihan: ${ACCOUNT_TYPES.join(', ')}`);
+    }
+    return normalized;
+}
+
+function normalizeNormalBalance(value: unknown): AccountingNormalBalance {
+    const normalized = normalizeText(value).toUpperCase() as AccountingNormalBalance;
+    if (!NORMAL_BALANCES.includes(normalized)) {
+        throw new Error(`Saldo normal tidak valid. Pilihan: ${NORMAL_BALANCES.join(', ')}`);
+    }
+    return normalized;
+}
+
+async function findExistingChartOfAccountByCode(code: string, excludeId?: string) {
+    const existing = await listDocumentsByFilter<ChartOfAccount>('chartOfAccount', { code });
+    return existing.find(account => account._id !== excludeId) || null;
+}
+
+export async function handleChartOfAccountCreate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn,
+) {
+    const code = normalizeText(data.code);
+    const name = normalizeText(data.name);
+    if (!code) {
+        return NextResponse.json({ error: 'Kode akun wajib diisi' }, { status: 400 });
+    }
+    if (!name) {
+        return NextResponse.json({ error: 'Nama akun wajib diisi' }, { status: 400 });
+    }
+
+    let accountType: AccountingAccountType;
+    let normalBalance: AccountingNormalBalance;
+    try {
+        accountType = normalizeAccountType(data.accountType);
+        normalBalance = normalizeNormalBalance(data.normalBalance);
+    } catch (error) {
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Tipe akun tidak valid' },
+            { status: 400 },
+        );
+    }
+
+    const duplicate = await findExistingChartOfAccountByCode(code);
+    if (duplicate) {
+        return NextResponse.json({ error: `Kode akun ${code} sudah dipakai oleh ${duplicate.name}` }, { status: 409 });
+    }
+
+    const accountId = `chart-of-account-${crypto.randomUUID()}`;
+    const accountDoc: ChartOfAccount = {
+        _id: accountId,
+        _type: 'chartOfAccount',
+        code,
+        name,
+        accountType,
+        normalBalance,
+        active: true,
+        description: normalizeOptionalText(data.description) || undefined,
+    };
+
+    await createDocument(accountDoc as unknown as { _type: string; [key: string]: unknown });
+    await addAuditLog(session, 'CREATE', 'chart-of-accounts', accountId, `Akun perkiraan ${code} - ${name} dibuat`);
+    return NextResponse.json({ data: accountDoc });
+}
+
+export async function handleChartOfAccountUpdate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn,
+) {
+    const id = normalizeText(data.id);
+    if (!id) {
+        return NextResponse.json({ error: 'Akun tidak valid' }, { status: 400 });
+    }
+
+    const existing = await getDocumentById<ChartOfAccount>(id, 'chartOfAccount');
+    if (!existing) {
+        return NextResponse.json({ error: 'Akun perkiraan tidak ditemukan' }, { status: 404 });
+    }
+    if (existing.systemKey) {
+        return NextResponse.json(
+            { error: `Akun sistem ${existing.code} - ${existing.name} tidak bisa diubah. Untuk menonaktifkan, hubungi proses migrasi data.` },
+            { status: 409 },
+        );
+    }
+
+    const nextCode = normalizeText(data.code);
+    const nextName = normalizeText(data.name);
+    if (!nextCode) {
+        return NextResponse.json({ error: 'Kode akun wajib diisi' }, { status: 400 });
+    }
+    if (!nextName) {
+        return NextResponse.json({ error: 'Nama akun wajib diisi' }, { status: 400 });
+    }
+
+    let accountType: AccountingAccountType;
+    let normalBalance: AccountingNormalBalance;
+    try {
+        accountType = normalizeAccountType(data.accountType);
+        normalBalance = normalizeNormalBalance(data.normalBalance);
+    } catch (error) {
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Tipe akun tidak valid' },
+            { status: 400 },
+        );
+    }
+
+    const duplicate = await findExistingChartOfAccountByCode(nextCode, id);
+    if (duplicate) {
+        return NextResponse.json({ error: `Kode akun ${nextCode} sudah dipakai oleh ${duplicate.name}` }, { status: 409 });
+    }
+
+    const description = normalizeOptionalText(data.description) || undefined;
+    const nextActive = typeof data.active === 'boolean' ? data.active : existing.active;
+    const patch: Partial<ChartOfAccount> = {
+        code: nextCode,
+        name: nextName,
+        accountType,
+        normalBalance,
+        description,
+        active: nextActive,
+    };
+
+    const updated = await updateDocument(id, patch, 'chartOfAccount');
+    await addAuditLog(session, 'UPDATE', 'chart-of-accounts', id, `Akun perkiraan ${nextCode} - ${nextName} diubah`);
     return NextResponse.json({ data: updated });
 }

@@ -1,14 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import '../../../app.dart';
 import '../../../shared/branding.dart';
+import '../../auth/presentation/account_settings_page.dart';
 import '../data/driver_access_service.dart';
 import '../data/delivery_order_service.dart';
 import '../data/driver_tracking_service.dart';
@@ -17,6 +14,9 @@ import 'delivery_completion_page.dart';
 import 'delivery_manifest_page.dart';
 import 'mobile_action_feedback.dart';
 import 'mobile_numeric_input_formatter.dart';
+
+import 'voucher_history_page.dart';
+import 'voucher_widgets.dart';
 
 enum _DriverHomeSection { trips, vouchers }
 
@@ -2194,6 +2194,16 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     return null;
   }
 
+  Future<void> _openAccountSettings() async {
+    final nameChanged = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AccountSettingsPage(session: _session)),
+    );
+    if (nameChanged != true || !mounted) return;
+    await _refreshDriverSession();
+    if (!mounted) return;
+    _showSuccess('Nama akun berhasil diperbarui.');
+  }
+
   Future<void> _confirmLogout() async {
     final lockedTrip = _trips.firstWhereOrNull(
       (trip) =>
@@ -2304,6 +2314,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 _DriverCard(
                   session: _session,
                   tripCount: _trips.length + pendingTripPlans.length,
+                  onTap: _openAccountSettings,
                 ),
                 const SizedBox(height: 12),
                 _DriverSectionSwitcher(
@@ -2493,9 +2504,23 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                     ],
                   ],
                 ] else ...[
-                  _SectionHeader(
-                    title: 'Riwayat Bon Uang Jalan',
-                    count: _visibleDriverVouchers.length,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _SectionHeader(
+                            title: 'Riwayat Bon Uang Jalan',
+                            count: _visibleDriverVouchers.length,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _openVoucherHistory,
+                          icon: const Icon(Icons.history_rounded, size: 18),
+                          label: const Text('Lihat Riwayat'),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 10),
                   _buildVoucherList(scheme),
@@ -2670,7 +2695,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           .map(
             (voucher) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _DriverVoucherCard(
+              child: DriverVoucherCard(
                 voucher: voucher,
                 onPreview: () => _openVoucherPreview(voucher),
               ),
@@ -2681,9 +2706,36 @@ class _TrackingHomePageState extends State<TrackingHomePage>
   }
 
   void _openVoucherPreview(DriverTripVoucher voucher) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => _DriverVoucherPreviewDialog(voucher: voucher),
+    showDriverVoucherPreviewDialog(context, voucher);
+  }
+
+  Future<List<DriverTripVoucher>> _refreshDriverVouchers() async {
+    final portalData = await _withFreshSession(
+      (sessionToken) => _deliveryOrderService.fetchDriverPortalData(
+        sessionToken: sessionToken,
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _trips = portalData.trips;
+        _plannedTrips = portalData.plannedTrips;
+        _customerProducts = portalData.customerProducts;
+        _customerRecipients = portalData.customerRecipients;
+        _driverVouchers = portalData.driverVouchers;
+        _driverIncidents = portalData.incidents;
+      });
+    }
+    return _visibleDriverVouchers;
+  }
+
+  void _openVoucherHistory() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => VoucherHistoryPage(
+          initialVouchers: _visibleDriverVouchers,
+          onRefresh: _refreshDriverVouchers,
+        ),
+      ),
     );
   }
 }
@@ -2802,7 +2854,6 @@ String _formatWholeNumberInput(num? value) =>
     formatMobileNumberValue(value?.roundToDouble(), fractionDigits: 0);
 
 const _jakartaUtcOffset = Duration(hours: 7);
-final _dateOnlyPattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
 EdgeInsets _keyboardAwareScrollPadding(BuildContext context) {
   return const EdgeInsets.fromLTRB(20, 20, 20, 120);
@@ -2839,25 +2890,6 @@ String _formatRupiah(num value) {
     }
   }
   return 'Rp ${buffer.toString()}';
-}
-
-String _formatDateText(String? value) {
-  final rawValue = value?.trim();
-  if (rawValue == null || rawValue.isEmpty) return '-';
-  final dateOnlyMatch = _dateOnlyPattern.firstMatch(rawValue);
-  if (dateOnlyMatch != null) {
-    return '${dateOnlyMatch.group(3)}/${dateOnlyMatch.group(2)}/${dateOnlyMatch.group(1)}';
-  }
-  final parsed = DateTime.tryParse(rawValue);
-  if (parsed == null) return rawValue;
-  final local = _toJakartaDateTime(parsed);
-  String twoDigits(int input) => input.toString().padLeft(2, '0');
-  return '${twoDigits(local.day)}/${twoDigits(local.month)}/${local.year}';
-}
-
-String _textOrDash(String? value) {
-  final trimmed = value?.trim();
-  return trimmed == null || trimmed.isEmpty ? '-' : trimmed;
 }
 
 String _normalizeManifestReference(String? value) =>
@@ -2929,252 +2961,6 @@ String _formatManifestCargoSummary({
   return parts.isEmpty ? '-' : parts.join(' | ');
 }
 
-String _voucherDisbursementLabel(
-  DriverTripVoucherDisbursement disbursement,
-  int sequence,
-) {
-  if (disbursement.kind == 'INITIAL' || disbursement.kind == 'TOP_UP') {
-    return formatDriverTripVoucherBonLabel(sequence);
-  }
-  return disbursement.kind;
-}
-
-String _voucherDisbursementSummary(DriverTripVoucher voucher) {
-  final totalDisbursements = voucher.disbursements.length;
-  if (totalDisbursements == 0) return 'Detail pencairan belum tersedia';
-  final topUpCount = voucher.disbursements
-      .where((item) => item.kind == 'TOP_UP')
-      .length;
-  if (topUpCount == 0) return '1 pencairan dalam bon ini';
-  return '$totalDisbursements pencairan dalam bon ini';
-}
-
-String _voucherPdfFileName(DriverTripVoucher voucher) {
-  final safeBon = voucher.bonNumber.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
-  return 'uang-jalan-$safeBon.pdf';
-}
-
-pw.Widget _pdfKeyValue(String label, String value) {
-  return pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 6),
-    child: pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.SizedBox(
-          width: 105,
-          child: pw.Text(
-            label,
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-          ),
-        ),
-        pw.Expanded(child: pw.Text(value)),
-      ],
-    ),
-  );
-}
-
-pw.TableRow _pdfTableHeader(List<String> cells) {
-  return pw.TableRow(
-    decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFEFF4FA)),
-    children: cells
-        .map(
-          (cell) => pw.Padding(
-            padding: const pw.EdgeInsets.all(6),
-            child: pw.Text(
-              cell,
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-            ),
-          ),
-        )
-        .toList(growable: false),
-  );
-}
-
-pw.TableRow _pdfTableRow(List<String> cells) {
-  return pw.TableRow(
-    children: cells
-        .map(
-          (cell) => pw.Padding(
-            padding: const pw.EdgeInsets.all(6),
-            child: pw.Text(cell, style: const pw.TextStyle(fontSize: 9)),
-          ),
-        )
-        .toList(growable: false),
-  );
-}
-
-Future<Uint8List> _buildDriverVoucherPdf(DriverTripVoucher voucher) async {
-  final document = pw.Document();
-  final disbursements = voucher.disbursements;
-  final expenses = voucher.items;
-
-  document.addPage(
-    pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(28),
-      build: (context) => [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'PT Gading Mas Surya',
-                  style: pw.TextStyle(
-                    fontSize: 18,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text('Uang Jalan Trip ${voucher.bonNumber}'),
-              ],
-            ),
-            pw.Text(
-              'Dicetak: ${_formatDateText(DateTime.now().toUtc().toIso8601String())}',
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 14),
-        pw.Divider(thickness: 1.2),
-        pw.SizedBox(height: 14),
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  _pdfKeyValue('No. Bon', voucher.bonNumber),
-                  _pdfKeyValue('Tanggal', _formatDateText(voucher.issuedDate)),
-                  _pdfKeyValue('No. DO', _textOrDash(voucher.doNumber)),
-                  _pdfKeyValue('Kendaraan', _textOrDash(voucher.vehiclePlate)),
-                  _pdfKeyValue('Rute', _textOrDash(voucher.route)),
-                  _pdfKeyValue('Status', voucher.statusLabel),
-                ],
-              ),
-            ),
-            pw.SizedBox(width: 18),
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  _pdfKeyValue(
-                    'Total Uang',
-                    _formatRupiah(voucher.totalIssuedAmount),
-                  ),
-                  _pdfKeyValue(
-                    'Biaya Lain-lain',
-                    _formatRupiah(voucher.operationalSpent),
-                  ),
-                  _pdfKeyValue(
-                    'Sisa Bon',
-                    _formatRupiah(voucher.operationalBalance),
-                  ),
-                  _pdfKeyValue(
-                    'Upah Borongan',
-                    _formatRupiah(voucher.driverFeeAmount),
-                  ),
-                  _pdfKeyValue(
-                    voucher.settlementDisplayLabel,
-                    _formatRupiah(voucher.netSettlementAmount.abs()),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 18),
-        pw.Text(
-          'Riwayat Pencairan Uang Jalan',
-          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFD6DEE8)),
-          columnWidths: const {
-            0: pw.FixedColumnWidth(28),
-            1: pw.FixedColumnWidth(70),
-            2: pw.FlexColumnWidth(),
-            3: pw.FlexColumnWidth(),
-            4: pw.FlexColumnWidth(),
-            5: pw.FixedColumnWidth(78),
-          },
-          children: [
-            _pdfTableHeader([
-              'No',
-              'Tanggal',
-              'Jenis',
-              'Sumber Dana',
-              'Catatan',
-              'Jumlah',
-            ]),
-            if (disbursements.isEmpty)
-              _pdfTableRow(['-', '-', 'Belum ada riwayat bon', '-', '-', '-'])
-            else
-              ...(() {
-                return disbursements.indexed.map((entry) {
-                  final index = entry.$1;
-                  final item = entry.$2;
-                  return _pdfTableRow([
-                    '${index + 1}',
-                    _formatDateText(item.date),
-                    _voucherDisbursementLabel(item, index + 1),
-                    _textOrDash(item.bankAccountName),
-                    _textOrDash(item.note),
-                    _formatRupiah(item.amount),
-                  ]);
-                });
-              })(),
-          ],
-        ),
-        pw.SizedBox(height: 18),
-        pw.Text(
-          'Biaya Lain-lain',
-          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFD6DEE8)),
-          columnWidths: const {
-            0: pw.FixedColumnWidth(28),
-            1: pw.FixedColumnWidth(70),
-            2: pw.FlexColumnWidth(),
-            3: pw.FlexColumnWidth(),
-            4: pw.FixedColumnWidth(78),
-          },
-          children: [
-            _pdfTableHeader([
-              'No',
-              'Tanggal',
-              'Kategori',
-              'Deskripsi',
-              'Jumlah',
-            ]),
-            if (expenses.isEmpty)
-              _pdfTableRow(['-', '-', 'Tidak ada biaya lain-lain', '-', '-'])
-            else
-              ...expenses.indexed.map((entry) {
-                final index = entry.$1;
-                final item = entry.$2;
-                return _pdfTableRow([
-                  '${index + 1}',
-                  _formatDateText(item.expenseDate),
-                  item.category,
-                  _textOrDash(item.description),
-                  _formatRupiah(item.amount),
-                ]);
-              }),
-          ],
-        ),
-      ],
-    ),
-  );
-
-  return document.save();
-}
-
 class _SuratJalanStatusSelection {
   const _SuratJalanStatusSelection({
     required this.status,
@@ -3226,9 +3012,14 @@ String _formatKm(num value) {
 }
 
 class _DriverCard extends StatelessWidget {
-  const _DriverCard({required this.session, required this.tripCount});
+  const _DriverCard({
+    required this.session,
+    required this.tripCount,
+    this.onTap,
+  });
   final DriverAppSession session;
   final int tripCount;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3236,70 +3027,80 @@ class _DriverCard extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 380;
     final tripLabel = tripCount == 1 ? '1 trip' : '$tripCount trip';
     return Card(
-      child: Padding(
-        padding: EdgeInsets.all(compact ? 14 : 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: compact ? 42 : 46,
-              height: compact ? 42 : 46,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                Icons.person_pin_circle_rounded,
-                color: scheme.primary,
-                size: compact ? 22 : 24,
-              ),
-            ),
-            SizedBox(width: compact ? 12 : 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    session.driverName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: compact ? 14 : 15,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    session.role,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: compact ? 10 : 12,
-                vertical: compact ? 5 : 6,
-              ),
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                tripLabel,
-                style: TextStyle(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 14 : 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: compact ? 42 : 46,
+                height: compact ? 42 : 46,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.person_pin_circle_rounded,
                   color: scheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: compact ? 12 : 13,
+                  size: compact ? 22 : 24,
                 ),
               ),
-            ),
-          ],
+              SizedBox(width: compact ? 12 : 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      session.driverName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: compact ? 14 : 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      session.role,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.5),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 10 : 12,
+                  vertical: compact ? 5 : 6,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  tripLabel,
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 12 : 13,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: scheme.onSurface.withValues(alpha: 0.35),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3539,539 +3340,6 @@ class _DriverSkeletonBlock extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _DriverVoucherCard extends StatelessWidget {
-  const _DriverVoucherCard({required this.voucher, required this.onPreview});
-
-  final DriverTripVoucher voucher;
-  final VoidCallback onPreview;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final settlementColor = voucher.netSettlementAmount < 0
-        ? scheme.error
-        : scheme.primary;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: scheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        voucher.bonNumber,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'DO ${_textOrDash(voucher.doNumber)} | ${_formatDateText(voucher.issuedDate)}',
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.62),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    voucher.statusLabel,
-                    style: TextStyle(
-                      color: scheme.secondary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _voucherDisbursementSummary(voucher),
-                style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.74),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _VoucherInfoGrid(
-              items: [
-                _VoucherInfoItem(
-                  label: 'Total Uang',
-                  value: _formatRupiah(voucher.totalIssuedAmount),
-                ),
-                _VoucherInfoItem(
-                  label: 'Biaya Lain-lain',
-                  value: _formatRupiah(voucher.operationalSpent),
-                ),
-                _VoucherInfoItem(
-                  label: 'Upah Borongan',
-                  value: _formatRupiah(voucher.driverFeeAmount),
-                ),
-                _VoucherInfoItem(
-                  label: voucher.settlementDisplayLabel,
-                  value: _formatRupiah(voucher.netSettlementAmount.abs()),
-                  color: settlementColor,
-                  caption: voucher.settlementLabel,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onPreview,
-                icon: const Icon(Icons.print_outlined, size: 18),
-                label: const Text('Preview / PDF'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VoucherInfoItem {
-  const _VoucherInfoItem({
-    required this.label,
-    required this.value,
-    this.color,
-    this.caption,
-  });
-
-  final String label;
-  final String value;
-  final Color? color;
-  final String? caption;
-}
-
-class _VoucherInfoGrid extends StatelessWidget {
-  const _VoucherInfoGrid({required this.items});
-
-  final List<_VoucherInfoItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final twoColumns = constraints.maxWidth >= 440;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: items
-              .map(
-                (item) => SizedBox(
-                  width: twoColumns
-                      ? (constraints.maxWidth - 10) / 2
-                      : constraints.maxWidth,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withValues(
-                        alpha: 0.42,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: scheme.outlineVariant.withValues(alpha: 0.75),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.label,
-                          style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: 0.58),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          item.value,
-                          softWrap: true,
-                          overflow: TextOverflow.visible,
-                          style: TextStyle(
-                            color: item.color ?? scheme.onSurface,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        if (item.caption?.trim().isNotEmpty == true) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            item.caption!,
-                            style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.55),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              )
-              .toList(growable: false),
-        );
-      },
-    );
-  }
-}
-
-class _DriverVoucherPreviewDialog extends StatelessWidget {
-  const _DriverVoucherPreviewDialog({required this.voucher});
-
-  final DriverTripVoucher voucher;
-
-  Future<void> _downloadPdf(BuildContext context) async {
-    try {
-      final bytes = await _buildDriverVoucherPdf(voucher);
-      await Printing.sharePdf(
-        bytes: bytes,
-        filename: _voucherPdfFileName(voucher),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      showMobileFeedback(
-        context,
-        type: MobileFeedbackType.error,
-        message: 'Gagal membuat PDF: $error',
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Dialog(
-      insetPadding: const EdgeInsets.all(18),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Preview Uang Jalan',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          voucher.bonNumber,
-                          style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: 0.62),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _VoucherInfoGrid(
-                      items: [
-                        _VoucherInfoItem(
-                          label: 'DO',
-                          value: _textOrDash(voucher.doNumber),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Tanggal',
-                          value: _formatDateText(voucher.issuedDate),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Kendaraan',
-                          value: _textOrDash(voucher.vehiclePlate),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Rute',
-                          value: _textOrDash(voucher.route),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Ringkasan',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 10),
-                    _VoucherSummaryLine(
-                      label: 'Total uang diberikan',
-                      value: _formatRupiah(voucher.totalIssuedAmount),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Biaya lain-lain',
-                      value: _formatRupiah(voucher.operationalSpent),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Sisa bon operasional',
-                      value: _formatRupiah(voucher.operationalBalance),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Upah borongan',
-                      value: _formatRupiah(voucher.driverFeeAmount),
-                    ),
-                    _VoucherSummaryLine(
-                      label: voucher.settlementDisplayLabel,
-                      value: _formatRupiah(voucher.netSettlementAmount.abs()),
-                    ),
-                    const SizedBox(height: 18),
-                    _VoucherHistorySection(voucher: voucher),
-                  ],
-                ),
-              ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Tutup'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => _downloadPdf(context),
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: const Text('Download PDF'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VoucherSummaryLine extends StatelessWidget {
-  const _VoucherSummaryLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              softWrap: true,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.64),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              softWrap: true,
-              overflow: TextOverflow.visible,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VoucherHistorySection extends StatelessWidget {
-  const _VoucherHistorySection({required this.voucher});
-
-  final DriverTripVoucher voucher;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Detail pencairan bon ini',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        if (voucher.disbursements.isEmpty)
-          Text(
-            'Belum ada riwayat bon.',
-            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.56)),
-          )
-        else
-          ...(() {
-            return voucher.disbursements.indexed.map((entry) {
-              final sequence = entry.$1 + 1;
-              final item = entry.$2;
-              return _VoucherHistoryRow(
-                title: _voucherDisbursementLabel(item, sequence),
-                subtitle:
-                    '${_formatDateText(item.date)} | ${_textOrDash(item.bankAccountName)}',
-                amount: _formatRupiah(item.amount),
-              );
-            });
-          })(),
-        const SizedBox(height: 16),
-        const Text(
-          'Biaya lain-lain',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        if (voucher.items.isEmpty)
-          Text(
-            'Tidak ada biaya lain-lain.',
-            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.56)),
-          )
-        else
-          ...voucher.items.map(
-            (item) => _VoucherHistoryRow(
-              title: item.category,
-              subtitle:
-                  '${_formatDateText(item.expenseDate)} | ${_textOrDash(item.description)}',
-              amount: _formatRupiah(item.amount),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _VoucherHistoryRow extends StatelessWidget {
-  const _VoucherHistoryRow({
-    required this.title,
-    required this.subtitle,
-    required this.amount,
-  });
-
-  final String title;
-  final String subtitle;
-  final String amount;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.58),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              amount,
-              textAlign: TextAlign.right,
-              softWrap: true,
-              overflow: TextOverflow.visible,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
       ),
     );
   }

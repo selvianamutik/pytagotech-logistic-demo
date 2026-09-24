@@ -20,6 +20,7 @@ import { formatDate, formatQuantity, VEHICLE_STATUS_MAP } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { Service, Vehicle } from '@/lib/types';
 import { hasPermission } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 
 export default function VehiclesPage() {
     const router = useRouter();
@@ -37,8 +38,8 @@ export default function VehiclesPage() {
     const [incompleteTireCount, setIncompleteTireCount] = useState(0);
     const [nonOperationalCount, setNonOperationalCount] = useState(0);
     const [tireSummaryByVehicle, setTireSummaryByVehicle] = useState<Record<string, VehicleTireSummary>>({});
-    const canCreateVehicle = user ? hasPermission(user.role, 'vehicles', 'create') : false;
-    const canManageVehicle = user ? hasPermission(user.role, 'vehicles', 'update') : false;
+    const canCreateVehicle = user ? hasPermission(user, 'vehicles', 'create') : false;
+    const canManageVehicle = user ? hasPermission(user, 'vehicles', 'update') : false;
 
     useEffect(() => {
         setPage(1);
@@ -146,14 +147,24 @@ export default function VehiclesPage() {
                 <div className="table-toolbar">
                     <div className="table-toolbar-left">
                         <div className="table-search"><Search size={16} className="table-search-icon" /><input placeholder="Cari kode unit, plat, merk, kategori..." value={search} onChange={event => setSearch(event.target.value)} /></div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={serviceFilter} onChange={event => setServiceFilter(event.target.value)}>
-                            <option value="">Semua Kategori</option>
-                            {availableServiceOptions.map(service => <option key={service._id} value={service._id}>{service.code} - {service.name}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 140 }} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(VEHICLE_STATUS_MAP).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-                        </select>
+                                                <div style={{ width: 'auto', minWidth: 180 }}>
+                            <Combobox
+                                value={serviceFilter}
+                                onChange={(v: string) => setServiceFilter(v)}
+                                options={availableServiceOptions.map(service => ({ value: service._id, label: `${service.code} - ${service.name}` }))}
+                                placeholder="Semua Kategori"
+                                className="form-select"
+                            />
+                        </div>
+                                                <div style={{ width: 'auto', minWidth: 140 }}>
+                            <Combobox
+                                value={statusFilter}
+                                onChange={(v: string) => setStatusFilter(v)}
+                                options={Object.entries(VEHICLE_STATUS_MAP).map(([key, meta]) => ({ value: key, label: meta.label }))}
+                                placeholder="Semua Status"
+                                className="form-select"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">
@@ -188,7 +199,7 @@ export default function VehiclesPage() {
                                                 <td>{getVehicleNextAction(vehicle, tireSummaryByVehicle)}</td>
                                                 <td>{vehicle.lastOdometer ? `${formatQuantity(vehicle.lastOdometer, 0)} km` : '-'}</td>
                                                 <td>{typeof vehicle.oilServiceRemainingKm === 'number' ? `${formatQuantity(vehicle.oilServiceRemainingKm, 0)} km` : '-'}</td>
-                                                <td><div className="table-actions">
+                                                <td><div className="table-actions-col">
                                                     <button className="table-action-btn" onClick={() => router.push(`/fleet/vehicles/${vehicle._id}`)}><Eye size={14} /> Lihat</button>
                                                     {canManageVehicle && <button className="table-action-btn" onClick={() => router.push(`/fleet/vehicles/${vehicle._id}/edit`)}><Edit size={14} /> Edit</button>}
                                                 </div></td>

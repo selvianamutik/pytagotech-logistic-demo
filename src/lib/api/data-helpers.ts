@@ -1,9 +1,9 @@
 import { createDocument, getCompanyProfile, getDocumentById, listDocumentsByFilter, updateDocument } from '@/lib/repositories/document-store';
 import { parseFormattedNumberish, type FormattedNumberParseOptions } from '@/components/FormattedNumberInput.helpers';
 import { normalizeUserRole } from '@/lib/rbac';
-import type { CompanyProfile, PaymentMethod, User } from '@/lib/types';
+import type { CompanyProfile, PaymentMethod, PerUserModulePermissions, User } from '@/lib/types';
 
-export type ApiSession = { _id: string; name: string; email?: string; role: User['role'] };
+export type ApiSession = { _id: string; name: string; email?: string; role: User['role']; modulePermissions?: PerUserModulePermissions };
 export type PublicUser = Omit<User, 'passwordHash'>;
 export type AuditLogActor = Pick<ApiSession, '_id' | 'name'> & Partial<Pick<ApiSession, 'email' | 'role'>>;
 

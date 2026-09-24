@@ -21,7 +21,9 @@ import {
 } from '@/lib/fleet-vehicle-page-support';
 import { buildDefaultTireLayoutConfig, buildTireSlotCodesFromLayoutConfig, formatTireSlotLabel, normalizeTireLayoutConfig } from '@/lib/tire-slots';
 import { useApp, useToast } from '../../../layout';
+import { hasPermission } from '@/lib/rbac';
 import type { Service } from '@/lib/types';
+import Combobox from '@/components/Combobox';
 
 export default function VehicleNewPage() {
     const router = useRouter();
@@ -30,7 +32,7 @@ export default function VehicleNewPage() {
     const [saving, setSaving] = useState(false);
     const [services, setServices] = useState<Service[]>([]);
     const [form, setForm] = useState<VehicleForm>(EMPTY_VEHICLE_FORM);
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'vehicles', 'update') : false;
     const selectedService = services.find(service => service._id === form.serviceRef) || null;
     const selectedServiceLayout = selectedService
         ? buildTireSlotCodesFromLayoutConfig(normalizeTireLayoutConfig(selectedService.tireLayoutConfig, buildDefaultTireLayoutConfig(form.vehicleType, selectedService.name)))
@@ -118,29 +120,35 @@ export default function VehicleNewPage() {
                             </div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Tipe Kendaraan</label>
-                                    <select className="form-select" value={form.vehicleType} onChange={e => setForm({ ...form, vehicleType: e.target.value })}>
-                                        <option>Truck</option><option>Pickup</option><option>Van</option><option>Trailer</option><option>Motor</option><option>Other</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={form.vehicleType}
+                                        onChange={(v: string) => setForm({ ...form, vehicleType: v })}
+                                        options={["Truck", "Pickup", "Van", "Trailer", "Motor", "Other"]}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group"><label className="form-label">Merk/Model <span className="required">*</span></label><input className="form-input" value={form.brandModel} onChange={e => setForm({ ...form, brandModel: e.target.value })} placeholder="Mitsubishi Colt Diesel FE 74" /></div>
                             </div>
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kategori Truk / Armada</label>
-                                    <select className="form-select" value={form.serviceRef} onChange={e => {
-                                        const service = services.find(item => item._id === e.target.value);
+                                                                        <Combobox
+                                        value={form.serviceRef}
+                                        onChange={(v: string) => {
+                                        const service = services.find(item => item._id === v);
                                         const interval = service?.oilMaintenanceKm || 0;
                                         setForm({
                                             ...form,
-                                            serviceRef: e.target.value,
+                                            serviceRef: v,
                                             oilMaintenanceIntervalKm: interval,
                                             oilNextServiceOdometer: interval > 0 && !form.oilNextServiceOdometer ? form.lastOdometer + interval : form.oilNextServiceOdometer,
                                             oilServiceRemainingKm: interval > 0 && !form.oilNextServiceOdometer ? interval : form.oilServiceRemainingKm,
                                         });
-                                    }}>
-                                        <option value="">Pilih kategori armada</option>
-                                        {services.map(service => <option key={service._id} value={service._id}>{service.code} - {service.name}</option>)}
-                                    </select>
+                                    }}
+                                        options={services.map(service => ({ value: service._id, label: `${service.code} - ${service.name}` }))}
+                                        placeholder="Pilih kategori armada"
+                                        className="form-select"
+                                    />
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                         Slot ban unit akan mengikuti kategori armada ini.
                                     </div>
@@ -186,22 +194,21 @@ export default function VehicleNewPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kepemilikan</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.ownershipType}
-                                        onChange={event => {
-                                            const ownershipType = event.target.value as VehicleForm['ownershipType'];
+                                        onChange={(v: string) => {
+                                            const ownershipType = v as VehicleForm['ownershipType'];
                                             setForm({
                                                 ...form,
                                                 ownershipType,
                                                 ...(ownershipType === 'COMPANY' ? { partnerOwnerName: '', partnerOwnerPhone: '', partnerNotes: '' } : {}),
                                             });
                                         }}
-                                    >
-                                        {Object.entries(VEHICLE_OWNERSHIP_LABELS).map(([value, label]) => (
-                                            <option key={value} value={value}>{label}</option>
+                                        options={Object.entries(VEHICLE_OWNERSHIP_LABELS).map(([value, label]) => (
+                                            { value: value, label: label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 {form.ownershipType === 'PARTNER' && (
                                     <div className="form-group">

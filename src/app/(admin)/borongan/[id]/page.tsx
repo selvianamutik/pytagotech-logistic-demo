@@ -10,6 +10,7 @@ import { getBusinessDateValue } from '@/lib/business-date';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { fetchCompanyProfile, openBrandedPrint, openPrintWindow, resolveDocumentIssuerProfile } from '@/lib/print';
 import { hasPageAccess, normalizeUserRole } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 import type { BankAccount, DriverBorongan, DriverBoronganItem } from '@/lib/types';
 import { formatCurrency, formatDate, formatQuantity } from '@/lib/utils';
 import PageBackButton from '@/components/PageBackButton';
@@ -43,8 +44,8 @@ export default function BoronganDetailPage() {
     const [paying, setPaying] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const normalizedRole = user ? normalizeUserRole(user.role) : null;
-    const canOpenDeliveryOrderPage = user ? hasPageAccess(user.role, 'deliveryOrders') : false;
-    const canOpenDriverPage = user ? hasPageAccess(user.role, 'drivers') : false;
+    const canOpenDeliveryOrderPage = user ? hasPageAccess(user, 'trips') : false;
+    const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
     const parseWholeMoneyLike = (value: unknown) =>
         parseFormattedNumberish(value ?? 0, { maxFractionDigits: 0 });
 
@@ -529,35 +530,25 @@ export default function BoronganDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Metode Pembayaran</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={payMethod}
-                                        onChange={(e) => {
-                                            const nextMethod = e.target.value;
+                                        onChange={(v: string) => {
+                                            const nextMethod = v;
                                             setPayMethod(nextMethod);
                                             if (nextMethod === 'CASH') {
                                                 setPayBankRef('');
                                             }
                                         }}
                                         disabled={paying}
-                                    >
-                                        <option value="CASH">Tunai</option>
-                                        <option value="TRANSFER">Transfer</option>
-                                        <option value="OTHER">Lainnya</option>
-                                    </select>
+                                        options={[{ value: 'CASH', label: 'Tunai' }, { value: 'TRANSFER', label: 'Transfer' }, { value: 'OTHER', label: 'Lainnya' }]}
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">
                                         Rekening / Kas <span style={{ fontSize: '0.7rem', color: 'var(--color-gray-400)' }}>(opsional, untuk debit)</span>
                                     </label>
-                                    <select className="form-select" value={payBankRef} onChange={(e) => setPayBankRef(e.target.value)} disabled={paying || payMethod === 'CASH'}>
-                                        <option value="">{payMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Tanpa Rekening --'}</option>
-                                        {boronganPaymentAccountOptions.map((account) => (
-                                            <option key={account._id} value={account._id}>
-                                                {account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''} (Saldo: {formatCurrency(parseWholeMoneyLike(account.currentBalance))})
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <Combobox className="form-select" value={payBankRef} onChange={(v: string) => setPayBankRef(v)} disabled={paying || payMethod === 'CASH'} placeholder={payMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Tanpa Rekening --'} options={boronganPaymentAccountOptions.map((account) => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''} (Saldo: ${formatCurrency(parseWholeMoneyLike(account.currentBalance))})` }))} />
                                 </div>
                             </div>
                             <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '0.78rem', color: 'var(--color-gray-600)', marginBottom: '1rem' }}>

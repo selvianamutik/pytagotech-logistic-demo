@@ -7,6 +7,7 @@ import AppPagination from '@/components/AppPagination';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import type { Service, TireAxleLayoutMode, TireLayoutConfig } from '@/lib/types';
+import { hasPermission } from '@/lib/rbac';
 import {
     buildDefaultTireLayoutConfig,
     buildTireSlotCodesFromLayoutConfig,
@@ -72,7 +73,7 @@ export default function ServicesPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [pendingAxleDeleteIndex, setPendingAxleDeleteIndex] = useState<number | null>(null);
     const [form, setForm] = useState<ServiceFormState>(createDefaultServiceForm());
-    const isOwner = user?.role === 'OWNER';
+    const isOwner = user ? hasPermission(user, 'services', 'update') : false;
     const activeCount = totalItems - inactiveCount;
     const layoutPreview = useMemo(
         () => buildTireSlotCodesFromLayoutConfig(form.tireLayoutConfig),
@@ -211,7 +212,7 @@ export default function ServicesPage() {
                                     </td>
                                     <td className="text-muted">{s.oilMaintenanceKm ? `${s.oilMaintenanceKm.toLocaleString('id-ID')} km` : '-'}</td>
                                     <td><span className={`badge ${s.active !== false ? 'badge-success' : 'badge-gray'}`}>{s.active !== false ? 'Aktif' : 'Non-Aktif'}</span></td>
-                                    <td>{isOwner ? <div className="table-actions"><button className="table-action-btn" onClick={() => openEdit(s)}><Edit size={14} /> Edit</button><button className="table-action-btn danger" onClick={() => setDeleteId(s._id)}><Trash2 size={14} /> Hapus</button></div> : <span className="text-muted">Lihat saja</span>}</td></tr>
+                                    <td>{isOwner ? <div className="table-actions-col"><button className="table-action-btn" onClick={() => openEdit(s)}><Edit size={14} /> Edit</button><button className="table-action-btn danger" onClick={() => setDeleteId(s._id)}><Trash2 size={14} /> Hapus</button></div> : <span className="text-muted">Lihat saja</span>}</td></tr>
                             ))}
                 </tbody>
             </table></div>
