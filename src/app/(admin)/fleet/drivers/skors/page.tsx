@@ -22,6 +22,7 @@ import { buildDriversQuery, isDriverActive } from '@/lib/fleet-asset-page-suppor
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import type { Driver, DriverScore } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
+import Combobox from '@/components/Combobox';
 
 export default function DriverSkorsPage() {
     const searchParams = useSearchParams();
@@ -278,12 +279,17 @@ export default function DriverSkorsPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari nama supir atau catatan..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-input" value={filterDriverRef} onChange={event => setFilterDriverRef(event.target.value)} style={{ minWidth: 220 }}>
-                            <option value="">Semua supir</option>
-                            {drivers.map(driver => (
-                                <option key={driver._id} value={driver._id}>{driver.name}</option>
+                                                <div style={{ minWidth: 220 }}>
+                            <Combobox
+                                value={filterDriverRef}
+                                onChange={(v: string) => setFilterDriverRef(v)}
+                                options={drivers.map(driver => (
+                                { value: driver._id, label: driver.name }
                             ))}
-                        </select>
+                                placeholder="Semua supir"
+                                className="form-input"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -440,25 +446,31 @@ export default function DriverSkorsPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Supir Aktif <span className="required">*</span></label>
-                                <select className="form-input" value={form.driverRef} onChange={event => setForm(current => ({ ...current, driverRef: event.target.value }))}>
-                                    <option value="">Pilih supir</option>
-                                    {activeDrivers.map(driver => (
-                                        <option key={driver._id} value={driver._id}>{driver.name}</option>
+                                                                <Combobox
+                                    value={form.driverRef}
+                                    onChange={(v: string) => setForm(current => ({ ...current, driverRef: v }))}
+                                    options={activeDrivers.map(driver => (
+                                        { value: driver._id, label: driver.name }
                                     ))}
-                                </select>
+                                    placeholder="Pilih supir"
+                                    className="form-input"
+                                />
                             </div>
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Jenis <span className="required">*</span></label>
-                                    <select className="form-input" value={form.scoreType} onChange={event => setForm(current => ({
+                                                                        <Combobox
+                                        value={form.scoreType}
+                                        onChange={(v: string) => setForm(current => ({
                                         ...current,
-                                        scoreType: event.target.value as DriverScore['scoreType'],
-                                        durationDays: event.target.value === 'WARNING' ? undefined : (current.durationDays || '1'),
-                                    }))}>
-                                        {DRIVER_SCORE_TYPE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        scoreType: v as DriverScore['scoreType'],
+                                        durationDays: v === 'WARNING' ? undefined : (current.durationDays || '1'),
+                                    }))}
+                                        options={DRIVER_SCORE_TYPE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-input"
+                                    />
                                 </div>
                                 {form.scoreType === 'DAYS' && (
                                     <div className="form-group">

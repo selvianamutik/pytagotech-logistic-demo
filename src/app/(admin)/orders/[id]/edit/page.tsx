@@ -44,6 +44,7 @@ import {
     type OrderEditFormState,
 } from '@/lib/order-edit-page-support';
 import { resolveOrderCargoEntryMode } from '@/lib/order-cargo-entry-mode';
+import Combobox from '@/components/Combobox';
 
 function getPrimaryPickupStop(stops: PickupStopForm[]) {
     return getDraftPickupStops(stops)[0] || stops[0] || createDefaultPickupStopForm();
@@ -531,20 +532,28 @@ export default function OrderEditPage() {
                         <div className="card-body">
                             <div className="form-group">
                                 <label className="form-label">Customer / Pengirim / Penagih</label>
-                                <select className="form-select" value={form.customerRef} onChange={e => handleCustomerChange(e.target.value)} disabled={isRevisionMode || headerFieldsLocked}>
-                                    <option value="">Pilih Customer</option>
-                                    {customers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                                </select>
+                                                                <Combobox
+                                    value={form.customerRef}
+                                    onChange={(v: string) => handleCustomerChange(v)}
+                                    options={customers.map(c => ({ value: c._id, label: c.name }))}
+                                    placeholder="Pilih Customer"
+                                    disabled={isRevisionMode || headerFieldsLocked}
+                                    className="form-select"
+                                />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Kategori Truk / Armada</label>
-                                <select className="form-select" value={form.serviceRef} onChange={e => {
-                                    const svc = services.find(s => s._id === e.target.value);
-                                    setForm(prev => ({ ...prev, serviceRef: e.target.value, serviceName: svc?.name || '' }));
-                                }} disabled={isRevisionMode || headerFieldsLocked}>
-                                    <option value="">Pilih kategori armada</option>
-                                    {services.map(s => <option key={s._id} value={s._id}>{s.code} - {s.name}</option>)}
-                                </select>
+                                                                <Combobox
+                                    value={form.serviceRef}
+                                    onChange={(v: string) => {
+                                    const svc = services.find(s => s._id === v);
+                                    setForm(prev => ({ ...prev, serviceRef: v, serviceName: svc?.name || '' }));
+                                }}
+                                    options={services.map(s => ({ value: s._id, label: `${s.code} - ${s.name}` }))}
+                                    placeholder="Pilih kategori armada"
+                                    disabled={isRevisionMode || headerFieldsLocked}
+                                    className="form-select"
+                                />
                             </div>
                             <div className="form-group">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
@@ -578,19 +587,16 @@ export default function OrderEditPage() {
                                             </div>
                                             <div className="form-group" style={{ marginBottom: 0 }}>
                                                 <label className="form-label">Master Pickup Customer</label>
-                                                <select
-                                                    className="form-select"
+                                                                                                <Combobox
                                                     value={stop.customerPickupRef}
-                                                    onChange={e => handleCustomerPickupChange(index, e.target.value)}
-                                                    disabled={isRevisionMode || headerFieldsLocked || !form.customerRef}
-                                                >
-                                                    <option value="">{form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup') : 'Pilih customer dulu'}</option>
-                                                    {sortedCustomerPickups.map(pickup => (
-                                                        <option key={pickup._id} value={pickup._id}>
-                                                            {pickup.isDefault ? '[Default] ' : ''}{pickup.label}
-                                                        </option>
+                                                    onChange={(v: string) => handleCustomerPickupChange(index, v)}
+                                                    options={sortedCustomerPickups.map(pickup => (
+                                                        { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
                                                     ))}
-                                                </select>
+                                                    placeholder={form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup') : 'Pilih customer dulu'}
+                                                    disabled={isRevisionMode || headerFieldsLocked || !form.customerRef}
+                                                    className="form-select"
+                                                />
                                             </div>
                                             <div className="form-group" style={{ marginBottom: 0 }}>
                                                 <label className="form-label">Alamat Pickup <span className="required">*</span></label>
@@ -731,20 +737,16 @@ export default function OrderEditPage() {
                                         <>
                                             <div style={{ flex: '1 1 260px' }}>
                                                 <label className="form-label">Barang Customer</label>
-                                                <select
-                                                    className="form-select"
+                                                                                                <Combobox
                                                     value={getOrderItemPickerValue(item)}
-                                                    onChange={e => applyCustomerProductSelection(idx, e.target.value)}
+                                                    onChange={(v: string) => applyCustomerProductSelection(idx, v)}
+                                                    options={[{ value: MANUAL_ITEM_OPTION_VALUE, label: "Tambah manual" }, ...(customerProducts.map(product => (
+                                                        { value: product._id, label: `${product.code ? `${product.code} - ` : ''}${product.name}` }
+                                                    )))]}
+                                                    placeholder={form.customerRef ? 'Pilih dari master barang customer (opsional)' : 'Pilih customer dulu'}
                                                     disabled={!form.customerRef}
-                                                >
-                                                    <option value="">{form.customerRef ? 'Pilih dari master barang customer (opsional)' : 'Pilih customer dulu'}</option>
-                                                    <option value={MANUAL_ITEM_OPTION_VALUE}>Tambah manual</option>
-                                                    {customerProducts.map(product => (
-                                                        <option key={product._id} value={product._id}>
-                                                            {product.code ? `${product.code} - ` : ''}{product.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    className="form-select"
+                                                />
                                             </div>
                                             <div style={{ flex: '2 1 280px' }}>
                                                 <label className="form-label">Deskripsi</label>
@@ -760,34 +762,32 @@ export default function OrderEditPage() {
                                         <label className="form-label">{isRevisionMode ? 'Target Berat' : 'Berat'}</label>
                                         <div style={{ display: 'flex', gap: 8 }}>
                                             <FormattedNumberInput min={0} maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)} value={item.weightInputValue} onValueChange={value => updateItem(idx, 'weightInputValue', value)} disabled={shouldLockOrderItemWeight(item)} />
-                                            <select
-                                                className="form-select"
-                                                value={item.weightInputUnit}
-                                                onChange={e => setItems(prev => prev.map((entry, i) => (
-                                                    i === idx ? updateOrderItemWeightUnit(entry, e.target.value as WeightInputUnit) : entry
+                                                                                        <div style={{ width: 92 }}>
+                                                <Combobox
+                                                    value={item.weightInputUnit}
+                                                    onChange={(v: string) => setItems(prev => prev.map((entry, i) => (
+                                                    i === idx ? updateOrderItemWeightUnit(entry, v as WeightInputUnit) : entry
                                                 )))}
-                                                style={{ width: 92 }}
-                                                disabled={false}
-                                            >
-                                                {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                            </select>
+                                                    options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                    className="form-select"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                     <div style={{ flex: '1 1 180px' }}>
                                         <label className="form-label">{isRevisionMode ? 'Target Volume' : 'Volume'}</label>
                                         <div style={{ display: 'flex', gap: 8 }}>
                                             <FormattedNumberInput min={0} maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3} value={item.volumeInputValue} onValueChange={value => updateItem(idx, 'volumeInputValue', value)} disabled={shouldLockOrderItemVolume(item)} />
-                                            <select
-                                                className="form-select"
-                                                value={item.volumeInputUnit}
-                                                onChange={e => setItems(prev => prev.map((entry, i) => (
-                                                    i === idx ? updateOrderItemVolumeUnit(entry, e.target.value as VolumeInputUnit) : entry
+                                                                                        <div style={{ width: 92 }}>
+                                                <Combobox
+                                                    value={item.volumeInputUnit}
+                                                    onChange={(v: string) => setItems(prev => prev.map((entry, i) => (
+                                                    i === idx ? updateOrderItemVolumeUnit(entry, v as VolumeInputUnit) : entry
                                                 )))}
-                                                style={{ width: 92 }}
-                                                disabled={false}
-                                            >
-                                                {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                            </select>
+                                                    options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                    className="form-select"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                     {items.length > 1 && (

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileDown, Plus, Receipt, Search, Eye } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
 import { exportToExcel } from '@/lib/export';
@@ -243,24 +244,13 @@ export default function PurchasesPage() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
-            <select className="form-select purchase-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="">Semua Status</option>
-              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <select className="form-select purchase-status-filter" value={periodMode} onChange={(event) => setPeriodMode(event.target.value as InventoryReportPeriodMode)}>
-              <option value="month">Bulanan</option>
-              <option value="year">Tahunan</option>
-              <option value="custom">Rentang Tanggal</option>
-            </select>
+            <Combobox className="form-select purchase-status-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} placeholder="Semua Status" options={STATUS_OPTIONS} />
+            <Combobox className="form-select purchase-status-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as InventoryReportPeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
             {periodMode === 'month' && (
-              <select className="form-select purchase-status-filter" value={monthIndex} onChange={(event) => setMonthIndex(Number(event.target.value))}>
-                {INVENTORY_REPORT_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-              </select>
+              <Combobox className="form-select purchase-status-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={INVENTORY_REPORT_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
             )}
             {periodMode !== 'custom' && (
-              <select className="form-select purchase-status-filter" value={year} onChange={(event) => setYear(Number(event.target.value) || defaultPeriod.year)}>
-                {yearOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <Combobox className="form-select purchase-status-filter" value={String(year)} onChange={(v: string) => setYear(Number(v) || defaultPeriod.year)} options={yearOptions.map((option) => String(option))} />
             )}
             {periodMode === 'custom' && (
               <>

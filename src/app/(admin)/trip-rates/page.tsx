@@ -14,6 +14,7 @@ import { hasPermission } from '@/lib/rbac';
 import { formatCurrency } from '@/lib/utils';
 import { getTripRouteOvertonaseRatePerTon, stripTripRouteOvertonaseRateNote } from '@/lib/trip-route-rate-support';
 import type { Service, TripRouteRate } from '@/lib/types';
+import Combobox from '@/components/Combobox';
 
 type TripRouteRateSortField = 'originArea' | 'destinationArea' | 'serviceName' | 'rate' | 'overtonaseDriverRatePerTon' | 'active';
 
@@ -397,45 +398,40 @@ export default function TripRouteRatesPage() {
                                 placeholder="Cari area, tujuan, armada, catatan..."
                             />
                         </div>
-                        <select
-                            className="filter-select"
+                                                <Combobox
                             value={serviceFilter}
-                            onChange={event => {
-                                setServiceFilter(event.target.value);
+                            onChange={(v: string) => {
+                                setServiceFilter(v);
                                 setOriginFilter('');
                                 setDestinationFilter('');
                             }}
-                        >
-                            <option value="">Semua layanan armada</option>
-                            {services.map(service => (
-                                <option key={service._id} value={service._id}>
-                                    {service.code} - {service.name}
-                                </option>
+                            options={services.map(service => (
+                                { value: service._id, label: `${service.code} - ${service.name}` }
                             ))}
-                        </select>
-                        <select
+                            placeholder="Semua layanan armada"
                             className="filter-select"
+                        />
+                                                <Combobox
                             value={originFilter}
-                            onChange={event => {
-                                setOriginFilter(event.target.value);
+                            onChange={(v: string) => {
+                                setOriginFilter(v);
                                 setDestinationFilter('');
                             }}
-                        >
-                            <option value="">Semua asal area</option>
-                            {originOptions.map(origin => (
-                                <option key={origin} value={origin}>{origin}</option>
+                            options={originOptions.map(origin => (
+                                { value: origin, label: origin }
                             ))}
-                        </select>
-                        <select
+                            placeholder="Semua asal area"
                             className="filter-select"
+                        />
+                                                <Combobox
                             value={destinationFilter}
-                            onChange={event => setDestinationFilter(event.target.value)}
-                        >
-                            <option value="">Semua tujuan</option>
-                            {destinationOptions.map(destination => (
-                                <option key={destination} value={destination}>{destination}</option>
+                            onChange={(v: string) => setDestinationFilter(v)}
+                            options={destinationOptions.map(destination => (
+                                { value: destination, label: destination }
                             ))}
-                        </select>
+                            placeholder="Semua tujuan"
+                            className="filter-select"
+                        />
                     </div>
                 </div>
                 <div className="table-wrapper">
@@ -594,18 +590,15 @@ export default function TripRouteRatesPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Layanan Armada</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.serviceRef}
-                                        onChange={event => setForm(previous => ({ ...previous, serviceRef: event.target.value }))}
-                                    >
-                                        <option value="">Semua layanan armada</option>
-                                        {services.map(service => (
-                                            <option key={service._id} value={service._id}>
-                                                {service.code} - {service.name}
-                                            </option>
+                                        onChange={(v: string) => setForm(previous => ({ ...previous, serviceRef: v }))}
+                                        options={services.map(service => (
+                                            { value: service._id, label: `${service.code} - ${service.name}` }
                                         ))}
-                                    </select>
+                                        placeholder="Semua layanan armada"
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Tarif Trip <span className="required">*</span></label>

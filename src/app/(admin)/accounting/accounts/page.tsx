@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Edit, Plus, Save, Search, ShieldCheck, Tags, X } from 'lucide-react';
 
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
+import Combobox from '@/components/Combobox';
 import { hasPermission } from '@/lib/rbac';
 import type { AccountingAccountType, AccountingNormalBalance, ChartOfAccount } from '@/lib/types';
 
@@ -303,15 +304,11 @@ export default function ChartOfAccountsPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Tipe Akun</label>
-                  <select className="form-select" value={accountType} onChange={event => handleTypeChange(event.target.value as AccountingAccountType)} disabled={saving}>
-                    {ACCOUNT_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
+                  <Combobox className="form-select" value={accountType} onChange={(v: string) => handleTypeChange(v as AccountingAccountType)} options={ACCOUNT_TYPE_OPTIONS} disabled={saving} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Saldo Normal</label>
-                  <select className="form-select" value={normalBalance} onChange={event => setNormalBalance(event.target.value as AccountingNormalBalance)} disabled={saving}>
-                    {NORMAL_BALANCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
+                  <Combobox className="form-select" value={normalBalance} onChange={(v: string) => setNormalBalance(v as AccountingNormalBalance)} options={NORMAL_BALANCE_OPTIONS} disabled={saving} />
                 </div>
               </div>
               <div className="form-group">
@@ -321,10 +318,7 @@ export default function ChartOfAccountsPage() {
               {editItem && (
                 <div className="form-group">
                   <label className="form-label">Status</label>
-                  <select className="form-select" value={active ? 'active' : 'inactive'} onChange={event => setActive(event.target.value === 'active')} disabled={saving}>
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Nonaktif</option>
-                  </select>
+                  <Combobox className="form-select" value={active ? 'active' : 'inactive'} onChange={(v: string) => setActive(v === 'active')} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} disabled={saving} />
                 </div>
               )}
             </div>

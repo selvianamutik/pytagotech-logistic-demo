@@ -19,6 +19,7 @@ import { formatCargoSummary, getWeightInputFractionDigits, VOLUME_INPUT_UNIT_OPT
 import type { Customer, CustomerBillingRate, CustomerBillingRateBasis, CustomerPickupLocation, CustomerProduct, CustomerRecipient, Order, FreightNota, Service } from '@/lib/types';
 import PageBackButton from '@/components/PageBackButton';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 
 type CustomerProductForm = {
     code: string;
@@ -689,33 +690,30 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 320 }}>
                                     <label className="form-label">Default Basis Billing Invoice</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.defaultFreightNotaBillingMode}
-                                        onChange={e => setForm({ ...form, defaultFreightNotaBillingMode: e.target.value as CustomerBillingRateBasis })}
-                                    >
-                                        {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        onChange={(v: string) => setForm({ ...form, defaultFreightNotaBillingMode: v as CustomerBillingRateBasis })}
+                                        options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Default PPh 23</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={form.defaultPph23Enabled ? 'YA' : 'TIDAK'}
-                                            onChange={e => setForm({
+                                            onChange={(v: string) => setForm({
                                                 ...form,
-                                                defaultPph23Enabled: e.target.value === 'YA',
-                                                defaultPph23RatePercent: e.target.value === 'YA'
+                                                defaultPph23Enabled: v === 'YA',
+                                                defaultPph23RatePercent: v === 'YA'
                                                     ? (form.defaultPph23RatePercent || DEFAULT_PPH23_RATE_PERCENT)
                                                     : DEFAULT_PPH23_RATE_PERCENT,
                                             })}
-                                        >
-                                            <option value="TIDAK">Tidak dipotong</option>
-                                            <option value="YA">Potong PPh 23</option>
-                                        </select>
+                                            options={[{ value: "TIDAK", label: "Tidak dipotong" }, { value: "YA", label: "Potong PPh 23" }]}
+                                            className="form-select"
+                                        />
                                     </div>
                                     <div className="form-group" style={{ maxWidth: 180 }}>
                                         <label className="form-label">Tarif PPh 23 (%)</label>
@@ -728,15 +726,14 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 280 }}>
                                     <label className="form-label">Basis Hitung PPh 23</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.defaultPph23BaseMode}
-                                        onChange={e => setForm({ ...form, defaultPph23BaseMode: e.target.value as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
-                                    >
-                                        {PPH23_BASE_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        onChange={(v: string) => setForm({ ...form, defaultPph23BaseMode: v as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
+                                        options={PPH23_BASE_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Awalan Referensi SJ Pengirim</label>
@@ -1281,20 +1278,26 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Jenis Armada</label>
-                                    <select className="form-select" value={billingRateForm.serviceRef} onChange={e => setBillingRateForm(prev => ({ ...prev, serviceRef: e.target.value }))}>
-                                        <option value="">Semua jenis armada</option>
-                                        {services.map(service => (
-                                            <option key={service._id} value={service._id}>{service.name}</option>
+                                                                        <Combobox
+                                        value={billingRateForm.serviceRef}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, serviceRef: v }))}
+                                        options={services.map(service => (
+                                            { value: service._id, label: service.name }
                                         ))}
-                                    </select>
+                                        placeholder="Semua jenis armada"
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Basis Tarif <span className="required">*</span></label>
-                                    <select className="form-select" value={billingRateForm.basis} onChange={e => setBillingRateForm(prev => ({ ...prev, basis: e.target.value as CustomerBillingRateBasis }))}>
-                                        {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                                        <Combobox
+                                        value={billingRateForm.basis}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, basis: v as CustomerBillingRateBasis }))}
+                                        options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -1304,10 +1307,12 @@ export default function CustomerDetailPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={billingRateForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setBillingRateForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE' }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={billingRateForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, active: v === 'ACTIVE' }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-row">
@@ -1366,10 +1371,12 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={recipientForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setRecipientForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE', isDefault: e.target.value === 'ACTIVE' ? prev.isDefault : false }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={recipientForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setRecipientForm(prev => ({ ...prev, active: v === 'ACTIVE', isDefault: v === 'ACTIVE' ? prev.isDefault : false }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Default</label>
@@ -1413,10 +1420,12 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={pickupForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setPickupForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE', isDefault: e.target.value === 'ACTIVE' ? prev.isDefault : false }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={pickupForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setPickupForm(prev => ({ ...prev, active: v === 'ACTIVE', isDefault: v === 'ACTIVE' ? prev.isDefault : false }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Default</label>
@@ -1468,10 +1477,12 @@ export default function CustomerDetailPage() {
                                     </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={productForm.active ? 'ACTIVE' : 'INACTIVE'} onChange={e => setProductForm(prev => ({ ...prev, active: e.target.value === 'ACTIVE' }))}>
-                                        <option value="ACTIVE">Aktif</option>
-                                        <option value="INACTIVE">Nonaktif</option>
-                                    </select>
+                                                                        <Combobox
+                                        value={productForm.active ? 'ACTIVE' : 'INACTIVE'}
+                                        onChange={(v: string) => setProductForm(prev => ({ ...prev, active: v === 'ACTIVE' }))}
+                                        options={[{ value: "ACTIVE", label: "Aktif" }, { value: "INACTIVE", label: "Nonaktif" }]}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                                 <div className="form-row">
@@ -1484,9 +1495,14 @@ export default function CustomerDetailPage() {
                                             value={productForm.defaultWeightInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultWeightInputValue: value }))}
                                         />
-                                        <select className="form-select" value={productForm.defaultWeightInputUnit} onChange={e => setProductForm(prev => ({ ...prev, defaultWeightInputUnit: e.target.value as WeightInputUnit }))} style={{ width: 100 }}>
-                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                                                                <div style={{ width: 100 }}>
+                                            <Combobox
+                                                value={productForm.defaultWeightInputUnit}
+                                                onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultWeightInputUnit: v as WeightInputUnit }))}
+                                                options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                className="form-select"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                                     <div className="form-group">
@@ -1499,9 +1515,14 @@ export default function CustomerDetailPage() {
                                             value={productForm.defaultVolumeInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultVolumeInputValue: value }))}
                                         />
-                                        <select className="form-select" value={productForm.defaultVolumeInputUnit} onChange={e => setProductForm(prev => ({ ...prev, defaultVolumeInputUnit: e.target.value as VolumeInputUnit }))} style={{ width: 100 }}>
-                                            {VOLUME_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                                                                <div style={{ width: 100 }}>
+                                            <Combobox
+                                                value={productForm.defaultVolumeInputUnit}
+                                                onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultVolumeInputUnit: v as VolumeInputUnit }))}
+                                                options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                                className="form-select"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>

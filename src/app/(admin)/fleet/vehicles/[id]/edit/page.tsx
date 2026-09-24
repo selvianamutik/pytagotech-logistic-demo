@@ -27,6 +27,7 @@ import { hasPermission } from '@/lib/rbac';
 import { useApp, useToast } from '../../../../layout';
 import { VEHICLE_STATUS_MAP } from '@/lib/utils';
 import type { Service, Vehicle, VehicleStatus } from '@/lib/types';
+import Combobox from '@/components/Combobox';
 
 export default function VehicleEditPage() {
     const params = useParams();
@@ -176,9 +177,11 @@ export default function VehicleEditPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kategori Truk / Armada</label>
-                                    <select className="form-select" value={form.serviceRef} onChange={e => {
+                                                                        <Combobox
+                                        value={form.serviceRef}
+                                        onChange={(v: string) => {
                                         const previousService = services.find(item => item._id === form.serviceRef) || null;
-                                        const service = services.find(item => item._id === e.target.value);
+                                        const service = services.find(item => item._id === v);
                                         const interval = service?.oilMaintenanceKm || 0;
                                         setForm({
                                             ...form,
@@ -187,15 +190,16 @@ export default function VehicleEditPage() {
                                                 previousService,
                                                 nextService: service,
                                             }),
-                                            serviceRef: e.target.value,
+                                            serviceRef: v,
                                             oilMaintenanceIntervalKm: interval,
                                             oilNextServiceOdometer: interval > 0 && form.oilLastServiceOdometer > 0 ? form.oilLastServiceOdometer + interval : form.oilNextServiceOdometer,
                                             oilServiceRemainingKm: interval > 0 && form.oilLastServiceOdometer > 0 ? form.oilLastServiceOdometer + interval - form.lastOdometer : form.oilServiceRemainingKm,
                                         });
-                                    }}>
-                                        <option value="">Pilih kategori armada</option>
-                                        {services.map(service => <option key={service._id} value={service._id}>{service.code} - {service.name}</option>)}
-                                    </select>
+                                    }}
+                                        options={services.map(service => ({ value: service._id, label: `${service.code} - ${service.name}` }))}
+                                        placeholder="Pilih kategori armada"
+                                        className="form-select"
+                                    />
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                         Kalau kategori armada diubah dan kode unit dikosongkan, sistem akan membuat kode baru dengan prefix kategori yang sesuai.
                                     </div>
@@ -214,9 +218,12 @@ export default function VehicleEditPage() {
                             )}
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Status</label>
-                                    <select className="form-select" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as VehicleStatus })}>
-                                        {Object.entries(VEHICLE_STATUS_MAP).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
-                                    </select>
+                                                                        <Combobox
+                                        value={form.status}
+                                        onChange={(v: string) => setForm({ ...form, status: v as VehicleStatus })}
+                                        options={Object.entries(VEHICLE_STATUS_MAP).map(([key, item]) => ({ value: key, label: item.label }))}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group"><label className="form-label">Tanggal Update Odometer</label><input type="date" className="form-input" value={form.lastOdometerAt} onChange={e => setForm({ ...form, lastOdometerAt: e.target.value })} /></div>
                             </div>
@@ -245,22 +252,21 @@ export default function VehicleEditPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Kepemilikan</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.ownershipType}
-                                        onChange={event => {
-                                            const ownershipType = event.target.value as VehicleForm['ownershipType'];
+                                        onChange={(v: string) => {
+                                            const ownershipType = v as VehicleForm['ownershipType'];
                                             setForm({
                                                 ...form,
                                                 ownershipType,
                                                 ...(ownershipType === 'COMPANY' ? { partnerOwnerName: '', partnerOwnerPhone: '', partnerNotes: '' } : {}),
                                             });
                                         }}
-                                    >
-                                        {Object.entries(VEHICLE_OWNERSHIP_LABELS).map(([value, label]) => (
-                                            <option key={value} value={value}>{label}</option>
+                                        options={Object.entries(VEHICLE_OWNERSHIP_LABELS).map(([value, label]) => (
+                                            { value: value, label: label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             {form.ownershipType === 'PARTNER' && (

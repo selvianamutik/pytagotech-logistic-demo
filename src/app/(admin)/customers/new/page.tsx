@@ -9,6 +9,7 @@ import PageBackButton from '@/components/PageBackButton';
 import { FREIGHT_NOTA_BILLING_MODE_OPTIONS } from '@/lib/freight-nota-billing';
 import { DEFAULT_PPH23_RATE_PERCENT, PPH23_BASE_MODE_OPTIONS } from '@/lib/pph23';
 import type { CustomerBillingRateBasis } from '@/lib/types';
+import Combobox from '@/components/Combobox';
 
 export default function CustomerNewPage() {
     const router = useRouter();
@@ -106,15 +107,14 @@ export default function CustomerNewPage() {
                         </div>
                         <div className="form-group" style={{ maxWidth: 280 }}>
                             <label className="form-label">Default Basis Billing Invoice</label>
-                            <select
-                                className="form-select"
+                                                        <Combobox
                                 value={form.defaultFreightNotaBillingMode}
-                                onChange={e => setForm({ ...form, defaultFreightNotaBillingMode: e.target.value as CustomerBillingRateBasis })}
-                            >
-                                {FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                onChange={(v: string) => setForm({ ...form, defaultFreightNotaBillingMode: v as CustomerBillingRateBasis })}
+                                options={FREIGHT_NOTA_BILLING_MODE_OPTIONS.map(option => (
+                                    { value: option.value, label: option.label }
                                 ))}
-                            </select>
+                                className="form-select"
+                            />
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                 Menentukan default tampilan berat dan basis tarif saat admin membuat invoice customer ini.
                             </div>
@@ -124,18 +124,16 @@ export default function CustomerNewPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Default PPh 23</label>
-                                        <select
-                                            className="form-select"
+                                                                                <Combobox
                                             value={form.defaultPph23Enabled ? 'YA' : 'TIDAK'}
-                                            onChange={e => setForm({
+                                            onChange={(v: string) => setForm({
                                                 ...form,
-                                                defaultPph23Enabled: e.target.value === 'YA',
-                                                defaultPph23RatePercent: e.target.value === 'YA' ? (form.defaultPph23RatePercent || DEFAULT_PPH23_RATE_PERCENT) : DEFAULT_PPH23_RATE_PERCENT,
+                                                defaultPph23Enabled: v === 'YA',
+                                                defaultPph23RatePercent: v === 'YA' ? (form.defaultPph23RatePercent || DEFAULT_PPH23_RATE_PERCENT) : DEFAULT_PPH23_RATE_PERCENT,
                                             })}
-                                        >
-                                            <option value="TIDAK">Tidak dipotong</option>
-                                            <option value="YA">Potong PPh 23</option>
-                                        </select>
+                                            options={[{ value: "TIDAK", label: "Tidak dipotong" }, { value: "YA", label: "Potong PPh 23" }]}
+                                            className="form-select"
+                                        />
                                     </div>
                                     <div className="form-group" style={{ maxWidth: 180 }}>
                                         <label className="form-label">Tarif PPh 23 (%)</label>
@@ -148,15 +146,14 @@ export default function CustomerNewPage() {
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 260 }}>
                                     <label className="form-label">Basis Hitung Default</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={form.defaultPph23BaseMode}
-                                        onChange={e => setForm({ ...form, defaultPph23BaseMode: e.target.value as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
-                                    >
-                                        {PPH23_BASE_MODE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        onChange={(v: string) => setForm({ ...form, defaultPph23BaseMode: v as 'BEFORE_CLAIM' | 'AFTER_CLAIM' })}
+                                        options={PPH23_BASE_MODE_OPTIONS.map(option => (
+                                            { value: option.value, label: option.label }
                                         ))}
-                                    </select>
+                                        className="form-select"
+                                    />
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                                         Ini hanya default customer. Admin tetap bisa override lagi di invoice sebelum ada pembayaran.
                                     </div>

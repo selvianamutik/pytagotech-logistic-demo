@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { FileDown, Printer, Save, Wallet, X } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
@@ -503,7 +504,7 @@ export default function PurchaseDetailPage() {
             <div className="modal-body">
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Tanggal Bayar</label><input type="date" className="form-input" min={getMaxDate(purchase.orderDate, purchase.lastPaidAt)} value={paymentForm.date} onChange={(event) => setPaymentForm((current) => ({ ...current, date: event.target.value }))} /></div>
-                <div className="form-group"><label className="form-label">Rekening / Kas</label><select className="form-select" value={paymentForm.bankAccountRef} onChange={(event) => setPaymentForm((current) => ({ ...current, bankAccountRef: event.target.value }))}><option value="">Pilih rekening</option>{bankAccounts.map((account) => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Rekening / Kas</label><Combobox className="form-select" value={paymentForm.bankAccountRef} onChange={(v: string) => setPaymentForm((current) => ({ ...current, bankAccountRef: v }))} placeholder="Pilih rekening" options={bankAccounts.map((account) => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}` }))} /></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Nominal Bayar (Rp)</label><FormattedNumberInput allowDecimal={false} value={paymentForm.amount} onValueChange={(value) => setPaymentForm((current) => ({ ...current, amount: value }))} placeholder="Ketik nominal pembayaran" /></div>

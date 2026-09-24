@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useToast } from '../../layout';
 import { Plus, Edit, Save, X, RefreshCw } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import type { User } from '@/lib/types';
@@ -282,11 +283,7 @@ export default function UsersPage() {
                             <div className="form-group"><label className="form-label">Nama <span className="required">*</span></label><input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} autoComplete="name" /></div>
                             <div className="form-group"><label className="form-label">Email <span className="required">*</span></label><input className="form-input" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} autoComplete="username" /></div>
                             <div className="form-group"><label className="form-label">Role</label>
-                                <select className="form-select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value as InternalUserRole })}>
-                                    {INTERNAL_USER_ROLE_OPTIONS.map(role => (
-                                        <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-                                    ))}
-                                </select>
+                                <Combobox className="form-select" value={form.role} onChange={(v: string) => setForm({ ...form, role: v as InternalUserRole })} options={INTERNAL_USER_ROLE_OPTIONS.map(role => ({ value: role, label: ROLE_LABELS[role] }))} />
                             </div>
                             <div className="form-group"><label className="form-label">{editUser ? 'Reset Password (kosongkan jika tidak diubah)' : 'Password *'}</label><input className="form-input" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} autoComplete="new-password" /><div className="form-hint">Minimal 8 karakter</div></div>
                             <ModulePermissionsEditor

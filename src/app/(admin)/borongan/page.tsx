@@ -19,6 +19,7 @@ import {
     type FinancePeriodMode,
 } from '@/lib/finance-period';
 import { hasPageAccess, normalizeUserRole } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import type { DriverBorongan } from '@/lib/types';
 import { useApp, useToast } from '../layout';
@@ -215,25 +216,13 @@ export default function BoronganListPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari slip, supir..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select finance-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(STATUS_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                        </select>
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as FinancePeriodMode)}>
-                            <option value="all">Semua Tanggal</option>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} placeholder="Semua Status" options={Object.entries(STATUS_MAP).map(([key, value]) => ({ value: key, label: value.label }))} />
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as FinancePeriodMode)} options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'all' && periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => String(option))} />
                         )}
                         {periodMode === 'custom' && (
                             <>

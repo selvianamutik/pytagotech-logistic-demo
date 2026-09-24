@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Save, Trash2 } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { addDaysToDateValue, getBusinessDateValue } from '@/lib/business-date';
@@ -265,7 +266,7 @@ export default function PurchaseNewPage() {
           <div className="card-header"><span className="card-header-title">Header Pembelian</span></div>
           <div className="card-body">
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Supplier</label><select className="form-select" value={supplierRef} onChange={(event) => setSupplierRef(event.target.value)} disabled={loading}><option value="">Pilih supplier</option>{activeSuppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} - {supplier.name}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Supplier</label><Combobox className="form-select" value={supplierRef} onChange={(v: string) => setSupplierRef(v)} disabled={loading} placeholder="Pilih supplier" options={activeSuppliers.map((supplier) => ({ value: supplier._id, label: `${supplier.supplierCode} - ${supplier.name}` }))} /></div>
               <div className="form-group"><label className="form-label">Tanggal Pembelian</label><input type="date" className="form-input" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} /></div>
             </div>
             <div className="form-row">
@@ -317,7 +318,7 @@ export default function PurchaseNewPage() {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                            <select className="form-select" style={{ flex: 1 }} value={line.warehouseItemRef} onChange={(event) => handleItemChange(line.rowId, event.target.value)}><option value="">Pilih barang</option>{activeItems.map((item) => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select>
+                            <div style={{ flex: 1 }}><Combobox className="form-select" value={line.warehouseItemRef} onChange={(v: string) => handleItemChange(line.rowId, v)} placeholder="Pilih barang" options={activeItems.map((item) => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))} /></div>
                             {canCreateWarehouseItem && (
                               <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => updateLine(line.rowId, { newItemMode: true })}><Plus size={14} /> Barang Baru</button>
                             )}
@@ -333,12 +334,12 @@ export default function PurchaseNewPage() {
                           <div className="form-group"><label className="form-label">Kategori</label><input type="text" className="form-input" value={line.newItemCategory} onChange={(event) => updateLine(line.rowId, { newItemCategory: event.target.value })} placeholder="Opsional" /></div>
                         </div>
                         <div className="form-row">
-                          <div className="form-group"><label className="form-label">Satuan</label><select className="form-select" value={line.newItemUnit} onChange={(event) => updateLine(line.rowId, { newItemUnit: event.target.value })}>{INVENTORY_UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
-                          <div className="form-group"><label className="form-label">Mode Barang</label><select className="form-select" value={line.newItemTrackingMode} onChange={(event) => updateLine(line.rowId, { newItemTrackingMode: event.target.value as 'STANDARD' | 'TIRE_ASSET' })}>{WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => <option key={option} value={option}>{WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option]}</option>)}</select></div>
+                          <div className="form-group"><label className="form-label">Satuan</label><Combobox className="form-select" value={line.newItemUnit} onChange={(v: string) => updateLine(line.rowId, { newItemUnit: v })} options={[...INVENTORY_UNIT_OPTIONS]} /></div>
+                          <div className="form-group"><label className="form-label">Mode Barang</label><Combobox className="form-select" value={line.newItemTrackingMode} onChange={(v: string) => updateLine(line.rowId, { newItemTrackingMode: v as 'STANDARD' | 'TIRE_ASSET' })} options={WAREHOUSE_ITEM_TRACKING_MODE_OPTIONS.map((option) => ({ value: option, label: WAREHOUSE_ITEM_TRACKING_MODE_LABELS[option] }))} /></div>
                         </div>
                         {line.newItemTrackingMode === 'TIRE_ASSET' && (
                           <div className="form-row">
-                            <div className="form-group"><label className="form-label">Jenis Ban Default</label><select className="form-select" value={line.newItemTireType} onChange={(event) => updateLine(line.rowId, { newItemTireType: event.target.value })}><option value="">Pilih jenis ban</option>{TIRE_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+                            <div className="form-group"><label className="form-label">Jenis Ban Default</label><Combobox className="form-select" value={line.newItemTireType} onChange={(v: string) => updateLine(line.rowId, { newItemTireType: v })} placeholder="Pilih jenis ban" options={[...TIRE_TYPE_OPTIONS]} /></div>
                             <div className="form-group"><label className="form-label">Merk Ban Default</label><input type="text" className="form-input" value={line.newItemTireBrand} onChange={(event) => updateLine(line.rowId, { newItemTireBrand: event.target.value })} /></div>
                             <div className="form-group"><label className="form-label">Ukuran Ban Default</label><input type="text" className="form-input" value={line.newItemTireSize} onChange={(event) => updateLine(line.rowId, { newItemTireSize: event.target.value })} /></div>
                           </div>

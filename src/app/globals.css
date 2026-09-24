@@ -2595,6 +2595,10 @@ details[open] > summary .foldable-chevron {
   padding-right: 2.25rem;
 }
 
+.combobox-has-clear .combobox-input {
+  padding-right: 4rem;
+}
+
 .combobox-toggle {
   position: absolute;
   right: 0;
@@ -2617,6 +2621,11 @@ details[open] > summary .foldable-chevron {
 .combobox-toggle:disabled {
   cursor: not-allowed;
   color: var(--color-gray-300);
+}
+
+.combobox-toggle.combobox-clear {
+  right: 2.25rem;
+  width: 2rem;
 }
 
 .combobox-menu {

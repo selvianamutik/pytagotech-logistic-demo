@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast, useApp } from '../layout';
 import { Eye, Pencil, Plus, Save, Search, Trash2, Wallet, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import ExpenseEditModal from '@/components/ExpenseEditModal';
@@ -413,35 +414,17 @@ export default function ExpensesPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari catatan, kategori, kendaraan..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select finance-filter" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
-                            <option value="">Semua Kategori</option>
-                            {categories.map(category => <option key={category._id} value={category._id}>{category.name}</option>)}
-                        </select>
-                        <select className="form-select finance-filter" value={bankAccountFilter} onChange={event => setBankAccountFilter(event.target.value)}>
-                            <option value="">Semua Rekening/Kas</option>
-                            {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                        </select>
+                        <Combobox className="form-select finance-filter" value={categoryFilter} onChange={(v: string) => setCategoryFilter(v)} options={categories.map(category => ({ value: category._id, label: category.name }))} placeholder="Semua Kategori" />
+                        <Combobox className="form-select finance-filter" value={bankAccountFilter} onChange={(v: string) => setBankAccountFilter(v)} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder="Semua Rekening/Kas" />
                         {isOwner && (
-                            <select className="form-select finance-filter" value={privacyFilter} onChange={event => setPrivacyFilter(event.target.value)}>
-                                <option value="">Semua Privasi</option>
-                                <option value="internal">Internal</option>
-                                <option value="ownerOnly">Owner Only</option>
-                            </select>
+                            <Combobox className="form-select finance-filter" value={privacyFilter} onChange={(v: string) => setPrivacyFilter(v)} options={[{ value: 'internal', label: 'Internal' }, { value: 'ownerOnly', label: 'Owner Only' }]} placeholder="Semua Privasi" />
                         )}
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as InventoryReportPeriodMode)}>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as InventoryReportPeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {INVENTORY_REPORT_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={INVENTORY_REPORT_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => ({ value: String(option), label: String(option) }))} />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -684,9 +667,7 @@ export default function ExpensesPage() {
                         <div className="modal-header"><h3 className="modal-title">Tambah Pengeluaran</h3><button className="modal-close" onClick={() => setShowModal(false)} disabled={saving}><X size={20} /></button></div>
                         <div className="modal-body">
                             <div className="form-group"><label className="form-label">Kategori <span className="required">*</span></label>
-                                <select className="form-select" value={form.categoryRef} onChange={event => setForm({ ...form, categoryRef: event.target.value })} disabled={saving}>
-                                    <option value="">Pilih kategori umum</option>{manualCategories.map(category => <option key={category._id} value={category._id}>{category.name}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={form.categoryRef} onChange={(v: string) => setForm({ ...form, categoryRef: v })} options={manualCategories.map(category => ({ value: category._id, label: category.name }))} placeholder="Pilih kategori umum" disabled={saving} />
                             </div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} disabled={saving} /></div>
@@ -694,17 +675,14 @@ export default function ExpensesPage() {
                             </div>
                             <div className="form-group"><label className="form-label">Catatan/Deskripsi</label><textarea className="form-textarea" rows={2} value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} disabled={saving} /></div>
                             <div className="form-group"><label className="form-label">Status Pembayaran <span className="required">*</span></label>
-                                <select className="form-select" value={form.paymentMode} onChange={event => {
-                                    const nextMode = event.target.value as ExpensePaymentMode;
+                                <Combobox className="form-select" value={form.paymentMode} onChange={(v: string) => {
+                                    const nextMode = v as ExpensePaymentMode;
                                     setForm(current => ({
                                         ...current,
                                         paymentMode: nextMode,
                                         ...(nextMode === 'payable' ? { bankAccountRef: '', bankAccountName: '' } : {}),
                                     }));
-                                }} disabled={saving}>
-                                    <option value="paid">Sudah dibayar dari rekening/kas</option>
-                                    <option value="payable">Belum dibayar (catat hutang biaya)</option>
-                                </select>
+                                }} options={[{ value: 'paid', label: 'Sudah dibayar dari rekening/kas' }, { value: 'payable', label: 'Belum dibayar (catat hutang biaya)' }]} disabled={saving} />
                                 <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
                                     {isPaidNow
                                         ? 'Saldo rekening/kas akan langsung berkurang.'
@@ -712,18 +690,13 @@ export default function ExpensesPage() {
                                 </div>
                             </div>
                             <div className="form-group"><label className="form-label">Rekening / Kas Pembayaran {isPaidNow && <span className="required">*</span>}</label>
-                                <select className="form-select" value={isPaidNow ? form.bankAccountRef : ''} onChange={event => {
-                                    const account = bankAccounts.find(item => item._id === event.target.value);
-                                    setForm({ ...form, bankAccountRef: event.target.value, bankAccountName: account?.bankName || '' });
-                                }} disabled={saving || !isPaidNow}>
-                                    <option value="">{isPaidNow ? 'Pilih rekening/kas' : 'Tidak dipakai karena belum dibayar'}</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={isPaidNow ? form.bankAccountRef : ''} onChange={(v: string) => {
+                                    const account = bankAccounts.find(item => item._id === v);
+                                    setForm({ ...form, bankAccountRef: v, bankAccountName: account?.bankName || '' });
+                                }} options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} placeholder={isPaidNow ? 'Pilih rekening/kas' : 'Tidak dipakai karena belum dibayar'} disabled={saving || !isPaidNow} />
                             </div>
                             {isOwner && <div className="form-group"><label className="form-label">Privacy Level</label>
-                                <select className="form-select" value={form.privacyLevel} onChange={event => setForm({ ...form, privacyLevel: event.target.value as 'internal' | 'ownerOnly' })} disabled={saving}>
-                                    <option value="internal">Internal</option><option value="ownerOnly">Owner Only</option>
-                                </select>
+                                <Combobox className="form-select" value={form.privacyLevel} onChange={(v: string) => setForm({ ...form, privacyLevel: v as 'internal' | 'ownerOnly' })} options={[{ value: 'internal', label: 'Internal' }, { value: 'ownerOnly', label: 'Owner Only' }]} disabled={saving} />
                             </div>}
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving || !isFormValid}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>

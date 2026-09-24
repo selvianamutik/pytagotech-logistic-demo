@@ -13,6 +13,7 @@ import type { CargoSummary, Trip } from '@/lib/trip-document-types';
 import type { DriverVoucher } from '@/lib/types';
 import { hasPageAccess } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
+import Combobox from '@/components/Combobox';
 
 type TripBonStatusMeta = { label: string; color: string };
 type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'completed' | 'bon-open';
@@ -230,20 +231,24 @@ export default function TripsPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari trip, resi, customer, kendaraan, driver..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {Object.entries(DO_STATUS_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={conditionFilter} onChange={event => setConditionFilter(event.target.value as TripConditionFilter)}>
-                            <option value="">Semua Kondisi</option>
-                            <option value="driver-approval">Butuh approval driver</option>
-                            <option value="has-hold">Ada hold</option>
-                            <option value="multi-sj">Multi-SJ</option>
-                            <option value="no-sj">Belum ada SJ</option>
-                            <option value="unfinished">Belum final</option>
-                            <option value="completed">Selesai</option>
-                            <option value="bon-open">Bon belum selesai</option>
-                        </select>
+                                                <div style={{ width: 'auto', minWidth: 150 }}>
+                            <Combobox
+                                value={statusFilter}
+                                onChange={(v: string) => setStatusFilter(v)}
+                                options={Object.entries(DO_STATUS_MAP).map(([key, value]) => ({ value: key, label: value.label }))}
+                                placeholder="Semua Status"
+                                className="form-select"
+                            />
+                        </div>
+                                                <div style={{ width: 'auto', minWidth: 180 }}>
+                            <Combobox
+                                value={conditionFilter}
+                                onChange={(v: string) => setConditionFilter(v as TripConditionFilter)}
+                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
+                                placeholder="Semua Kondisi"
+                                className="form-select"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">

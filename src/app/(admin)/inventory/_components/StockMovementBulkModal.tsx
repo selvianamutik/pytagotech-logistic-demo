@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, ArrowDownCircle, ArrowUpCircle, CheckCircle2, History, Plus, Save, Trash2, X } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import { getBusinessDateValue } from '@/lib/business-date';
 import {
   formatInventoryQuantity,
@@ -234,7 +235,7 @@ export default function StockMovementBulkModal({ items, canManage, onClose, onSa
                         <div className="form-row">
                           <div className="form-group">
                             <label className="form-label">Barang</label>
-                            <select className="form-select" value={line.warehouseItemRef} onChange={(event) => updateLine(line.rowId, { warehouseItemRef: event.target.value })}><option value="">Pilih barang</option>{activeItems.map((item) => <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>)}</select>
+                            <Combobox className="form-select" value={line.warehouseItemRef} onChange={(v: string) => updateLine(line.rowId, { warehouseItemRef: v })} placeholder="Pilih barang" options={activeItems.map((item) => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))} />
                           </div>
                           <div className="form-group"><label className="form-label">Qty</label><FormattedNumberInput min={0} maxFractionDigits={3} allowDecimal value={line.quantity} onValueChange={(value) => updateLine(line.rowId, { quantity: value })} /></div>
                         </div>

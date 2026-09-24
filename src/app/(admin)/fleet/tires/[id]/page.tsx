@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Edit, History, Truck, Warehouse } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminCollectionData, fetchAdminData, fetchOptionalAdminCollectionData, fetchOptionalAdminData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
@@ -412,19 +413,14 @@ export default function TireDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Item Gudang Ban</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={editForm.linkedWarehouseItemRef}
-                                        onChange={event => setEditForm(current => ({ ...current, linkedWarehouseItemRef: event.target.value }))}
+                                        onChange={(v: string) => setEditForm(current => ({ ...current, linkedWarehouseItemRef: v }))}
+                                        options={trackedTireItems.map(item => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))}
+                                        placeholder="Pilih master barang ban tertracking"
                                         disabled={savingEdit || linkedWarehouseItemLocked}
-                                    >
-                                        <option value="">Pilih master barang ban tertracking</option>
-                                        {trackedTireItems.map(item => (
-                                            <option key={item._id} value={item._id}>
-                                                {item.itemCode} - {item.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Mode Tracking</label>
@@ -438,11 +434,11 @@ export default function TireDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Lokasi Saat Ini</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={editForm.holderType}
-                                        onChange={event => {
-                                            const nextHolderType = event.target.value as TireHolderType;
+                                        onChange={(v: string) => {
+                                            const nextHolderType = v as TireHolderType;
                                             const nextStatus = nextHolderType === 'WAREHOUSE'
                                                 ? 'IN_WAREHOUSE'
                                                 : (editForm.status === 'IN_WAREHOUSE' || editForm.status === 'LOANED_OUT' ? 'IN_USE' : editForm.status);
@@ -454,22 +450,17 @@ export default function TireDetailPage() {
                                                 slotCode: nextHolderType === 'INTERNAL_VEHICLE' ? current.slotCode || '1L' : '',
                                             }));
                                         }}
+                                        options={BAN_DETAIL_HOLDER_TYPE_OPTIONS.map(option => ({ value: option.value, label: option.value === 'WAREHOUSE' ? 'Gudang Ban' : option.value === 'INTERNAL_VEHICLE' ? 'Unit' : option.label }))}
                                         disabled={savingEdit}
-                                    >
-                                        {BAN_DETAIL_HOLDER_TYPE_OPTIONS.map(option => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.value === 'WAREHOUSE' ? 'Gudang Ban' : option.value === 'INTERNAL_VEHICLE' ? 'Unit' : option.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={editForm.status}
-                                        onChange={event => {
-                                            const nextStatus = event.target.value as TireAssetStatus;
+                                        onChange={(v: string) => {
+                                            const nextStatus = v as TireAssetStatus;
                                             setEditForm(current => ({
                                                 ...current,
                                                 status: nextStatus,
@@ -482,21 +473,20 @@ export default function TireDetailPage() {
                                                 slotCode: nextStatus === 'IN_USE' ? current.slotCode || '1L' : '',
                                             }));
                                         }}
+                                        options={BAN_DETAIL_STATUS_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
                                         disabled={savingEdit}
-                                    >
-                                        {BAN_DETAIL_STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
+                                    />
                                 </div>
                             </div>
                             {editForm.holderType === 'INTERNAL_VEHICLE' && (
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Kategori Armada</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={editForm.vehicleCategory}
-                                            onChange={event => {
-                                                const nextCategory = event.target.value;
+                                            onChange={(v: string) => {
+                                                const nextCategory = v;
                                                 setEditForm(current => {
                                                     const currentVehicle = vehicles.find(item => item._id === current.vehicleRef) || null;
                                                     const shouldResetVehicle = Boolean(nextCategory && currentVehicle && getVehicleCategoryValue(currentVehicle) !== nextCategory);
@@ -508,33 +498,29 @@ export default function TireDetailPage() {
                                                     };
                                                 });
                                             }}
+                                            options={vehicleCategoryOptions.map(option => ({ value: option.value, label: `${option.label} (${option.vehicleCount} unit)` }))}
+                                            placeholder="Semua kategori"
                                             disabled={savingEdit}
-                                        >
-                                            <option value="">Semua kategori</option>
-                                            {vehicleCategoryOptions.map(option => (
-                                                <option key={option.value} value={option.value}>{option.label} ({option.vehicleCount} unit)</option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Kendaraan</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={editForm.vehicleRef}
-                                            onChange={event => {
-                                                const nextVehicle = selectableVehicles.find(item => item._id === event.target.value) || null;
+                                            onChange={(v: string) => {
+                                                const nextVehicle = selectableVehicles.find(item => item._id === v) || null;
                                                 setEditForm(current => ({
                                                     ...current,
-                                                    vehicleRef: event.target.value,
+                                                    vehicleRef: v,
                                                     vehicleCategory: nextVehicle ? getVehicleCategoryValue(nextVehicle) : current.vehicleCategory,
                                                     slotCode: '',
                                                 }));
                                             }}
+                                            options={selectableVehicles.map(item => ({ value: item._id, label: `${item.plateNumber} - ${item.brandModel}` }))}
+                                            placeholder="Pilih kendaraan"
                                             disabled={savingEdit}
-                                        >
-                                            <option value="">Pilih kendaraan</option>
-                                            {selectableVehicles.map(item => <option key={item._id} value={item._id}>{item.plateNumber} - {item.brandModel}</option>)}
-                                        </select>
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -542,19 +528,15 @@ export default function TireDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Slot Ban</label>
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={editForm.slotCode}
-                                            onChange={event => setEditForm(current => ({ ...current, slotCode: event.target.value }))}
+                                            onChange={(v: string) => setEditForm(current => ({ ...current, slotCode: v }))}
+                                            options={slotOptions.map(option => ({ value: option.value, label: `${option.label}${option.occupiedBy ? ` - terisi ${option.occupiedBy}` : ''}` }))}
+                                            placeholder={selectedEditVehicle ? 'Pilih slot' : 'Pilih kendaraan dulu'}
                                             disabled={savingEdit || !selectedEditVehicle}
-                                        >
-                                            {!selectedEditVehicle && <option value="">Pilih kendaraan dulu</option>}
-                                            {slotOptions.map(option => (
-                                                <option key={option.value} value={option.value} disabled={option.disabled}>
-                                                    {option.label}{option.occupiedBy ? ` - terisi ${option.occupiedBy}` : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            disabledValues={slotOptions.filter(option => option.disabled).map(option => option.value)}
+                                        />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Ringkasan Slot</label>
@@ -588,9 +570,7 @@ export default function TireDetailPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Jenis Ban</label>
-                                    <select className="form-select" value={editForm.tireType} onChange={event => setEditForm(current => ({ ...current, tireType: event.target.value as TireEvent['tireType'] }))} disabled={savingEdit}>
-                                        {TIRE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                                    </select>
+                                    <Combobox className="form-select" value={editForm.tireType} onChange={(v: string) => setEditForm(current => ({ ...current, tireType: v as TireEvent['tireType'] }))} options={[...TIRE_TYPES]} disabled={savingEdit} />
                                 </div>
                             </div>
                             <div className="form-row">

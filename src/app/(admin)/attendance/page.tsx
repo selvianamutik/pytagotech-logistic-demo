@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Eye, FileDown, LogIn, LogOut, Pencil, Plus, Save, ScrollText, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { formatBusinessDate, getBusinessDateValue } from '@/lib/business-date';
@@ -797,28 +798,16 @@ export default function AttendancePage() {
                                 onChange={event => setInputSearch(event.target.value)}
                             />
                         </div>
-                        <select className="filter-select" value={inputDivisionFilter} onChange={event => setInputDivisionFilter(event.target.value)}>
-                            <option value="">Semua Divisi</option>
-                            {divisionOptions.map(division => (
-                                <option key={division} value={division}>{division}</option>
-                            ))}
-                        </select>
-                        <select className="filter-select" value={inputCoverageFilter} onChange={event => setInputCoverageFilter(event.target.value as AttendanceInputCoverage)}>
-                            {INPUT_COVERAGE_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
-                        <select
+                        <Combobox className="filter-select" value={inputDivisionFilter} onChange={(v: string) => setInputDivisionFilter(v)} options={divisionOptions.map(division => ({ value: division, label: division }))} placeholder="Semua Divisi" />
+                        <Combobox className="filter-select" value={inputCoverageFilter} onChange={(v: string) => setInputCoverageFilter(v as AttendanceInputCoverage)} options={INPUT_COVERAGE_OPTIONS} />
+                        <Combobox
                             className="filter-select"
                             value={inputStatusFilter}
-                            onChange={event => setInputStatusFilter(event.target.value)}
+                            onChange={(v: string) => setInputStatusFilter(v)}
+                            options={EMPLOYEE_ATTENDANCE_STATUS_OPTIONS.map(status => ({ value: status, label: EMPLOYEE_ATTENDANCE_STATUS_LABELS[status] }))}
+                            placeholder="Semua Status Tercatat"
                             disabled={inputCoverageFilter === 'PENDING'}
-                        >
-                            <option value="">Semua Status Tercatat</option>
-                            {EMPLOYEE_ATTENDANCE_STATUS_OPTIONS.map(status => (
-                                <option key={status} value={status}>{EMPLOYEE_ATTENDANCE_STATUS_LABELS[status]}</option>
-                            ))}
-                        </select>
+                        />
                     </div>
                     {hasInputCustomFilters && (
                         <div className="table-toolbar-right">
@@ -1011,31 +1000,15 @@ export default function AttendancePage() {
                                 onChange={event => setSearch(event.target.value)}
                             />
                         </div>
-                        <select className="filter-select" value={period} onChange={event => setPeriod(event.target.value as EmployeeAttendancePeriod)}>
-                            {PERIOD_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
+                        <Combobox className="filter-select" value={period} onChange={(v: string) => setPeriod(v as EmployeeAttendancePeriod)} options={PERIOD_OPTIONS} />
                         <input
                             type="date"
                             className="form-input attendance-date-input"
                             value={selectedDate}
                             onChange={event => setSelectedDate(event.target.value)}
                         />
-                        <select className="filter-select" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            {EMPLOYEE_ATTENDANCE_STATUS_OPTIONS.map(status => (
-                                <option key={status} value={status}>{EMPLOYEE_ATTENDANCE_STATUS_LABELS[status]}</option>
-                            ))}
-                        </select>
-                        <select className="filter-select" value={employeeFilter} onChange={event => setEmployeeFilter(event.target.value)}>
-                            <option value="">Semua Karyawan</option>
-                            {employeeOptions.map(employee => (
-                                <option key={employee._id} value={employee._id}>
-                                    {employee.employeeCode} - {employee.name}
-                                </option>
-                            ))}
-                        </select>
+                        <Combobox className="filter-select" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} options={EMPLOYEE_ATTENDANCE_STATUS_OPTIONS.map(status => ({ value: status, label: EMPLOYEE_ATTENDANCE_STATUS_LABELS[status] }))} placeholder="Semua Status" />
+                        <Combobox className="filter-select" value={employeeFilter} onChange={(v: string) => setEmployeeFilter(v)} options={employeeOptions.map(employee => ({ value: employee._id, label: `${employee.employeeCode} - ${employee.name}` }))} placeholder="Semua Karyawan" />
                     </div>
                     {hasCustomFilters && (
                         <div className="table-toolbar-right">
@@ -1293,18 +1266,13 @@ export default function AttendancePage() {
                                                 placeholder="Cari karyawan..."
                                                 style={{ marginBottom: '0.5rem' }}
                                             />
-                                            <select
+                                            <Combobox
                                                 className="form-select"
                                                 value={form.employeeRef}
-                                                onChange={event => setForm(current => ({ ...current, employeeRef: event.target.value }))}
-                                            >
-                                                <option value="">Pilih karyawan</option>
-                                                {filteredEmployeeOptions.map(employee => (
-                                                    <option key={employee._id} value={employee._id}>
-                                                        {employee.employeeCode} - {employee.name}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                onChange={(v: string) => setForm(current => ({ ...current, employeeRef: v }))}
+                                                options={filteredEmployeeOptions.map(employee => ({ value: employee._id, label: `${employee.employeeCode} - ${employee.name}` }))}
+                                                placeholder="Pilih karyawan"
+                                            />
                                         </>
                                     )}
                                 </div>
@@ -1322,18 +1290,13 @@ export default function AttendancePage() {
                             <div className="form-grid">
                                 <div className="form-group">
                                     <label className="form-label">Status <span className="required">*</span></label>
-                                    <select
+                                    <Combobox
                                         className="form-select"
                                         value={form.status}
+                                        onChange={(v: string) => setForm(current => ({ ...current, status: v as EmployeeAttendanceStatus }))}
+                                        options={statusOptions.map(status => ({ value: status, label: EMPLOYEE_ATTENDANCE_STATUS_LABELS[status] }))}
                                         disabled={isStatusLocked}
-                                        onChange={event => setForm(current => ({ ...current, status: event.target.value as EmployeeAttendanceStatus }))}
-                                    >
-                                        {statusOptions.map(status => (
-                                            <option key={status} value={status}>
-                                                {EMPLOYEE_ATTENDANCE_STATUS_LABELS[status]}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                             </div>
                             {showTimeFields && (
