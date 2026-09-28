@@ -11,7 +11,7 @@ import { getBusinessDateValue } from '@/lib/business-date';
 import { formatCreditLimitCurrency, formatCustomerCreditBlockMessage, summarizeCustomerCreditUsage } from '@/lib/customer-credit-limit';
 import { buildServiceCapacityRangeMap, formatUnitCapacityLabel } from '@/lib/service-capacity-support';
 import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel } from '@/lib/trip-route-rate-support';
-import { buildTripResourceLocks } from '@/lib/trip-resource-lock-support';
+import { buildTripResourceAssignments, tripDriverAssignments, tripVehicleAssignments } from '@/lib/trip-resource-lock-support';
 import type { BankAccount, Customer, CustomerPickupLocation, DeliveryOrder, Driver, FreightNota, Order, Service, TripRouteRate, Vehicle } from '@/lib/types';
 import {
     applyCustomerPickupToStop,
@@ -24,6 +24,7 @@ import {
 } from '@/lib/order-create-page-support';
 import { useToast } from '../../layout';
 import Combobox from '@/components/Combobox';
+import { TripAssignmentDropdownMeta, TripResourceAssignmentBadges } from '@/components/TripResourceAssignmentBadges';
 
 type TripDraftForm = {
     id: string;
@@ -79,7 +80,7 @@ export default function NewOrderPage() {
     const [customerRef, setCustomerRef] = useState('');
     const [serviceRef, setServiceRef] = useState('');
     const [pickupStops, setPickupStops] = useState<PickupStopForm[]>([createDefaultPickupStopForm()]);
-    const [tripDrafts, setTripDrafts] = useState<TripDraftForm[]>([createDefaultTripDraftForm()]);
+    const [tripDrafts, setTripDrafts] = useState<TripDraftForm[]>([]);
     const [shouldAutoApplyDefaultPickup, setShouldAutoApplyDefaultPickup] = useState(false);
     const [notes, setNotes] = useState('');
 
@@ -223,7 +224,7 @@ export default function NewOrderPage() {
         const defaultStop = createDefaultPickupStopForm(nextCustomer?.address || '');
         setCustomerRef(nextCustomerRef);
         setPickupStops([defaultStop]);
-        setTripDrafts([createDefaultTripDraftForm([defaultStop.id])]);
+        setTripDrafts([]);
         setShouldAutoApplyDefaultPickup(Boolean(nextCustomerRef));
     };
 
@@ -344,10 +345,7 @@ export default function NewOrderPage() {
     };
 
     const removeTripDraft = (index: number) => {
-        setTripDrafts(previous => {
-            const nextTrips = previous.filter((_, tripIndex) => tripIndex !== index);
-            return nextTrips.length > 0 ? nextTrips : [createDefaultTripDraftForm(pickupStops[0] ? [pickupStops[0].id] : [])];
-        });
+        setTripDrafts(previous => previous.filter((_, tripIndex) => tripIndex !== index));
     };
 
     const handleSubmit = async (event: React.FormEvent) => {
@@ -364,10 +362,6 @@ export default function NewOrderPage() {
         const draftPickupStops = getDraftPickupStops(pickupStops);
         if (draftPickupStops.length === 0) {
             addToast('error', 'Minimal 1 titik pickup wajib diisi');
-            return;
-        }
-        if (tripDrafts.length === 0) {
-            addToast('error', 'Minimal 1 trip wajib disiapkan saat membuat order');
             return;
         }
 
@@ -462,6 +456,11 @@ export default function NewOrderPage() {
             setLoading(false);
         }
     };
+
+    const tripResourceAssignments = buildTripResourceAssignments({
+        deliveryOrders: activeDeliveryOrders,
+        orders: activeOrders,
+    });
 
     return (
         <div>
@@ -648,23 +647,14 @@ export default function NewOrderPage() {
                         <span className="card-header-title">Assign Trip di Order / Resi</span>
                     </div>
                     <div className="card-body" style={{ display: 'grid', gap: '1rem' }}>
+                        {tripDrafts.length === 0 && (
+                            <div style={{ fontSize: '0.85rem', color: 'var(--color-gray-600)', background: 'var(--color-gray-50)', border: '1px dashed var(--color-gray-300)', borderRadius: '0.75rem', padding: '1rem 1.1rem', lineHeight: 1.6 }}>
+                                Belum ada trip. Order bisa langsung disimpan tanpa trip — kendaraan, supir, dan uang jalan bisa ditambahkan nanti dari halaman detail order.
+                            </div>
+                        )}
                         {tripDrafts.map((trip, index) => {
-                            const otherTripVehicleIds = tripDrafts.filter(other => other.id !== trip.id).map(other => other.vehicleRef).filter(Boolean);
-                            const otherTripDriverIds = tripDrafts.filter(other => other.id !== trip.id).map(other => other.driverRef).filter(Boolean);
-                            const resourceLocks = buildTripResourceLocks({
-                                deliveryOrders: activeDeliveryOrders,
-                                orders: activeOrders,
-                            });
-                            const busyVehicleIds = new Set([
-                                ...resourceLocks.busyVehicleIds,
-                                ...otherTripVehicleIds,
-                            ]);
-                            const busyDriverIds = new Set([
-                                ...resourceLocks.busyDriverIds,
-                                ...otherTripDriverIds,
-                            ]);
                             const availableTripVehicles = vehicles
-                                .filter(vehicle => !busyVehicleIds.has(vehicle._id) || vehicle._id === trip.vehicleRef)
+                                .slice()
                                 .sort((left, right) => {
                                     const leftMatches = serviceRef && left.serviceRef === serviceRef ? 1 : 0;
                                     const rightMatches = serviceRef && right.serviceRef === serviceRef ? 1 : 0;
@@ -673,7 +663,7 @@ export default function NewOrderPage() {
                                     }
                                     return `${left.unitCode || ''} ${left.plateNumber || ''}`.localeCompare(`${right.unitCode || ''} ${right.plateNumber || ''}`, 'id');
                                 });
-                            const availableTripDrivers = drivers.filter(driver => !busyDriverIds.has(driver._id) || driver._id === trip.driverRef);
+                            const availableTripDrivers = drivers;
                             const selectedTripVehicle = vehicles.find(vehicle => vehicle._id === trip.vehicleRef) || null;
                             const requiresOverrideReason = Boolean(serviceRef && selectedTripVehicle && (!selectedTripVehicle.serviceRef || selectedTripVehicle.serviceRef !== serviceRef));
                             const tripRouteServiceRef = serviceRef || selectedTripVehicle?.serviceRef || '';
@@ -746,11 +736,21 @@ export default function NewOrderPage() {
                                                 onChange={(v: string) => handleTripVehicleChange(index, v)}
                                                 options={availableTripVehicles.map(vehicle => (
                                                     { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || vehicle._id}
-                                                        ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}` }
+                                                        ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}`,
+                                                      meta: (
+                                                          <TripAssignmentDropdownMeta
+                                                              assignments={tripVehicleAssignments(vehicle._id, tripResourceAssignments)}
+                                                          />
+                                                      ) }
                                                 ))}
                                                 placeholder="Pilih kendaraan"
                                                 disabled={loading}
                                                 className="form-select"
+                                                allowCustomValue={false}
+                                            />
+                                            <TripResourceAssignmentBadges
+                                                assignments={tripVehicleAssignments(trip.vehicleRef, tripResourceAssignments)}
+                                                variant="list"
                                             />
                                         </div>
                                         <div className="form-group">
@@ -759,11 +759,21 @@ export default function NewOrderPage() {
                                                 value={trip.driverRef}
                                                 onChange={(v: string) => updateTripDraft(index, 'driverRef', v)}
                                                 options={availableTripDrivers.map(driver => (
-                                                    { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}` }
+                                                    { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}`,
+                                                      meta: (
+                                                          <TripAssignmentDropdownMeta
+                                                              assignments={tripDriverAssignments(driver._id, tripResourceAssignments)}
+                                                          />
+                                                      ) }
                                                 ))}
                                                 placeholder="Pilih supir"
                                                 disabled={loading}
                                                 className="form-select"
+                                                allowCustomValue={false}
+                                            />
+                                            <TripResourceAssignmentBadges
+                                                assignments={tripDriverAssignments(trip.driverRef, tripResourceAssignments)}
+                                                variant="list"
                                             />
                                         </div>
                                     </div>

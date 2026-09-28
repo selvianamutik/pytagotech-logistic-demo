@@ -2775,6 +2775,21 @@ details[open] > summary .foldable-chevron {
   background: var(--color-gray-100);
 }
 
+.combobox-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.combobox-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .combobox-item-selected {
   font-weight: 600;
   color: var(--color-primary);
@@ -4075,4 +4090,68 @@ details[open] > summary .foldable-chevron {
     padding-left: var(--space-5);
     padding-right: var(--space-5);
   }
+}
+
+/* Trip resource assignment badges (multi-DO driver/vehicle) */
+.trip-assignment-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.trip-assignment-inline-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.trip-assignment-dropdown-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.trip-assignment-dropdown-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 9rem;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.trip-assignment-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.trip-assignment-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.trip-assignment-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.trip-assignment-list-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }

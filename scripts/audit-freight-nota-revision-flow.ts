@@ -1,6 +1,5 @@
 import { loadScriptEnv } from './_env';
 import { buildNotaRowsFromDeliveryOrder, type NotaItemRow } from '../src/lib/invoice-create-page-support';
-import { buildTripResourceLocks } from '../src/lib/trip-resource-lock-support';
 import type {
     DeliveryOrder,
     DeliveryOrderItem,
@@ -361,19 +360,14 @@ function pickFixtureResources(params: {
     orders: Order[];
     deliveryOrders: DeliveryOrder[];
 }) {
-    const tripResourceLocks = buildTripResourceLocks({
-        deliveryOrders: params.deliveryOrders,
-        orders: params.orders,
-    });
-    const busyVehicleIds = new Set(tripResourceLocks.busyVehicleIds);
-    const busyDriverIds = new Set(tripResourceLocks.busyDriverIds);
     const activeServices = params.services.filter(item => item.active !== false);
+    // Driver/vehicle exclusivity is gone: any operational vehicle and any active
+    // driver may be reused across multiple DOs at the same time.
     const availableVehicles = params.vehicles.filter(item =>
         item.status !== 'SOLD' &&
-        item.status !== 'OUT_OF_SERVICE' &&
-        !busyVehicleIds.has(item._id)
+        item.status !== 'OUT_OF_SERVICE'
     );
-    const availableDrivers = params.drivers.filter(item => item.active !== false && !busyDriverIds.has(item._id));
+    const availableDrivers = params.drivers.filter(item => item.active !== false);
 
     for (const service of activeServices) {
         const vehicle = availableVehicles.find(item => normalizeText(item.serviceRef) === service._id);

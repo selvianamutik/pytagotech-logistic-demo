@@ -28,11 +28,11 @@ import {
 } from '@/lib/measurement';
 import { calculateWeightPortion, roundQuantity } from '@/lib/order-item-progress';
 import {
-    buildBusyAssignmentIds,
     buildCreateDeliveryOrderItems,
     buildCreateDeliveryOrderRequestData,
     buildDefaultShipmentSelection,
     buildHoldFormState,
+    buildOrderResourceAssignmentIndex,
     buildOrderDetailMetrics,
     addCargoAggregate,
     buildSelectedNonKoliCargo,
@@ -94,6 +94,8 @@ import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { useApp } from '../../layout';
 import AuditTrailCard from '../../_components/AuditTrailCard';
 import Combobox from '@/components/Combobox';
+import { TripAssignmentDropdownMeta, TripResourceAssignmentBadges } from '@/components/TripResourceAssignmentBadges';
+import { tripDriverAssignments, tripVehicleAssignments, type TripResourceAssignmentIndex } from '@/lib/trip-resource-lock-support';
 
 type TripPlanModalMode = 'create' | 'edit' | 'delete';
 
@@ -132,8 +134,7 @@ export default function OrderDetailPage() {
     const [drivers, setDrivers] = useState<Driver[]>([]);
     const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
     const [tripRouteRates, setTripRouteRates] = useState<TripRouteRate[]>([]);
-    const [busyVehicleIds, setBusyVehicleIds] = useState<string[]>([]);
-    const [busyDriverIds, setBusyDriverIds] = useState<string[]>([]);
+    const [resourceAssignments, setResourceAssignments] = useState<TripResourceAssignmentIndex | undefined>(undefined);
     const [showAddTripModal, setShowAddTripModal] = useState(false);
     const [showTripPlanActionModal, setShowTripPlanActionModal] = useState(false);
     const [savingTripPlan, setSavingTripPlan] = useState(false);
@@ -290,15 +291,10 @@ export default function OrderDetailPage() {
             if (includeNotas) {
                 setNotaItems(notaItems || []);
             }
-            const {
-                busyVehicleIds: nextBusyVehicleIds,
-                busyDriverIds: nextBusyDriverIds,
-            } = buildBusyAssignmentIds({
+            setResourceAssignments(buildOrderResourceAssignmentIndex({
                 deliveryOrders: activeDeliveryOrders || [],
                 orders: activeOrders || [],
-            });
-            setBusyVehicleIds(nextBusyVehicleIds);
-            setBusyDriverIds(nextBusyDriverIds);
+            }));
 
             if (includeNotas) {
                 const notaIds = [...new Set((notaItems || []).map(item => item.notaRef).filter(Boolean))];
@@ -402,15 +398,10 @@ export default function OrderDetailPage() {
             setDoItems(deliveryOrderItems);
             setNotaItems(notaItems || []);
             setNotas([...(orderNotas || [])].sort((a, b) => `${b.issueDate || ''}-${b._id}`.localeCompare(`${a.issueDate || ''}-${a._id}`)));
-            const {
-                busyVehicleIds: nextBusyVehicleIds,
-                busyDriverIds: nextBusyDriverIds,
-            } = buildBusyAssignmentIds({
+            setResourceAssignments(buildOrderResourceAssignmentIndex({
                 deliveryOrders: activeDeliveryOrders || [],
                 orders: activeOrders || [],
-            });
-            setBusyVehicleIds(nextBusyVehicleIds);
-            setBusyDriverIds(nextBusyDriverIds);
+            }));
 
             if (canManageOrderTrips && (mode === 'initial' || !loadedVehicleOptionsRef.current)) {
                 await loadVehicleOptions();
@@ -443,7 +434,7 @@ export default function OrderDetailPage() {
     }, [loadOrderDetail]);
 
     const sortedVehicles = sortOrderDetailVehicles(vehicles, order);
-    const availableVehicles = getAvailableVehicles(sortedVehicles, busyVehicleIds);
+    const availableVehicles = getAvailableVehicles(sortedVehicles);
     const activeIssueBankAccounts = bankAccounts.filter(account => account.active !== false);
     const serviceCapacityRangeMap = buildServiceCapacityRangeMap(
         orderService
@@ -1030,23 +1021,8 @@ export default function OrderDetailPage() {
         .sort((left, right) => left.sequence - right.sequence);
     const editableOrderTripPlans = orderTripPlans.filter(plan => !plan.linkedDeliveryOrderRef);
     const selectedTripPlanForAction = editableOrderTripPlans.find(plan => plan._key === selectedTripPlanActionKey) || null;
-    const reservedPlannedVehicleIds = orderTripPlans
-        .filter(plan => !plan.linkedDeliveryOrderRef)
-        .map(plan => plan.vehicleRef)
-        .filter((value): value is string => Boolean(value));
-    const reservedPlannedDriverIds = orderTripPlans
-        .filter(plan => !plan.linkedDeliveryOrderRef)
-        .map(plan => plan.driverRef)
-        .filter((value): value is string => Boolean(value));
-    const availableTripDraftVehicles = sortedVehicles.filter(
-        vehicle => (!busyVehicleIds.includes(vehicle._id) && !reservedPlannedVehicleIds.includes(vehicle._id)) || vehicle._id === tripDraft.vehicleRef
-    );
-    const availableTripDraftDrivers = drivers.filter(
-        driver => (
-            (!busyDriverIds.includes(driver._id) && !reservedPlannedDriverIds.includes(driver._id)) ||
-            driver._id === tripDraft.driverRef
-        ) && driver.active !== false
-    );
+    const availableTripDraftVehicles = sortedVehicles;
+    const availableTripDraftDrivers = drivers.filter(driver => driver.active !== false);
     const selectedTripDraftVehicle = vehicles.find(vehicle => vehicle._id === tripDraft.vehicleRef) || null;
     const requiresTripDraftOverrideReason = Boolean(
         order?.serviceRef &&
@@ -1139,12 +1115,6 @@ export default function OrderDetailPage() {
         }
     }, [requiresTripDraftOverrideReason, tripDraft.vehicleOverrideReason]);
 
-    useEffect(() => {
-        if (!selectedOrderTripPlan && doVehicle && busyVehicleIds.includes(doVehicle)) {
-            setDoVehicle('');
-            setDoVehicleOverrideReason('');
-        }
-    }, [busyVehicleIds, doVehicle, selectedOrderTripPlan]);
     const usesExistingItemsForDeliveryOrder = !isHeaderOnlyOrder;
     const canCreateDeliveryOrder =
         !orderIsCancelled &&
@@ -2489,29 +2459,49 @@ export default function OrderDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kendaraan <span className="required">*</span></label>
-                                                                        <Combobox
+                                                <Combobox
                                         value={tripDraft.vehicleRef}
                                         onChange={(v: string) => updateTripDraftField('vehicleRef', v)}
                                         options={availableTripDraftVehicles.map(vehicle => (
                                             { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || vehicle._id}
-                                                ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}` }
+                                                ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''} | ${formatUnitCapacityLabel(vehicle)}`,
+                                              meta: (
+                                                  <TripAssignmentDropdownMeta
+                                                      assignments={tripVehicleAssignments(vehicle._id, resourceAssignments)}
+                                                  />
+                                              ) }
                                         ))}
                                         placeholder="Pilih kendaraan"
                                         disabled={savingTripPlan}
                                         className="form-select"
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripVehicleAssignments(tripDraft.vehicleRef, resourceAssignments)}
+                                        variant="list"
                                     />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Supir <span className="required">*</span></label>
-                                                                        <Combobox
+                                                <Combobox
                                         value={tripDraft.driverRef}
                                         onChange={(v: string) => updateTripDraftField('driverRef', v)}
                                         options={availableTripDraftDrivers.map(driver => (
-                                            { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}` }
+                                            { value: driver._id, label: `${driver.name}${driver.phone ? ` - ${driver.phone}` : ''}`,
+                                              meta: (
+                                                  <TripAssignmentDropdownMeta
+                                                      assignments={tripDriverAssignments(driver._id, resourceAssignments)}
+                                                  />
+                                              ) }
                                         ))}
                                         placeholder="Pilih supir"
                                         disabled={savingTripPlan}
                                         className="form-select"
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripDriverAssignments(tripDraft.driverRef, resourceAssignments)}
+                                        variant="list"
                                     />
                                 </div>
                             </div>
@@ -2993,18 +2983,26 @@ export default function OrderDetailPage() {
                                             onChange={(v: string) => setDoVehicle(v)}
                                             options={availableVehicles.map(vehicle => (
                                                 { value: vehicle._id, label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber}
-                                                    ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ' (Kategori belum diisi)'} | ${formatUnitCapacityLabel(vehicle)}` }
+                                                    ${vehicle.serviceName ? ` (${vehicle.serviceName})` : ' (Kategori belum diisi)'} | ${formatUnitCapacityLabel(vehicle)}`,
+                                                  meta: (
+                                                      <TripAssignmentDropdownMeta
+                                                          assignments={tripVehicleAssignments(vehicle._id, resourceAssignments)}
+                                                      />
+                                                  ) }
                                             ))}
                                             placeholder="Pilih kendaraan"
                                             disabled={creatingDO}
                                             className="form-select"
+                                            allowCustomValue={false}
+                                        />
+                                        <TripResourceAssignmentBadges
+                                            assignments={tripVehicleAssignments(doVehicle, resourceAssignments)}
+                                            variant="list"
                                         />
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                                            {availableVehicles.length === 0
-                                                ? 'Tidak ada kendaraan kosong. Semua kendaraan operasional sedang dipakai DO aktif atau belum selesai.'
-                                                : order.serviceRef
-                                                    ? `Order meminta kategori ${order.serviceName || '-'} dengan batas muatan ${requestedServiceCapacityLabel}. Kendaraan kosong yang cocok ditampilkan lebih dulu, tetapi override tetap boleh jika alasannya dicatat.`
-                                                    : 'Hanya kendaraan yang sedang kosong yang ditampilkan. Order ini belum punya kategori armada, jadi semua kendaraan operasional yang tidak sedang dipakai tetap tersedia.'}
+                                            {order.serviceRef
+                                                ? `Order meminta kategori ${order.serviceName || '-'} dengan batas muatan ${requestedServiceCapacityLabel}. Kendaraan yang cocok ditampilkan lebih dulu, tetapi override tetap boleh jika alasannya dicatat.`
+                                                : 'Order ini belum punya kategori armada, jadi semua kendaraan operasional tetap tersedia.'}
                                         </div>
                                         {selectedVehicleData && (
                                             <div style={{ fontSize: '0.75rem', color: 'var(--color-primary-700)', marginTop: '0.35rem', fontWeight: 600 }}>

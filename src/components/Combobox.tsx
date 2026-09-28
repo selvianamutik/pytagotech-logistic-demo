@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
 
-export type ComboboxOption = string | { value: string; label: string };
+export type ComboboxOption = string | { value: string; label: string; meta?: ReactNode };
 
-type NormalizedOption = { value: string; label: string };
+type NormalizedOption = { value: string; label: string; meta?: ReactNode };
 
 function normalizeOptions(options: ComboboxOption[]): NormalizedOption[] {
   return options.map((option) =>
@@ -324,7 +324,14 @@ export default function Combobox({
               onClick={() => selectOption(option)}
               onMouseEnter={() => setHighlightedIndex(index)}
             >
-              {option.label}
+              {option.meta ? (
+                <span className="combobox-item-main">
+                  <span className="combobox-item-label">{option.label}</span>
+                  {option.meta}
+                </span>
+              ) : (
+                option.label
+              )}
             </li>
           ))}
           {filteredOptions.length === 0 && (

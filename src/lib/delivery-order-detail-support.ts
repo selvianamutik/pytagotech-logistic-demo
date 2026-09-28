@@ -23,7 +23,7 @@ import {
     type VolumeInputUnit,
     type WeightInputUnit,
 } from '@/lib/measurement';
-import { buildTripResourceLocks, type DeliveryOrderResourceLock } from '@/lib/trip-resource-lock-support';
+import { buildTripResourceAssignments, type DeliveryOrderResourceLock } from '@/lib/trip-resource-lock-support';
 import { DO_ACTUAL_DROP_TYPE_MAP, DO_STATUS_MAP, formatDate, formatDateTime, formatShipperDeliveryOrderNumber, formatShipperReceiverSummary } from '@/lib/utils';
 
 export interface ActualCargoDraft {
@@ -857,37 +857,26 @@ export function getNextDeliveryOrderStatuses(current: string): string[] {
     return transitions[current] || [];
 }
 
-export function buildTripResourceBusyIds(params: {
+export function buildTripResourceAssignmentIndex(params: {
     activeDeliveryOrders: DeliveryOrderResourceLock[];
     activeOrders?: Array<Pick<Order, '_id' | 'masterResi' | 'status' | 'tripPlans'>>;
-    currentDeliveryOrderId: string;
 }) {
-    const { busyVehicleIds, busyDriverIds } = buildTripResourceLocks({
+    return buildTripResourceAssignments({
         deliveryOrders: params.activeDeliveryOrders,
         orders: params.activeOrders || [],
-        excludeDeliveryOrderRef: params.currentDeliveryOrderId,
     });
-
-    return {
-        busyVehicleIds: new Set(busyVehicleIds),
-        busyDriverIds: new Set(busyDriverIds),
-    };
 }
 
 export function getAssignableTripVehicles(params: {
     vehicles: Vehicle[];
-    busyVehicleIds: Set<string>;
     currentVehicleRef?: string;
     requestedServiceRef?: string;
 }) {
-    const { vehicles, busyVehicleIds, currentVehicleRef, requestedServiceRef } = params;
+    const { vehicles, requestedServiceRef } = params;
 
     return vehicles
         .filter(vehicle => {
-            const isCurrent = vehicle._id === currentVehicleRef;
-            if (!isCurrent && busyVehicleIds.has(vehicle._id)) {
-                return false;
-            }
+            const isCurrent = vehicle._id === params.currentVehicleRef;
             if (!isCurrent && ['SOLD', 'OUT_OF_SERVICE'].includes(vehicle.status)) {
                 return false;
             }
@@ -907,17 +896,13 @@ export function getAssignableTripVehicles(params: {
 
 export function getAssignableTripDrivers(params: {
     drivers: Driver[];
-    busyDriverIds: Set<string>;
     currentDriverRef?: string;
 }) {
-    const { drivers, busyDriverIds, currentDriverRef } = params;
+    const { drivers } = params;
 
     return drivers
         .filter(driver => {
-            const isCurrent = driver._id === currentDriverRef;
-            if (!isCurrent && busyDriverIds.has(driver._id)) {
-                return false;
-            }
+            const isCurrent = driver._id === params.currentDriverRef;
             return driver.active !== false || isCurrent;
         })
         .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'id'));

@@ -7,6 +7,8 @@ import { useApp, useToast } from '../layout';
 import { CheckCircle, Printer, FileDown, Truck, Save, MapPin, Radio, Edit, Wallet, Plus, Trash2, X, ChevronDown, FileText, Clock, History } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import Combobox from '@/components/Combobox';
+import { TripAssignmentDropdownMeta, TripResourceAssignmentBadges } from '@/components/TripResourceAssignmentBadges';
+import { tripDriverAssignments, tripVehicleAssignments } from '@/lib/trip-resource-lock-support';
 import AuditTrailCard from './AuditTrailCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import SplitDecimalNumberInput from '@/components/SplitDecimalNumberInput';
@@ -19,7 +21,7 @@ import {
     buildDeliveryOrderDetailState,
     buildDeliveryOrderPrintHtml,
     buildActualCargoDrafts,
-    buildTripResourceBusyIds,
+    buildTripResourceAssignmentIndex,
     buildDeliveryOrderTripFeeUpdateData,
     buildResolvedDeliveryOrder,
     buildDefaultActualDropDrafts,
@@ -4627,20 +4629,17 @@ export default function TripDetailPage() {
     const hasTripResourcesAssigned = Boolean(doData.vehicleRef && doData.driverRef);
     const displayTripStatus = tripData?.status || doData.status;
     const tripResourceActionLabel = getTripResourceActionLabel(doData);
-    const tripResourceBusyIds = buildTripResourceBusyIds({
+    const tripResourceAssignments = buildTripResourceAssignmentIndex({
         activeDeliveryOrders: activeTrips,
         activeOrders,
-        currentDeliveryOrderId: doData._id,
     });
     const assignableVehicles = getAssignableTripVehicles({
         vehicles,
-        busyVehicleIds: tripResourceBusyIds.busyVehicleIds,
         currentVehicleRef: doData.vehicleRef,
         requestedServiceRef: doData.serviceRef,
     });
     const assignableDrivers = getAssignableTripDrivers({
         drivers,
-        busyDriverIds: tripResourceBusyIds.busyDriverIds,
         currentDriverRef: doData.driverRef,
     });
     const resolvedShipperReferenceEntries = buildResolvedShipperReferenceEntries(doData, doItems);
@@ -7973,9 +7972,19 @@ export default function TripDetailPage() {
                                         options={assignableVehicles.map(vehicle => ({
                                             value: vehicle._id,
                                             label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || '-'}${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''}`,
+                                            meta: (
+                                                <TripAssignmentDropdownMeta
+                                                    assignments={tripVehicleAssignments(vehicle._id, tripResourceAssignments)}
+                                                />
+                                            ),
                                         }))}
                                         placeholder={loadingTripResources ? 'Memuat kendaraan...' : 'Pilih kendaraan'}
                                         disabled={loadingTripResources || issuingTripCash}
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripVehicleAssignments(tripCashIssueForm.vehicleRef, tripResourceAssignments)}
+                                        variant="list"
                                     />
                                 </div>
                                 <div className="form-group">
@@ -7986,9 +7995,19 @@ export default function TripDetailPage() {
                                         options={assignableDrivers.map(driver => ({
                                             value: driver._id,
                                             label: `${driver.name}${driver.phone ? ` | ${driver.phone}` : ''}`,
+                                            meta: (
+                                                <TripAssignmentDropdownMeta
+                                                    assignments={tripDriverAssignments(driver._id, tripResourceAssignments)}
+                                                />
+                                            ),
                                         }))}
                                         placeholder={loadingTripResources ? 'Memuat supir...' : 'Pilih supir'}
                                         disabled={loadingTripResources || issuingTripCash}
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripDriverAssignments(tripCashIssueForm.driverRef, tripResourceAssignments)}
+                                        variant="list"
                                     />
                                 </div>
                             </div>
@@ -8368,13 +8387,23 @@ export default function TripDetailPage() {
                                         options={assignableVehicles.map(vehicle => ({
                                             value: vehicle._id,
                                             label: `${vehicle.unitCode ? `${vehicle.unitCode} - ` : ''}${vehicle.plateNumber || '-'}${vehicle.serviceName ? ` (${vehicle.serviceName})` : ''}`,
+                                            meta: (
+                                                <TripAssignmentDropdownMeta
+                                                    assignments={tripVehicleAssignments(vehicle._id, tripResourceAssignments)}
+                                                />
+                                            ),
                                         }))}
                                         placeholder={loadingTripResources ? 'Memuat kendaraan...' : 'Pilih kendaraan untuk trip ini'}
                                         disabled={loadingTripResources || savingTripResources}
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripVehicleAssignments(tripVehicleRef, tripResourceAssignments)}
+                                        variant="list"
                                     />
                                     {!loadingTripResources && assignableVehicles.length === 0 && (
                                         <div className="detail-value" style={{ color: 'var(--color-warning-dark)', marginTop: '0.5rem' }}>
-                                            Tidak ada kendaraan kosong. Semua armada operasional sedang terikat di DO aktif lain.
+                                            Tidak ada kendaraan operasional yang tersedia untuk trip ini.
                                         </div>
                                     )}
                                 </div>
@@ -8386,13 +8415,23 @@ export default function TripDetailPage() {
                                         options={assignableDrivers.map(driver => ({
                                             value: driver._id,
                                             label: `${driver.name}${driver.phone ? ` | ${driver.phone}` : ''}`,
+                                            meta: (
+                                                <TripAssignmentDropdownMeta
+                                                    assignments={tripDriverAssignments(driver._id, tripResourceAssignments)}
+                                                />
+                                            ),
                                         }))}
                                         placeholder={loadingTripResources ? 'Memuat supir...' : 'Pilih supir untuk trip ini'}
                                         disabled={loadingTripResources || savingTripResources}
+                                        allowCustomValue={false}
+                                    />
+                                    <TripResourceAssignmentBadges
+                                        assignments={tripDriverAssignments(tripDriverRef, tripResourceAssignments)}
+                                        variant="list"
                                     />
                                     {!loadingTripResources && assignableDrivers.length === 0 && (
                                         <div className="detail-value" style={{ color: 'var(--color-warning-dark)', marginTop: '0.5rem' }}>
-                                            Tidak ada supir kosong. Semua supir aktif sedang terikat di DO aktif lain.
+                                            Tidak ada supir aktif yang tersedia untuk trip ini.
                                         </div>
                                     )}
                                 </div>

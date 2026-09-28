@@ -75,7 +75,6 @@ import { resolveOrderCargoEntryMode } from '@/lib/order-cargo-entry-mode';
 import { getTripRouteOvertonaseRatePerKg } from '@/lib/trip-route-rate-support';
 import { getFreightNotaList } from './data-query-support';
 import { resolveTripRouteRateSelection } from './generic-workflow-support';
-import { assertTripResourcesAssignable } from './trip-resource-locks';
 import { inferExpenseCategoryScope, resolveExpenseCategoryAccountKey } from '@/lib/expense-category-scope';
 import { postExpenseJournal } from './accounting-posting';
 import {
@@ -841,12 +840,6 @@ export async function handleOrderCreate(
         const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') ? 409 : 400;
         return NextResponse.json({ error: message }, { status });
     }
-    try {
-        await assertTripResourcesAssignable(tripPlans);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Kendaraan atau supir sedang terkunci';
-        return NextResponse.json({ error: message }, { status: 409 });
-    }
 
     const customerCreditUsage = summarizeCustomerCreditUsage(
         customer,
@@ -864,12 +857,15 @@ export async function handleOrderCreate(
     const receiverName =
         normalizeText(data.receiverName) ||
         normalizeOptionalText(customerRecipient?.receiverName) ||
-        (tripPlans.length > 0 ? customer.name || 'Tujuan trip' : '');
+        customer.name ||
+        'Tujuan trip';
     const receiverAddress =
         normalizeText(data.receiverAddress) ||
         normalizeOptionalText(customerRecipient?.receiverAddress) ||
         firstTripDestination ||
-        (tripPlans.length > 0 ? firstPickupAddress || customer.address || '' : '');
+        firstPickupAddress ||
+        customer.address ||
+        '';
     if (!receiverName || !receiverAddress) {
         return NextResponse.json({ error: 'Customer, penerima, dan alamat tujuan wajib diisi' }, { status: 400 });
     }
@@ -1452,12 +1448,6 @@ export async function handleOrderTripPlanAppend(
         const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') ? 409 : 400;
         return NextResponse.json({ error: message }, { status });
     }
-    try {
-        await assertTripResourcesAssignable(normalizedNewTripPlans);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Kendaraan atau supir sedang terkunci';
-        return NextResponse.json({ error: message }, { status: 409 });
-    }
 
     const currentTripPlans = Array.isArray(order.tripPlans) ? order.tripPlans : [];
     const nextTripPlans = [...currentTripPlans, ...normalizedNewTripPlans].map((plan, index) => ({
@@ -1594,15 +1584,6 @@ export async function handleOrderTripPlanUpdate(
         const message = error instanceof Error ? error.message : 'Data trip tidak valid';
         const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') ? 409 : 400;
         return NextResponse.json({ error: message }, { status });
-    }
-    try {
-        await assertTripResourcesAssignable(normalizedTripPlans, {
-            excludeOrderRef: id,
-            excludeOrderTripPlanKey: tripPlanKey,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Kendaraan atau supir sedang terkunci';
-        return NextResponse.json({ error: message }, { status: 409 });
     }
 
     const updatedTripPlan = normalizedTripPlans[0];
@@ -5065,34 +5046,6 @@ export async function handleDeliveryOrderCreate(
         if (vehicle.status === 'OUT_OF_SERVICE') {
             return NextResponse.json({ error: 'Kendaraan yang sedang out of service tidak bisa dipakai untuk surat jalan baru' }, { status: 409 });
         }
-        const conflictingDeliveryOrder =
-            (await listDocumentsByFilter<{
-                _id: string;
-                doNumber?: string;
-                customerDoNumber?: string;
-                vehicleRef?: unknown;
-                vehiclePlate?: string;
-                status?: string;
-                tripClosedByAdminAt?: string;
-            }>('deliveryOrder', {
-                status: ['CREATED', 'ON_DELIVERY', 'ARRIVED'],
-            })).find(candidate =>
-                !candidate.tripClosedByAdminAt &&
-                (extractRefId(candidate.vehicleRef) === vehicleRef
-                || normalizeOptionalText(candidate.vehiclePlate)?.toLowerCase() === (vehicle.plateNumber || vehiclePlate || '').toLowerCase())
-            ) || null;
-        if (conflictingDeliveryOrder) {
-            const conflictingNumber =
-                conflictingDeliveryOrder.doNumber ||
-                conflictingDeliveryOrder.customerDoNumber ||
-                conflictingDeliveryOrder._id;
-            return NextResponse.json(
-                {
-                    error: `Kendaraan ${vehicle.plateNumber || vehicleRef} masih dipakai di surat jalan aktif ${conflictingNumber}. Selesaikan atau batalkan dulu DO tersebut.`,
-                },
-                { status: 409 }
-            );
-        }
         const orderServiceRef = extractRefId(order.serviceRef);
         vehicleServiceRef = extractRefId(vehicle.serviceRef) || undefined;
         vehicleServiceName = vehicle.serviceName || undefined;
@@ -5126,56 +5079,7 @@ export async function handleDeliveryOrderCreate(
         if (driver.active === false) {
             return NextResponse.json({ error: 'Supir DO tidak aktif' }, { status: 409 });
         }
-        const conflictingDeliveryOrder =
-            (await listDocumentsByFilter<{
-                _id: string;
-                doNumber?: string;
-                customerDoNumber?: string;
-                driverRef?: unknown;
-                driverName?: string;
-                status?: string;
-                tripClosedByAdminAt?: string;
-            }>('deliveryOrder', {
-                status: ['CREATED', 'ON_DELIVERY', 'ARRIVED'],
-            })).find(candidate =>
-                !candidate.tripClosedByAdminAt &&
-                (extractRefId(candidate.driverRef) === driverRef
-                || normalizeOptionalText(candidate.driverName)?.toLowerCase() === (driver.name || driverName || '').toLowerCase())
-            ) || null;
-        if (conflictingDeliveryOrder) {
-            const conflictingNumber =
-                conflictingDeliveryOrder.doNumber ||
-                conflictingDeliveryOrder.customerDoNumber ||
-                conflictingDeliveryOrder._id;
-            return NextResponse.json(
-                {
-                    error: `Supir ${driver.name || driverRef} masih terikat di surat jalan aktif ${conflictingNumber}. Selesaikan atau batalkan dulu DO tersebut.`,
-                },
-                { status: 409 }
-            );
-        }
         driverName = driver.name || driverName;
-    }
-
-    try {
-        await assertTripResourcesAssignable([
-            {
-                vehicleRef,
-                vehiclePlate,
-                driverRef,
-                driverName,
-                _key: selectedTripPlan?._key,
-                sequence: selectedTripPlan?.sequence || 1,
-            },
-        ], {
-            excludeOrderRef: selectedTripPlan ? order._id : undefined,
-            excludeOrderTripPlanKey: selectedTripPlan?._key,
-        });
-    } catch (error) {
-        return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Kendaraan atau supir masih terkunci di trip aktif' },
-            { status: 409 }
-        );
     }
 
     const doDate =
@@ -7208,37 +7112,6 @@ export async function handleDeliveryOrderTripResourceAssign(
         if (vehicle.status === 'OUT_OF_SERVICE') {
             return NextResponse.json({ error: 'Kendaraan yang sedang out of service tidak bisa dipakai untuk surat jalan baru' }, { status: 409 });
         }
-        const conflictingDeliveryOrder =
-            (await listDocumentsByFilter<{
-                _id: string;
-                doNumber?: string;
-                customerDoNumber?: string;
-                vehicleRef?: unknown;
-                vehiclePlate?: string;
-                status?: string;
-                tripClosedByAdminAt?: string;
-            }>('deliveryOrder', {
-                status: ['CREATED', 'ON_DELIVERY', 'ARRIVED'],
-            })).find(candidate =>
-                candidate._id !== id
-                && !candidate.tripClosedByAdminAt
-                && (
-                    extractRefId(candidate.vehicleRef) === vehicleRef
-                    || normalizeOptionalText(candidate.vehiclePlate)?.toLowerCase() === (vehicle.plateNumber || nextVehiclePlate || '').toLowerCase()
-                )
-            ) || null;
-        if (conflictingDeliveryOrder) {
-            const conflictingNumber =
-                conflictingDeliveryOrder.doNumber ||
-                conflictingDeliveryOrder.customerDoNumber ||
-                conflictingDeliveryOrder._id;
-            return NextResponse.json(
-                {
-                    error: `Kendaraan ${vehicle.plateNumber || vehicleRef} masih dipakai di surat jalan aktif ${conflictingNumber}. Selesaikan atau batalkan dulu DO tersebut.`,
-                },
-                { status: 409 }
-            );
-        }
         const requestedServiceRef = extractRefId(deliveryOrder.serviceRef);
         const assignedVehicleServiceRef = extractRefId(vehicle.serviceRef) || undefined;
         const assignedVehicleServiceName = vehicle.serviceName || undefined;
@@ -7278,58 +7151,8 @@ export async function handleDeliveryOrderTripResourceAssign(
         if (driver.active === false) {
             return NextResponse.json({ error: 'Supir DO tidak aktif' }, { status: 409 });
         }
-        const conflictingDeliveryOrder =
-            (await listDocumentsByFilter<{
-                _id: string;
-                doNumber?: string;
-                customerDoNumber?: string;
-                driverRef?: unknown;
-                driverName?: string;
-                status?: string;
-                tripClosedByAdminAt?: string;
-            }>('deliveryOrder', {
-                status: ['CREATED', 'ON_DELIVERY', 'ARRIVED'],
-            })).find(candidate =>
-                candidate._id !== id
-                && !candidate.tripClosedByAdminAt
-                && (
-                    extractRefId(candidate.driverRef) === driverRef
-                    || normalizeOptionalText(candidate.driverName)?.toLowerCase() === (driver.name || nextDriverName || '').toLowerCase()
-                )
-            ) || null;
-        if (conflictingDeliveryOrder) {
-            const conflictingNumber =
-                conflictingDeliveryOrder.doNumber ||
-                conflictingDeliveryOrder.customerDoNumber ||
-                conflictingDeliveryOrder._id;
-            return NextResponse.json(
-                {
-                    error: `Supir ${driver.name || driverRef} masih terikat di surat jalan aktif ${conflictingNumber}. Selesaikan atau batalkan dulu DO tersebut.`,
-                },
-                { status: 409 }
-            );
-        }
         nextDriverRef = driverRef;
         nextDriverName = driver.name || nextDriverName;
-    }
-
-    try {
-        await assertTripResourcesAssignable([
-            {
-                vehicleRef: nextVehicleRef,
-                vehiclePlate: nextVehiclePlate,
-                driverRef: nextDriverRef,
-                driverName: nextDriverName,
-                sequence: 1,
-            },
-        ], {
-            excludeDeliveryOrderRef: id,
-        });
-    } catch (error) {
-        return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Kendaraan atau supir masih terkunci di trip aktif' },
-            { status: 409 }
-        );
     }
 
     const vehicleChanged =
