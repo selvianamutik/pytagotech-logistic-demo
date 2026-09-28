@@ -172,15 +172,17 @@ export function buildResolvedShipperReferenceEntries(
 
 export function matchesShipperReferenceDraft(
     draft: Pick<ShipperReferenceDraft, 'referenceKey' | 'referenceNumber'>,
-    deliveryOrder: DeliveryOrder | null,
     item: Pick<DeliveryOrderItem, 'shipperReferenceKey' | 'shipperReferenceNumber'>
 ) {
     const itemReferenceKey = (item.shipperReferenceKey || '').trim();
-    const itemReferenceNumber = (item.shipperReferenceNumber || deliveryOrder?.customerDoNumber || '').trim().toUpperCase();
+    const itemReferenceNumber = (item.shipperReferenceNumber || '').trim().toUpperCase();
     const selectedReferenceKey = draft.referenceKey.trim();
     const selectedReferenceNumber = draft.referenceNumber.trim().toUpperCase();
-    return (
-        (selectedReferenceKey && itemReferenceKey === selectedReferenceKey) ||
-        (selectedReferenceNumber && itemReferenceNumber === selectedReferenceNumber)
-    );
+    if (selectedReferenceKey || selectedReferenceNumber) {
+        return Boolean(
+            (selectedReferenceKey && itemReferenceKey === selectedReferenceKey) ||
+            (selectedReferenceNumber && itemReferenceNumber === selectedReferenceNumber)
+        );
+    }
+    return !itemReferenceKey && !itemReferenceNumber;
 }

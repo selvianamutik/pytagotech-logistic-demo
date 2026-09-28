@@ -582,6 +582,18 @@ a:hover {
   color: var(--color-primary-700);
 }
 
+.segmented-tab:disabled {
+  background: transparent;
+  color: var(--color-gray-400);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.segmented-tab:disabled:hover {
+  background: transparent;
+  color: var(--color-gray-400);
+}
+
 .period-controls {
   display: flex;
   align-items: center;
@@ -1054,6 +1066,12 @@ a:hover {
   margin-top: var(--space-4);
 }
 
+.collapsible-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .collapsible-card-summary {
   appearance: none;
   background: transparent;
@@ -1067,20 +1085,28 @@ a:hover {
   font: inherit;
   text-align: left;
   user-select: none;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .collapsible-card-summary::-webkit-details-marker {
   display: none;
 }
 
-.collapsible-card-summary::after {
-  content: '+';
+.collapsible-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.collapsible-card-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 1.5rem;
   height: 1.5rem;
+  margin-right: var(--space-5);
   border-radius: 999px;
   background: var(--color-gray-100);
   color: var(--color-gray-600);
@@ -1088,24 +1114,76 @@ a:hover {
   flex-shrink: 0;
 }
 
-.collapsible-card.is-open .collapsible-card-summary {
-  border-bottom: 1px solid var(--color-gray-100);
+.collapsible-card-toggle::before {
+  content: '+';
 }
 
-.collapsible-card.is-open .collapsible-card-summary::after {
+.collapsible-card.is-open .collapsible-card-toggle::before {
   content: '-';
 }
 
+.collapsible-card.is-open .collapsible-card-header {
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.collapsible-card-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.collapsible-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.65rem;
+  flex-shrink: 0;
+}
+
+.collapsible-card-icon-primary {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.collapsible-card-icon-success {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.collapsible-card-icon-warning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.collapsible-card-icon-danger {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+}
+
+.collapsible-card-icon-info {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.collapsible-card-icon-gray {
+  background: var(--color-gray-100);
+  color: var(--color-gray-600);
+}
+
 .collapsible-card-title {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-gray-900);
+  line-height: 1.3;
 }
 
 .collapsible-card-subtitle {
-  font-size: 0.78rem;
+  font-size: var(--font-size-xs);
   color: var(--color-gray-500);
-  margin-top: 0.15rem;
+  margin-top: 0.2rem;
   line-height: 1.45;
 }
 
@@ -1778,6 +1856,19 @@ tbody td {
   gap: var(--space-4);
 }
 
+/* Satu field per baris, untuk form barang yang urutan pengisiannya
+   penting (barang -> deskripsi -> koli -> berat -> volume). */
+.form-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.form-stack > .form-group,
+.form-stack > * {
+  min-width: 0;
+}
+
 .form-section {
   margin-bottom: var(--space-8);
 }
@@ -1841,6 +1932,12 @@ tbody td {
 
 .modal-xl {
   max-width: 960px;
+}
+
+/* Isi modal ditukar tanpa menutup overlay (ganti mode edit Surat Jalan).
+   Animasi masuk dimatikan supaya tidak diputar ulang dan terlihat berkedip. */
+.modal-static {
+  animation: none;
 }
 
 .modal-header {
@@ -2586,9 +2683,35 @@ details[open] > summary .foldable-chevron {
   margin: var(--space-1) 0;
 }
 
+/* ── Cargo item fields ──
+   One field per row so an open dropdown never lands on a neighbouring input.
+   A number and its unit selector stay side by side via .cargo-item-pair. */
+.cargo-item-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cargo-item-pair {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.cargo-item-pair > *:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cargo-item-unit {
+  flex: 0 0 120px;
+  width: 120px;
+}
+
 /* ── Combobox ── */
 .combobox {
   position: relative;
+  min-width: 5.5rem;
 }
 
 .combobox-input {
@@ -2597,6 +2720,17 @@ details[open] > summary .foldable-chevron {
 
 .combobox-has-clear .combobox-input {
   padding-right: 4rem;
+}
+
+/* The clear button is only actionable once the field is engaged, so keep it
+   out of the way otherwise and give the reclaimed width back to the text.
+   Right-only padding means left-aligned text never shifts. */
+.combobox:not(:focus-within):not(:hover) .combobox-clear {
+  display: none;
+}
+
+.combobox:not(:focus-within):not(:hover) .combobox-input {
+  padding-right: 2.25rem;
 }
 
 .combobox-toggle {

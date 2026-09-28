@@ -1488,14 +1488,14 @@ export default function CustomerDetailPage() {
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Default Berat</label>
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                        <div className="cargo-item-pair">
                                         <FormattedNumberInput
                                             min={0}
                                             maxFractionDigits={getWeightInputFractionDigits(productForm.defaultWeightInputUnit)}
                                             value={productForm.defaultWeightInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultWeightInputValue: value }))}
                                         />
-                                                                                <div style={{ width: 100 }}>
+                                                                                <div className="cargo-item-unit">
                                             <Combobox
                                                 value={productForm.defaultWeightInputUnit}
                                                 onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultWeightInputUnit: v as WeightInputUnit }))}
@@ -1507,7 +1507,7 @@ export default function CustomerDetailPage() {
                                 </div>
                                     <div className="form-group">
                                         <label className="form-label">Default Volume</label>
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                        <div className="cargo-item-pair">
                                         <FormattedNumberInput
                                             min={0}
                                             allowDecimal={productForm.defaultVolumeInputUnit !== 'LITER'}
@@ -1515,7 +1515,7 @@ export default function CustomerDetailPage() {
                                             value={productForm.defaultVolumeInputValue}
                                             onValueChange={value => setProductForm(prev => ({ ...prev, defaultVolumeInputValue: value }))}
                                         />
-                                                                                <div style={{ width: 100 }}>
+                                                                                <div className="cargo-item-unit">
                                             <Combobox
                                                 value={productForm.defaultVolumeInputUnit}
                                                 onChange={(v: string) => setProductForm(prev => ({ ...prev, defaultVolumeInputUnit: v as VolumeInputUnit }))}

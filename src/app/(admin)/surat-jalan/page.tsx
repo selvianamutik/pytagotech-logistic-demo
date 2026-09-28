@@ -12,6 +12,7 @@ import { DO_STATUS_MAP, formatDate } from '@/lib/utils';
 import type { SuratJalanDocument } from '@/lib/trip-document-types';
 import { getSuratJalanActualDropDestinations, getSuratJalanDestination } from '@/lib/surat-jalan-destination';
 import { hasPageAccess } from '@/lib/rbac';
+import SuratJalanPostDeliveryEditButton from '@/components/SuratJalanPostDeliveryEditButton';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
 import { useApp, useToast } from '../layout';
 import Combobox from '@/components/Combobox';
@@ -255,7 +256,7 @@ export default function SuratJalanPage() {
                                         <td>{formatCargoSummary(row.billableCargo)}</td>
                                         <td>{formatCargoSummary(row.holdCargo)}</td>
                                         <td>{statusMeta ? <span className={`badge badge-${statusMeta.color}`}><span className="badge-dot" /> {statusMeta.label}</span> : '-'}</td>
-                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link></td>
+                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link> <SuratJalanPostDeliveryEditButton row={row} onSaved={() => void loadSuratJalan()} /></td>
                                     </tr>
                                 );
                             })}
@@ -289,7 +290,7 @@ export default function SuratJalanPage() {
                                     <div>{canOpenCustomerPage && row.customerRef ? <Link href={`/customers/${row.customerRef}`} style={{ color: 'var(--color-primary)' }}>{row.customerName || '-'}</Link> : (row.customerName || '-')}</div>
                                     <div>Tujuan: {getSuratJalanDestination(row)}</div>
                                     <div>{row.itemCount} item | Masuk tagihan {formatCargoSummary(row.billableCargo)} | Ditahan {formatCargoSummary(row.holdCargo)}</div>
-                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link>
+                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link>{' '}<SuratJalanPostDeliveryEditButton row={row} onSaved={() => void loadSuratJalan()} />
                                 </div>
                             </div>
                         );

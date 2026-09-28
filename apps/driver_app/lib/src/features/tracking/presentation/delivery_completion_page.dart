@@ -523,6 +523,14 @@ class _DeliveryCompletionPageState extends State<DeliveryCompletionPage>
   }
 
   void _selectRecipient(String draftId, String recipientId) {
+    // "Isi manual" memakai nilai kosong. Memilihnya harus membersihkan
+    // nama/alamat yang tadi otomatis terisi dari Master Customer supaya
+    // field "Nama Lokasi" jadi satu-satunya sumber kebenaran.
+    if (recipientId.isEmpty) {
+      _updateDrop(draftId, locationName: '', locationAddress: '');
+      return;
+    }
+
     CustomerRecipientOption? recipient;
     for (final item in widget.customerRecipients) {
       if (item.id == recipientId) {

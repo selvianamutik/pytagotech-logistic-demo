@@ -161,7 +161,7 @@ function formatAuditMoney(amount: number) {
     return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
 }
 
-async function getDeliveryOrderBillingMutationLockMessage(id: string, label = 'SJ/barang') {
+export async function getDeliveryOrderBillingMutationLockMessage(id: string, label = 'SJ/barang') {
     const hasNotaReference = (await listDocumentsByFilter<{ _id: string; notaRef?: string; status?: string }>('freightNotaItem', {
         doRef: id,
     })).find(item => item.status !== 'VOID') || null;
@@ -221,7 +221,7 @@ function collectActualDropPointKeys(points: NonNullable<DeliveryOrder['actualDro
     return keys;
 }
 
-async function getDeliveryOrderActualCargoInvoiceLockMessage(params: {
+export async function getDeliveryOrderActualCargoInvoiceLockMessage(params: {
     id: string;
     label: string;
     targetItemRefs: string[];
@@ -7606,6 +7606,11 @@ export async function handleDeliveryOrderShipperReferenceUpdate(
             .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[0]))
     );
     const nextReferenceByKey = new Map(nextShipperReferences.map(reference => [reference._key, reference]));
+    const nextReferenceByNumber = new Map(
+        nextShipperReferences
+            .map(reference => [normalizeOptionalText(reference.referenceNumber)?.toUpperCase(), reference] as const)
+            .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[0]))
+    );
     const nextSuratJalanRecordIds = new Set(
         nextShipperReferences.map(reference =>
             getDeliveryOrderSuratJalanIdentity({
@@ -7616,7 +7621,16 @@ export async function handleDeliveryOrderShipperReferenceUpdate(
         )
     );
     const singleNextReference = nextShipperReferences.length === 1 ? nextShipperReferences[0] : null;
-    const isSingleReferenceRename = previousReferences.length <= 1 && nextShipperReferences.length === 1;
+    const previousPrimaryReference = previousReferences.length === 1 ? previousReferences[0] : null;
+    const previousPrimaryKey = normalizeOptionalText(previousPrimaryReference?._key);
+    const previousPrimaryNumber = normalizeOptionalText(previousPrimaryReference?.referenceNumber)?.toUpperCase();
+    const legacyPrimaryNextReference = previousPrimaryReference
+        ? (previousPrimaryKey ? nextReferenceByKey.get(previousPrimaryKey) : undefined)
+        || (previousPrimaryNumber ? nextReferenceByNumber.get(previousPrimaryNumber) : undefined)
+        || (existingCustomerDoNumber ? nextReferenceByNumber.get(existingCustomerDoNumber) : undefined)
+        || singleNextReference
+        || undefined
+        : undefined;
     const itemReferencePatches = new Map<string, NonNullable<typeof singleNextReference>>();
 
     for (const item of deliveryOrderItems) {
@@ -7628,9 +7642,7 @@ export async function handleDeliveryOrderShipperReferenceUpdate(
             || (currentReferenceNumber ? previousReferenceByNumber.get(currentReferenceNumber) : undefined);
         const nextReference =
             (previousReference?._key ? nextReferenceByKey.get(previousReference._key) : undefined)
-            || (singleNextReference && isSingleReferenceRename && isLegacyPrimaryItem
-                ? singleNextReference
-                : undefined);
+            || (isLegacyPrimaryItem ? legacyPrimaryNextReference : undefined);
         if (nextReference) {
             itemReferencePatches.set(item._id, nextReference);
         }
@@ -7762,6 +7774,85 @@ export async function handleDeliveryOrderShipperReferenceUpdate(
                     : point;
             })
         : undefined;
+
+    // Penjaga per-SJ. Guard DO di atas belum cukup: SJ yang statusnya sudah
+    // final (DELIVERED / PARTIAL_HOLD) tetap ikut terkirim di payload karena
+    // endpoint ini menulis ulang SELURUH array shipperReferences. Jadi hanya
+    // SJ yang benar-benar berubah oleh request ini yang diperiksa; SJ final
+    // yang tidak disentuh harus tetap bisa ikut tersimpan. DELIVERED dan
+    // PARTIAL_HOLD sama-sama final untuk penulisan daftar SJ pengirim: muatan
+    // aktualnya direkonsiliasi lewat update-surat-jalan-actual-cargo, muatan
+    // tertahan lewat continue-held-cargo.
+    const editableReferenceFieldKeys = [
+        'referenceNumber',
+        'date',
+        'pickupStopKey',
+        'pickupAddress',
+        'billingCustomerRef',
+        'billingCustomerName',
+        'receiverName',
+        'receiverPhone',
+        'receiverAddress',
+        'receiverCompany',
+        'notes',
+    ] as const;
+    const areEditableReferenceFieldsEqual = (
+        previousReference: Record<string, unknown> | undefined,
+        nextReference: Record<string, unknown>
+    ) => {
+        if (!previousReference) {
+            return false;
+        }
+        return editableReferenceFieldKeys.every(fieldKey =>
+            (normalizeOptionalText(previousReference[fieldKey]) ?? '')
+            === (normalizeOptionalText(nextReference[fieldKey]) ?? '')
+        );
+    };
+    const findPreviousReference = (reference: { _key?: string; referenceNumber?: string }) => {
+        const referenceKey = normalizeOptionalText(reference._key);
+        const referenceNumber = normalizeOptionalText(reference.referenceNumber)?.toUpperCase();
+        return previousReferences.find(previousReference =>
+            (referenceKey && normalizeOptionalText(previousReference._key) === referenceKey)
+            || (referenceNumber && normalizeOptionalText(previousReference.referenceNumber)?.toUpperCase() === referenceNumber)
+        );
+    };
+    const changedReferences = nextShipperReferences.filter(reference =>
+        !areEditableReferenceFieldsEqual(findPreviousReference(reference), reference)
+    );
+    if (changedReferences.length > 0) {
+        const existingSuratJalanRecordsForPendingGuard = await listDocumentsByFilter<{
+            _id: string;
+            tripStatus?: DOStatus;
+            referenceKey?: string;
+            suratJalanNumber?: string;
+        }>('suratJalan', { tripRef: id });
+        const finalizedReferenceLabels = changedReferences
+            .filter(reference => {
+                const targetRecordId = getDeliveryOrderSuratJalanIdentity({
+                    deliveryOrderId: id,
+                    shipperReferenceKey: reference._key,
+                    shipperReferenceNumber: reference.referenceNumber,
+                });
+                const referenceKey = normalizeOptionalText(reference._key);
+                const referenceNumber = normalizeOptionalText(reference.referenceNumber)?.toUpperCase();
+                const matchingRecord = existingSuratJalanRecordsForPendingGuard.find(record =>
+                    record._id === targetRecordId
+                    || (referenceKey && normalizeOptionalText(record.referenceKey) === referenceKey)
+                    || (referenceNumber && normalizeOptionalText(record.suratJalanNumber)?.toUpperCase() === referenceNumber)
+                );
+                return matchingRecord?.tripStatus === 'DELIVERED'
+                    || matchingRecord?.tripStatus === 'PARTIAL_HOLD';
+            })
+            .map(reference => normalizeOptionalText(reference.referenceNumber)?.toUpperCase() || 'SJ');
+        if (finalizedReferenceLabels.length > 0) {
+            return NextResponse.json(
+                {
+                    error: `SJ ${finalizedReferenceLabels.join(', ')} sudah terkirim atau masih ada muatan tertahan, jadi tidak bisa diubah dari daftar SJ pengirim.`,
+                },
+                { status: 409 }
+            );
+        }
+    }
 
     let updatedDeliveryOrder: unknown;
     try {
