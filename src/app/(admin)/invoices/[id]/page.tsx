@@ -30,6 +30,7 @@ import { exportFreightNotaDetail } from '@/lib/export';
 import { deriveReceivableStatus, formatDate, formatCurrency, formatQuantity, INVOICE_ADJUSTMENT_KIND_MAP, PAYMENT_METHOD_MAP } from '@/lib/utils';
 import type { FreightNota, FreightNotaItem, Payment, BankAccount, CompanyProfile, InvoiceAdjustment, Customer } from '@/lib/types';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
+import Combobox from '@/components/Combobox';
 export default function NotaDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -967,26 +968,29 @@ export default function NotaDetailPage() {
                             <div className="form-group"><label className="form-label">Nominal (Rp)</label><FormattedNumberInput allowDecimal={false} value={payAmount} onValueChange={value => setPayAmount(value)} disabled={paying} placeholder="Ketik nominal pembayaran invoice" /></div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Metode</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={payMethod}
-                                        onChange={e => {
-                                            const nextMethod = e.target.value;
+                                        onChange={(v: string) => {
+                                            const nextMethod = v;
                                             setPayMethod(nextMethod);
                                             if (nextMethod === 'CASH') {
                                                 setPayBankRef('');
                                             }
                                         }}
+                                        options={[{ value: "TRANSFER", label: "Transfer" }, { value: "CASH", label: "Tunai" }, { value: "OTHER", label: "Lainnya" }]}
                                         disabled={paying}
-                                    >
-                                        <option value="TRANSFER">Transfer</option><option value="CASH">Tunai</option><option value="OTHER">Lainnya</option>
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group"><label className="form-label">Rekening</label>
-                                    <select className="form-select" value={payBankRef} onChange={e => setPayBankRef(e.target.value)} disabled={paying || payMethod === 'CASH'}>
-                                        <option value="">{payMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Pilih --'}</option>
-                                        {paymentAccountOptions.map(a => <option key={a._id} value={a._id}>{a.bankName} - {a.accountNumber}{a.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                    </select>
+                                                                        <Combobox
+                                        value={payBankRef}
+                                        onChange={(v: string) => setPayBankRef(v)}
+                                        options={paymentAccountOptions.map(a => ({ value: a._id, label: `${a.bankName} - ${a.accountNumber}${a.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))}
+                                        placeholder={payMethod === 'CASH' ? '-- Otomatis ke Kas Tunai --' : '-- Pilih --'}
+                                        disabled={paying || payMethod === 'CASH'}
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '0.78rem', color: 'var(--color-gray-600)', marginBottom: '1rem' }}>
@@ -1017,9 +1021,13 @@ export default function NotaDetailPage() {
                             <div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={adjustDate} onChange={e => setAdjustDate(e.target.value)} disabled={adjusting} /></div>
                             <div className="form-row">
                                 <div className="form-group"><label className="form-label">Jenis</label>
-                                    <select className="form-select" value={adjustKind} onChange={e => setAdjustKind(e.target.value)} disabled={adjusting}>
-                                        {Object.entries(INVOICE_ADJUSTMENT_KIND_MAP).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                                    </select>
+                                                                        <Combobox
+                                        value={adjustKind}
+                                        onChange={(v: string) => setAdjustKind(v)}
+                                        options={Object.entries(INVOICE_ADJUSTMENT_KIND_MAP).map(([value, label]) => ({ value: value, label: label }))}
+                                        disabled={adjusting}
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group"><label className="form-label">Nominal (Rp)</label><FormattedNumberInput allowDecimal={false} value={adjustAmount} onValueChange={value => setAdjustAmount(value)} disabled={adjusting} placeholder="Ketik nominal potongan" /></div>
                             </div>
@@ -1049,21 +1057,19 @@ export default function NotaDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">PPh 23</label>
-                                    <select
-                                        className="form-select"
+                                                                        <Combobox
                                         value={pph23Enabled ? 'YA' : 'TIDAK'}
-                                        onChange={e => {
-                                            const nextEnabled = e.target.value === 'YA';
+                                        onChange={(v: string) => {
+                                            const nextEnabled = v === 'YA';
                                             setPph23Enabled(nextEnabled);
                                             if (nextEnabled && pph23RatePercent <= 0) {
                                                 setPph23RatePercent(DEFAULT_PPH23_RATE_PERCENT);
                                             }
                                         }}
+                                        options={[{ value: "TIDAK", label: "Tidak dipotong" }, { value: "YA", label: "Potong PPh 23" }]}
                                         disabled={savingPph23}
-                                    >
-                                        <option value="TIDAK">Tidak dipotong</option>
-                                        <option value="YA">Potong PPh 23</option>
-                                    </select>
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group" style={{ maxWidth: 180 }}>
                                     <label className="form-label">Tarif PPh 23 (%)</label>
@@ -1077,16 +1083,15 @@ export default function NotaDetailPage() {
                             </div>
                             <div className="form-group" style={{ maxWidth: 300 }}>
                                 <label className="form-label">Basis Hitung PPh 23</label>
-                                <select
-                                    className="form-select"
+                                                                <Combobox
                                     value={pph23BaseMode}
-                                    onChange={e => setPph23BaseMode(e.target.value as 'BEFORE_CLAIM' | 'AFTER_CLAIM')}
-                                    disabled={savingPph23}
-                                >
-                                    {PPH23_BASE_MODE_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    onChange={(v: string) => setPph23BaseMode(v as 'BEFORE_CLAIM' | 'AFTER_CLAIM')}
+                                    options={PPH23_BASE_MODE_OPTIONS.map(option => (
+                                        { value: option.value, label: option.label }
                                     ))}
-                                </select>
+                                    disabled={savingPph23}
+                                    className="form-select"
+                                />
                             </div>
                             <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '0.78rem', color: 'var(--color-gray-600)' }}>
                                 {buildPph23Label({ enabled: pph23Enabled, ratePercent: pph23RatePercent, baseMode: pph23BaseMode })}. Setelah invoice punya pembayaran, pengaturan ini otomatis terkunci agar piutang tidak berubah di tengah jalan.
@@ -1142,10 +1147,14 @@ export default function NotaDetailPage() {
                             <div className="form-group"><label className="form-label">Nominal Refund (Rp)</label><FormattedNumberInput allowDecimal={false} value={refundAmount} onValueChange={value => setRefundAmount(value)} disabled={refunding} placeholder="Ketik nominal refund" /></div>
                             <div className="form-group">
                                 <label className="form-label">Rekening / Kas Sumber</label>
-                                <select className="form-select" value={refundBankRef} onChange={e => setRefundBankRef(e.target.value)} disabled={refunding}>
-                                    <option value="">-- Pilih rekening atau kas --</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                                                <Combobox
+                                    value={refundBankRef}
+                                    onChange={(v: string) => setRefundBankRef(v)}
+                                    options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))}
+                                    placeholder="-- Pilih rekening atau kas --"
+                                    disabled={refunding}
+                                    className="form-select"
+                                />
                             </div>
                             <div className="form-group"><label className="form-label">Catatan</label><textarea className="form-textarea" rows={2} value={refundNote} onChange={e => setRefundNote(e.target.value)} disabled={refunding} placeholder="Contoh: Refund ke rekening customer sesuai konfirmasi finance" /></div>
                         </div>

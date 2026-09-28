@@ -12,8 +12,10 @@ import { DO_STATUS_MAP, formatDate } from '@/lib/utils';
 import type { SuratJalanDocument } from '@/lib/trip-document-types';
 import { getSuratJalanActualDropDestinations, getSuratJalanDestination } from '@/lib/surat-jalan-destination';
 import { hasPageAccess } from '@/lib/rbac';
+import SuratJalanPostDeliveryEditButton from '@/components/SuratJalanPostDeliveryEditButton';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
 import { useApp, useToast } from '../layout';
+import Combobox from '@/components/Combobox';
 
 /**
  * Maximum items to fetch for the initial load.
@@ -182,19 +184,24 @@ export default function SuratJalanPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari no. SJ, trip, resi, customer, tujuan..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status Operasional</option>
-                            {Object.entries(DO_STATUS_MAP).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                        </select>
-                        <select className="form-select" style={{ width: 'auto', minWidth: 180 }} value={conditionFilter} onChange={event => setConditionFilter(event.target.value as SuratJalanConditionFilter)}>
-                            <option value="">Semua Kondisi</option>
-                            <option value="has-hold">Ada hold</option>
-                            <option value="billable">Masuk tagihan</option>
-                            <option value="not-billable">Belum masuk tagihan</option>
-                            <option value="multi-sj">Trip multi-SJ</option>
-                            <option value="unfinished">Belum final</option>
-                            <option value="completed">Sudah final</option>
-                        </select>
+                                                <div style={{ width: 'auto', minWidth: 150 }}>
+                            <Combobox
+                                value={statusFilter}
+                                onChange={(v: string) => setStatusFilter(v)}
+                                options={Object.entries(DO_STATUS_MAP).map(([key, value]) => ({ value: key, label: value.label }))}
+                                placeholder="Semua Status Operasional"
+                                className="form-select"
+                            />
+                        </div>
+                                                <div style={{ width: 'auto', minWidth: 180 }}>
+                            <Combobox
+                                value={conditionFilter}
+                                onChange={(v: string) => setConditionFilter(v as SuratJalanConditionFilter)}
+                                options={[{ value: "has-hold", label: "Ada hold" }, { value: "billable", label: "Masuk tagihan" }, { value: "not-billable", label: "Belum masuk tagihan" }, { value: "multi-sj", label: "Trip multi-SJ" }, { value: "unfinished", label: "Belum final" }, { value: "completed", label: "Sudah final" }]}
+                                placeholder="Semua Kondisi"
+                                className="form-select"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="table-wrapper table-desktop-only">
@@ -249,7 +256,7 @@ export default function SuratJalanPage() {
                                         <td>{formatCargoSummary(row.billableCargo)}</td>
                                         <td>{formatCargoSummary(row.holdCargo)}</td>
                                         <td>{statusMeta ? <span className={`badge badge-${statusMeta.color}`}><span className="badge-dot" /> {statusMeta.label}</span> : '-'}</td>
-                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link></td>
+                                        <td><Link className="table-action-btn" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link> <SuratJalanPostDeliveryEditButton row={row} onSaved={() => void loadSuratJalan()} /></td>
                                     </tr>
                                 );
                             })}
@@ -283,7 +290,7 @@ export default function SuratJalanPage() {
                                     <div>{canOpenCustomerPage && row.customerRef ? <Link href={`/customers/${row.customerRef}`} style={{ color: 'var(--color-primary)' }}>{row.customerName || '-'}</Link> : (row.customerName || '-')}</div>
                                     <div>Tujuan: {getSuratJalanDestination(row)}</div>
                                     <div>{row.itemCount} item | Masuk tagihan {formatCargoSummary(row.billableCargo)} | Ditahan {formatCargoSummary(row.holdCargo)}</div>
-                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link>
+                                    <Link className="btn btn-secondary btn-sm" href={`/surat-jalan/${encodeURIComponent(row._id)}`}><Eye size={14} /> Detail</Link>{' '}<SuratJalanPostDeliveryEditButton row={row} onSaved={() => void loadSuratJalan()} />
                                 </div>
                             </div>
                         );

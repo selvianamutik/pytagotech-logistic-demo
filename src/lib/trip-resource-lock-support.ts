@@ -1,4 +1,4 @@
-import type { DeliveryOrder, Order, OrderTripPlan } from '@/lib/types';
+import type { DeliveryOrder, Order } from '@/lib/types';
 
 export type DeliveryOrderResourceLock = Pick<
     DeliveryOrder,
@@ -23,23 +23,6 @@ export type DeliveryOrderResourceLock = Pick<
     }>;
 
 type OrderResourceLock = Pick<Order, '_id' | 'masterResi' | 'status' | 'tripPlans'>;
-
-export type TripResourceLockSource =
-    | {
-        source: 'deliveryOrder';
-        sourceRef: string;
-        label: string;
-        vehicleRef?: string;
-        driverRef?: string;
-    }
-    | {
-        source: 'orderTripPlan';
-        sourceRef: string;
-        tripPlanKey?: string;
-        label: string;
-        vehicleRef?: string;
-        driverRef?: string;
-    };
 
 const LOCKING_DELIVERY_ORDER_STATUSES = new Set<DeliveryOrder['status']>([
     'CREATED',
@@ -71,108 +54,105 @@ export function isDeliveryOrderResourceLocked(order: DeliveryOrderResourceLock) 
     return hasPendingDriverRequest || hasPendingOdometerApproval;
 }
 
-export function isOrderTripPlanResourceLocked(order: OrderResourceLock, plan: OrderTripPlan) {
-    if (!order || !LOCKING_ORDER_STATUSES.has(order.status)) {
+export type TripResourceAssignment = {
+    source: 'deliveryOrder' | 'orderTripPlan';
+    sourceRef: string;
+    tripPlanKey?: string;
+    label: string;
+    status?: string;
+    tripClosedByAdminAt?: string;
+};
+
+type DeliveryOrderAssignment = DeliveryOrderResourceLock & { tripNumber?: string };
+
+function isOpenDeliveryOrder(order: DeliveryOrderAssignment) {
+    if (!order || order.status === 'CANCELLED' || order.tripClosedByAdminAt) {
         return false;
     }
-
-    // After a plan has produced a DO, the linked DO owns the lock lifecycle.
-    if (plan.linkedDeliveryOrderRef) {
-        return false;
-    }
-
-    return Boolean(plan.vehicleRef || plan.driverRef);
+    return true;
 }
 
-export function buildDeliveryOrderResourceLockSources(
-    deliveryOrders: DeliveryOrderResourceLock[],
-    options: { excludeDeliveryOrderRef?: string } = {}
-): TripResourceLockSource[] {
-    return deliveryOrders
-        .filter(order =>
-            order._id !== options.excludeDeliveryOrderRef &&
-            (!options.excludeDeliveryOrderRef || order.sourceDeliveryOrderRef !== options.excludeDeliveryOrderRef)
-        )
-        .filter(isDeliveryOrderResourceLocked)
-        .map(order => ({
-            source: 'deliveryOrder' as const,
+function pushAssignment(
+    index: Map<string, TripResourceAssignment[]>,
+    ref: string | undefined,
+    assignment: TripResourceAssignment
+) {
+    if (!ref) {
+        return;
+    }
+    const existing = index.get(ref);
+    if (existing) {
+        existing.push(assignment);
+        return;
+    }
+    index.set(ref, [assignment]);
+}
+
+export type TripResourceAssignmentIndex = {
+    byVehicleRef: Map<string, TripResourceAssignment[]>;
+    byDriverRef: Map<string, TripResourceAssignment[]>;
+};
+
+export function buildTripResourceAssignments(params: {
+    deliveryOrders?: DeliveryOrderAssignment[];
+    orders?: OrderResourceLock[];
+}): TripResourceAssignmentIndex {
+    const byVehicleRef = new Map<string, TripResourceAssignment[]>();
+    const byDriverRef = new Map<string, TripResourceAssignment[]>();
+
+    for (const order of params.deliveryOrders || []) {
+        if (!isOpenDeliveryOrder(order)) {
+            continue;
+        }
+        const assignment: TripResourceAssignment = {
+            source: 'deliveryOrder',
             sourceRef: order._id,
-            label: order.doNumber || order._id,
-            vehicleRef: order.vehicleRef,
-            driverRef: order.driverRef,
-        }));
-}
+            label: order.doNumber || order.tripNumber || order._id,
+            status: order.status,
+            tripClosedByAdminAt: order.tripClosedByAdminAt,
+        };
+        pushAssignment(byVehicleRef, order.vehicleRef, assignment);
+        pushAssignment(byDriverRef, order.driverRef, assignment);
+    }
 
-export function buildOrderTripPlanResourceLockSources(
-    orders: OrderResourceLock[],
-    options: { excludeOrderRef?: string; excludeOrderTripPlanKey?: string } = {}
-): TripResourceLockSource[] {
-    const sources: TripResourceLockSource[] = [];
-
-    for (const order of orders) {
+    for (const order of params.orders || []) {
+        if (!order || !LOCKING_ORDER_STATUSES.has(order.status)) {
+            continue;
+        }
         for (const [index, plan] of (order.tripPlans || []).entries()) {
-            const tripPlanKey = plan._key || `order-trip-${index + 1}`;
-            if (
-                order._id === options.excludeOrderRef &&
-                tripPlanKey === options.excludeOrderTripPlanKey
-            ) {
+            if (plan.linkedDeliveryOrderRef) {
                 continue;
             }
-            if (!isOrderTripPlanResourceLocked(order, plan)) {
-                continue;
-            }
-            sources.push({
+            const assignment: TripResourceAssignment = {
                 source: 'orderTripPlan',
                 sourceRef: order._id,
-                tripPlanKey,
+                tripPlanKey: plan._key || `order-trip-${index + 1}`,
                 label: `${order.masterResi || order._id} / Trip ${plan.sequence || index + 1}`,
-                vehicleRef: plan.vehicleRef,
-                driverRef: plan.driverRef,
-            });
+            };
+            pushAssignment(byVehicleRef, plan.vehicleRef, assignment);
+            pushAssignment(byDriverRef, plan.driverRef, assignment);
         }
     }
 
-    return sources;
+    return { byVehicleRef, byDriverRef };
 }
 
-export function buildTripResourceLockIds(sources: TripResourceLockSource[]) {
-    const busyVehicleIds = new Set<string>();
-    const busyDriverIds = new Set<string>();
-
-    for (const source of sources) {
-        if (source.vehicleRef) {
-            busyVehicleIds.add(source.vehicleRef);
-        }
-        if (source.driverRef) {
-            busyDriverIds.add(source.driverRef);
-        }
+export function tripVehicleAssignments(
+    vehicleRef: string | undefined,
+    index: TripResourceAssignmentIndex | undefined
+): TripResourceAssignment[] {
+    if (!vehicleRef || !index) {
+        return [];
     }
-
-    return {
-        busyVehicleIds: Array.from(busyVehicleIds),
-        busyDriverIds: Array.from(busyDriverIds),
-    };
+    return index.byVehicleRef.get(vehicleRef) || [];
 }
 
-export function buildTripResourceLocks(params: {
-    deliveryOrders?: DeliveryOrderResourceLock[];
-    orders?: OrderResourceLock[];
-    excludeDeliveryOrderRef?: string;
-    excludeOrderRef?: string;
-    excludeOrderTripPlanKey?: string;
-}) {
-    const sources = [
-        ...buildDeliveryOrderResourceLockSources(params.deliveryOrders || [], {
-            excludeDeliveryOrderRef: params.excludeDeliveryOrderRef,
-        }),
-        ...buildOrderTripPlanResourceLockSources(params.orders || [], {
-            excludeOrderRef: params.excludeOrderRef,
-            excludeOrderTripPlanKey: params.excludeOrderTripPlanKey,
-        }),
-    ];
-
-    return {
-        sources,
-        ...buildTripResourceLockIds(sources),
-    };
+export function tripDriverAssignments(
+    driverRef: string | undefined,
+    index: TripResourceAssignmentIndex | undefined
+): TripResourceAssignment[] {
+    if (!driverRef || !index) {
+        return [];
+    }
+    return index.byDriverRef.get(driverRef) || [];
 }

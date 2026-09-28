@@ -74,6 +74,9 @@ supabase/.temp/
 # rtk
 AGENTS.md
 RTK.md
+
+GMS-Driver-Demo.apk
+
 # Audit scripts (run standalone via npx tsx, not part of build)
 scripts/audit/
 scripts/audit-*.ts

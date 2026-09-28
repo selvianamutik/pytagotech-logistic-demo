@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, ChevronDown, ChevronUp, Eye, Plus, Search, Receipt, X } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 
 import { formatDate, formatCurrency, getDriverVoucherFinancialSummary } from '@/lib/utils';
@@ -367,21 +368,12 @@ export default function DriverVouchersPage() {
                             <Search size={16} className="table-search-icon" />
                             <input placeholder="Cari no. bon, supir, no. DO internal..." value={search} onChange={event => setSearch(event.target.value)} />
                         </div>
-                        <select className="form-select finance-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as FinancePeriodMode)}>
-                            <option value="all">Semua Tanggal</option>
-                            <option value="month">Bulanan</option>
-                            <option value="year">Tahunan</option>
-                            <option value="custom">Rentang Tanggal</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as FinancePeriodMode)} options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
                         {periodMode === 'month' && (
-                            <select className="form-select finance-filter" value={monthIndex} onChange={event => setMonthIndex(Number(event.target.value))}>
-                                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(monthIndex)} onChange={(v: string) => setMonthIndex(Number(v))} options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
                         )}
                         {periodMode !== 'all' && periodMode !== 'custom' && (
-                            <select className="form-select finance-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                                {yearOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                            </select>
+                            <Combobox className="form-select finance-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => String(option))} />
                         )}
                         {periodMode === 'custom' && (
                             <>
@@ -391,12 +383,7 @@ export default function DriverVouchersPage() {
                         )}
                     </div>
                     <div className="table-toolbar-right">
-                        <select className="form-select finance-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                            <option value="">Semua Status</option>
-                            <option value="DRAFT">Draft</option>
-                            <option value="ISSUED">Diberikan</option>
-                            <option value="SETTLED">Selesai</option>
-                        </select>
+                        <Combobox className="form-select finance-filter" value={statusFilter} onChange={(v: string) => setStatusFilter(v)} placeholder="Semua Status" options={[{ value: 'DRAFT', label: 'Draft' }, { value: 'ISSUED', label: 'Diberikan' }, { value: 'SETTLED', label: 'Selesai' }]} />
                         {(search || statusFilter || periodMode !== 'all') && (
                             <button
                                 className="btn btn-secondary btn-sm"
@@ -726,16 +713,16 @@ export default function DriverVouchersPage() {
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Rekening Penyelesaian</label>
-                                        <select
-                                            className="form-select"
-                                            value={batchSettleBankRef}
-                                            onChange={event => setBatchSettleBankRef(event.target.value)}
-                                            disabled={settlingBatch}
-                                            onFocus={loadBankAccounts}
-                                        >
-                                            <option value="">Pilih rekening atau kas (opsional)</option>
-                                            {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                        </select>
+                                        <div onFocus={loadBankAccounts}>
+                                            <Combobox
+                                                className="form-select"
+                                                value={batchSettleBankRef}
+                                                onChange={(v: string) => setBatchSettleBankRef(v)}
+                                                disabled={settlingBatch}
+                                                placeholder="Pilih rekening atau kas (opsional)"
+                                                options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))}
+                                            />
+                                        </div>
                                         <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Dipakai untuk semua trip yang dipilih bila diberikan; tanpa ini masing-masing trip memakai rekening sumber dananya.</div>
                                     </div>
                                 </>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Search, ScrollText } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
 import { getAuditLogTargetHref } from '@/lib/audit-log-target-links';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
@@ -262,38 +263,26 @@ export default function AuditLogsPage() {
                 <div className="table-toolbar">
                     <div className="table-toolbar-left" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         <div className="table-search"><Search size={16} className="table-search-icon" /><input placeholder="Cari nama, aksi, entitas, ringkasan..." value={searchInput} onChange={e => setSearchInput(e.target.value)} /></div>
-                        <select
+                        <Combobox
                             className="filter-select"
                             value={period}
-                            onChange={e => setPeriod(e.target.value as AuditLogPeriod)}
-                            aria-label="Filter periode audit log"
-                        >
-                            {PERIOD_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
-                        <select
+                            onChange={(v: string) => setPeriod(v as AuditLogPeriod)}
+                            options={PERIOD_OPTIONS}
+                        />
+                        <Combobox
                             className="filter-select"
                             value={userFilter}
-                            onChange={e => setUserFilter(e.target.value)}
-                            aria-label="Filter berdasarkan user"
-                        >
-                            <option value="">Semua User</option>
-                            {userOptions.map(name => (
-                                <option key={name} value={name}>{name}</option>
-                            ))}
-                        </select>
-                        <select
+                            onChange={(v: string) => setUserFilter(v)}
+                            options={userOptions.map(name => ({ value: name, label: name }))}
+                            placeholder="Semua User"
+                        />
+                        <Combobox
                             className="filter-select"
                             value={entityFilter}
-                            onChange={e => setEntityFilter(e.target.value)}
-                            aria-label="Filter berdasarkan entitas"
-                        >
-                            <option value="">Semua Entitas</option>
-                            {entityOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
+                            onChange={(v: string) => setEntityFilter(v)}
+                            options={entityOptions.map(option => ({ value: option.value, label: option.label }))}
+                            placeholder="Semua Entitas"
+                        />
                         {(userFilter || entityFilter) && (
                             <button
                                 className="btn btn-secondary btn-sm"

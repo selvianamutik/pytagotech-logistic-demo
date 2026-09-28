@@ -72,7 +72,7 @@ $env:AUDIT_BASE_URL='http://127.0.0.1:3000'
 | Order status consistency | `npm run audit:order-status-consistency` | PASS | 18 orders verified with no header/item progress mismatch. |
 | Hold continuation | `npm run audit:hold-continuation-origin` | PASS | Hold continuation origin passed. |
 | Overtonase driver trip | `npm run audit:overtonase-driver-trip` | PASS | Route rate -> driver entitlement, customer invoice without overtonase charge. |
-| Trip resource locks | `npm run audit:trip-resource-locks` | PASS | Trip resource lock audit passed. |
+| Trip resource assignments | `npm run audit:trip-resource-locks` | PASS | Trip resource assignment audit passed (multi-DO drivers/vehicles allowed). |
 | Master data import | `npm run audit:master-data-import` | PASS | Template/parser guards, supplier, warehouse item, trip route rate, customer, customer product create/update/validation passed. |
 | Reseed coverage | `npm run audit:reseed-test-coverage` | PASS | 1147 docs, DO statuses, partial hold, incidents, tire tracking, vouchers, freight notas covered. |
 | Supabase migration | `npm run audit:supabase` | PASS | Required files, workflow functions, data route aggregation, relational adapter, seed data, and sanity usage checks passed. |

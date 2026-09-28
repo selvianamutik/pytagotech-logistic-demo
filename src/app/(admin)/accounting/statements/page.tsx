@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchAdminData, fetchAllAdminCollectionData } from "@/lib/api/admin-client";
+import Combobox from "@/components/Combobox";
 import {
   buildBalanceSheetFromLedger,
   buildLedgerSummary,
@@ -611,24 +612,12 @@ export default function AccountingStatementsPage() {
         </div>
         <div className="page-toolbar-side">
           <div className="period-controls">
-            <select className="form-select accounting-period-filter" value={periodMode} onChange={event => setPeriodMode(event.target.value as PeriodMode)}>
-              <option value="month">Bulanan</option>
-              <option value="year">Tahunan</option>
-              <option value="custom">Rentang Tanggal</option>
-            </select>
+            <Combobox className="form-select accounting-period-filter" value={periodMode} onChange={(v: string) => setPeriodMode(v as PeriodMode)} options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]} />
             {periodMode === "month" && (
-              <select className="form-select accounting-period-filter" value={month} onChange={event => setMonth(Number(event.target.value))}>
-                {MONTH_NAMES.map((name, index) => (
-                  <option key={name} value={index}>{name}</option>
-                ))}
-              </select>
+              <Combobox className="form-select accounting-period-filter" value={String(month)} onChange={(v: string) => setMonth(Number(v))} options={MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))} />
             )}
             {periodMode !== "custom" && (
-              <select className="form-select accounting-period-filter" value={year} onChange={event => setYear(Number(event.target.value))}>
-                {yearOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+              <Combobox className="form-select accounting-period-filter" value={String(year)} onChange={(v: string) => setYear(Number(v))} options={yearOptions.map(option => ({ value: String(option), label: String(option) }))} />
             )}
             {periodMode === "custom" && (
               <>

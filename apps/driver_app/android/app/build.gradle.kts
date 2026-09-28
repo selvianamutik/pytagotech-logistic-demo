@@ -53,7 +53,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "id.gadingmassurya.driver"
+        applicationId = "id.gadingmassurya.driver.demo"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -11,6 +11,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useApp, useToast } from "../layout";
+import Combobox from "@/components/Combobox";
 import { openBrandedPrint } from "@/lib/print";
 import { fetchAdminData, fetchAllAdminCollectionData } from "@/lib/api/admin-client";
 import {
@@ -410,30 +411,21 @@ export default function ReportsPage() {
         </div>
         <div className="page-toolbar-side">
           <div className="period-controls">
-          <select
+          <Combobox
             className="form-select"
             value={periodMode}
-            onChange={(event) =>
-              setPeriodMode(event.target.value as ReportPeriodMode)
+            onChange={(v: string) =>
+              setPeriodMode(v as ReportPeriodMode)
             }
-          >
-            <option value="month">Bulanan</option>
-            <option value="year">Tahunan</option>
-            <option value="custom">Rentang Tanggal</option>
-            <option value="all">Semua</option>
-          </select>
+            options={[{ value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }, { value: 'all', label: 'Semua' }]}
+          />
           {periodMode === "month" && (
-            <select
+            <Combobox
               className="form-select"
-              value={month}
-              onChange={(event) => setMonth(Number(event.target.value))}
-            >
-              {monthNames.map((name, index) => (
-                <option key={name} value={index}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              value={String(month)}
+              onChange={(v: string) => setMonth(Number(v))}
+              options={monthNames.map((name, index) => ({ value: String(index), label: name }))}
+            />
           )}
           {periodMode === "custom" && (
             <>
@@ -451,15 +443,12 @@ export default function ReportsPage() {
               >
                 <ChevronLeft size={14} />
               </button>
-              <select
+              <Combobox
                 className="form-select period-year-select"
-                value={year}
-                onChange={(event) => setYear(Number(event.target.value))}
-              >
-                {yearOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                value={String(year)}
+                onChange={(v: string) => setYear(Number(v))}
+                options={yearOptions.map(option => ({ value: String(option), label: String(option) }))}
+              />
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={nextPeriod}

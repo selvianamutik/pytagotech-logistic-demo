@@ -4,7 +4,6 @@ loadScriptEnv();
 
 import { summarizeCustomerCreditUsage } from '../src/lib/customer-credit-limit';
 import { buildNotaRowsFromDeliveryOrder } from '../src/lib/invoice-create-page-support';
-import { buildTripResourceLocks, isDeliveryOrderResourceLocked, isOrderTripPlanResourceLocked } from '../src/lib/trip-resource-lock-support';
 import type { DeliveryOrder, DeliveryOrderItem, Driver, FreightNota, FreightNotaItem, Order, Vehicle } from '../src/lib/types';
 import type { SuratJalanDocument } from '../src/lib/trip-document-types';
 
@@ -59,10 +58,6 @@ function normalizeText(value: unknown) {
 
 function normalizeNumber(value: unknown) {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function normalizeLookup(value: unknown) {
-    return normalizeText(value).toLowerCase();
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -384,36 +379,14 @@ function pickAuditResources(params: {
     deliveryOrders: DeliveryOrder[];
     freightNotas: FreightNota[];
 }) {
-    const tripResourceLocks = buildTripResourceLocks({
-        deliveryOrders: params.deliveryOrders,
-        orders: params.orders,
-    });
-    const busyVehicleIds = new Set(tripResourceLocks.busyVehicleIds.map(normalizeText).filter(Boolean));
-    const busyDriverIds = new Set(tripResourceLocks.busyDriverIds.map(normalizeText).filter(Boolean));
-    const lockedDeliveryOrders = params.deliveryOrders.filter(isDeliveryOrderResourceLocked);
-    const lockedOrderTripPlans = params.orders.flatMap(order =>
-        (order.tripPlans || []).filter(plan => isOrderTripPlanResourceLocked(order, plan))
-    );
-    const busyVehiclePlates = new Set([
-        ...lockedDeliveryOrders.map(item => normalizeLookup(item.vehiclePlate)),
-        ...lockedOrderTripPlans.map(item => normalizeLookup(item.vehiclePlate)),
-    ].filter(Boolean));
-    const busyDriverNames = new Set([
-        ...lockedDeliveryOrders.map(item => normalizeLookup(item.driverName)),
-        ...lockedOrderTripPlans.map(item => normalizeLookup(item.driverName)),
-    ].filter(Boolean));
     const activeServices = params.services.filter(item => item.active !== false);
+    // Driver/vehicle exclusivity is gone: any operational vehicle and any active
+    // driver may be reused across multiple DOs at the same time.
     const availableVehicles = params.vehicles.filter(item =>
         item.status !== 'SOLD' &&
-        item.status !== 'OUT_OF_SERVICE' &&
-        !busyVehicleIds.has(item._id) &&
-        !busyVehiclePlates.has(normalizeLookup(item.plateNumber))
+        item.status !== 'OUT_OF_SERVICE'
     );
-    const availableDrivers = params.drivers.filter(item =>
-        item.active !== false &&
-        !busyDriverIds.has(item._id) &&
-        !busyDriverNames.has(normalizeLookup(item.name))
-    );
+    const availableDrivers = params.drivers.filter(item => item.active !== false);
     const customer = pickAvailableAuditCustomer(params.customers, params.freightNotas);
 
     for (const service of activeServices) {

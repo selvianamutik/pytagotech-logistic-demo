@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '../../layout';
 import { Save } from 'lucide-react';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
@@ -228,11 +229,11 @@ export default function NewDriverVoucherPage() {
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">DO Internal / Trip <span className="required">*</span></label>
-                            <select
+                            <Combobox
                                 className="form-select"
                                 value={selectedDeliveryOrderRef}
-                                onChange={e => {
-                                    const deliveryOrderRef = e.target.value;
+                                onChange={(v: string) => {
+                                    const deliveryOrderRef = v;
                                     const nextDo = eligibleDos.find(deliveryOrder => deliveryOrder._id === deliveryOrderRef) || null;
                                     const nextPlannedCashGiven = parseFormattedNumberish(nextDo?.plannedTripCashGiven ?? 0, { allowDecimal: false, maxFractionDigits: 0 });
                                     const nextPlannedIssueBankRef = nextDo?.plannedTripIssueBankRef || '';
@@ -246,24 +247,18 @@ export default function NewDriverVoucherPage() {
                                         issueBankRef: hasNextPlannedIssueBank ? nextPlannedIssueBankRef : '',
                                     }));
                                 }}
-                            >
-                                <option value="">Pilih DO internal / trip</option>
-                                {eligibleDos.map(deliveryOrder => {
+                                placeholder="Pilih DO internal / trip"
+                                options={eligibleDos.map(deliveryOrder => {
                                     const order = deliveryOrder.orderRef
                                         ? orders.find(item => item._id === deliveryOrder.orderRef)
                                         : null;
                                     const route = buildDriverVoucherRouteLabel(deliveryOrder, order);
-                                    return (
-                                        <option key={deliveryOrder._id} value={deliveryOrder._id}>
-                                            {deliveryOrder.doNumber}
-                                            {getShipperReferenceCount(deliveryOrder) > 0 ? ` | SJ ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''}
-                                            {` | ${deliveryOrder.driverName || drivers.find(driver => driver._id === deliveryOrder.driverRef)?.name || '-'}`}
-                                            {` | ${deliveryOrder.vehiclePlate || '-'}`}
-                                            {route ? ` | ${route}` : ''}
-                                        </option>
-                                    );
+                                    return {
+                                        value: deliveryOrder._id,
+                                        label: `${deliveryOrder.doNumber}${getShipperReferenceCount(deliveryOrder) > 0 ? ` | SJ ${formatShipperDeliveryOrderNumber(deliveryOrder)}` : ''} | ${deliveryOrder.driverName || drivers.find(driver => driver._id === deliveryOrder.driverRef)?.name || '-'} | ${deliveryOrder.vehiclePlate || '-'}${route ? ` | ${route}` : ''}`,
+                                    };
                                 })}
-                            </select>
+                            />
                         </div>
                         <div className="form-group">
                             <label className="form-label">Tanggal</label>
@@ -302,10 +297,7 @@ export default function NewDriverVoucherPage() {
                     <div className="form-row" style={{ marginTop: 'var(--space-4)' }}>
                         <div className="form-group">
                             <label className="form-label">Rekening / Kas Sumber <span className="required">*</span></label>
-                            <select className="form-select" value={form.issueBankRef} onChange={e => setForm({ ...form, issueBankRef: e.target.value })}>
-                                <option value="">Pilih rekening atau kas</option>
-                                {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                            </select>
+                            <Combobox className="form-select" value={form.issueBankRef} onChange={(v: string) => setForm({ ...form, issueBankRef: v })} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                         </div>
                         <div className="form-group">
                             <label className="form-label">Uang Jalan Awal <span className="required">*</span></label>

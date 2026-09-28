@@ -9,4 +9,7 @@ driver-mobile/dist-android
 driver-mobile/dist-ios
 driver-mobile/build-debug.log
 driver-mobile/build-release.log
+apps
+node_modules
+.next
 

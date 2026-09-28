@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Building2, Edit, Eye, FileDown, Plus, RefreshCw, Save, Search, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { getBusinessDateValue } from '@/lib/business-date';
@@ -555,10 +556,7 @@ export default function SuppliersPage() {
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={event => setForm(current => ({ ...current, active: event.target.value === 'active' }))}>
-                                        <option value="active">Aktif</option>
-                                        <option value="inactive">Nonaktif</option>
-                                    </select>
+                                    <Combobox className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(v: string) => setForm(current => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} />
                                 </div>
                             </div>
                             <div className="form-group">

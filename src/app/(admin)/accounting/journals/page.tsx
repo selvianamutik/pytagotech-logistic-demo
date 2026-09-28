@@ -5,6 +5,7 @@ import { Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
 import AppPagination from "@/components/AppPagination";
+import Combobox from "@/components/Combobox";
 import FormattedNumberInput from "@/components/FormattedNumberInput";
 import { fetchAdminListPayload, fetchAllAdminCollectionData } from "@/lib/api/admin-client";
 import { formatAccountingCurrency } from "@/lib/accounting-reports";
@@ -428,58 +429,45 @@ export default function JournalEntriesPage() {
                 placeholder="Cari nomor jurnal, memo, sumber..."
               />
             </label>
-            <select
+            <Combobox
               className="form-select accounting-filter"
               value={statusFilter}
-              onChange={event => {
-                setStatusFilter(event.target.value as JournalStatusFilter);
+              onChange={(v: string) => {
+                setStatusFilter(v as JournalStatusFilter);
                 setEntryPage(1);
               }}
-            >
-              <option value="POSTED">Posted ({entrySummary.posted})</option>
-              <option value="VOID">Dibatalkan ({entrySummary.void})</option>
-              <option value="ALL">Semua Jurnal ({entrySummary.all})</option>
-            </select>
-            <select
+              options={[{ value: 'POSTED', label: `Posted (${entrySummary.posted})` }, { value: 'VOID', label: `Dibatalkan (${entrySummary.void})` }, { value: 'ALL', label: `Semua Jurnal (${entrySummary.all})` }]}
+            />
+            <Combobox
               className="form-select accounting-filter"
               value={periodMode}
-              onChange={event => {
-                setPeriodMode(event.target.value as FinancePeriodMode);
+              onChange={(v: string) => {
+                setPeriodMode(v as FinancePeriodMode);
                 setEntryPage(1);
               }}
-            >
-              <option value="all">Semua Tanggal</option>
-              <option value="month">Bulanan</option>
-              <option value="year">Tahunan</option>
-              <option value="custom">Rentang Tanggal</option>
-            </select>
+              options={[{ value: 'all', label: 'Semua Tanggal' }, { value: 'month', label: 'Bulanan' }, { value: 'year', label: 'Tahunan' }, { value: 'custom', label: 'Rentang Tanggal' }]}
+            />
             {periodMode === "month" && (
-              <select
+              <Combobox
                 className="form-select accounting-filter"
-                value={monthIndex}
-                onChange={event => {
-                  setMonthIndex(Number(event.target.value));
+                value={String(monthIndex)}
+                onChange={(v: string) => {
+                  setMonthIndex(Number(v));
                   setEntryPage(1);
                 }}
-              >
-                {FINANCE_PERIOD_MONTH_NAMES.map((name, index) => (
-                  <option key={name} value={index}>{name}</option>
-                ))}
-              </select>
+                options={FINANCE_PERIOD_MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))}
+              />
             )}
             {periodMode !== "all" && periodMode !== "custom" && (
-              <select
+              <Combobox
                 className="form-select accounting-filter"
-                value={year}
-                onChange={event => {
-                  setYear(Number(event.target.value));
+                value={String(year)}
+                onChange={(v: string) => {
+                  setYear(Number(v));
                   setEntryPage(1);
                 }}
-              >
-                {yearOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                options={yearOptions.map(option => ({ value: String(option), label: String(option) }))}
+              />
             )}
             {periodMode === "custom" && (
               <>
@@ -733,17 +721,14 @@ export default function JournalEntriesPage() {
                       <div className="form-row">
                         <div className="form-group">
                           <label className="form-label">Akun <span className="required">*</span></label>
-                          <select
+                          <Combobox
                             className="form-select"
                             value={line.accountRef}
-                            onChange={event => updateDraftLine(line.id, { accountRef: event.target.value })}
+                            onChange={(v: string) => updateDraftLine(line.id, { accountRef: v })}
+                            options={journalAccountOptions.map(item => ({ value: item._id, label: `${item.code} - ${item.name}` }))}
+                            placeholder="Pilih akun"
                             disabled={saving}
-                          >
-                            <option value="">Pilih akun</option>
-                            {journalAccountOptions.map(item => (
-                              <option key={item._id} value={item._id}>{item.code} - {item.name}</option>
-                            ))}
-                          </select>
+                          />
                         </div>
                         <div className="form-group">
                           <label className="form-label">Debit</label>

@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { CreditCard, Edit, Package, Plus, Receipt, Save, X } from 'lucide-react';
 
 import FormattedNumberInput from '@/components/FormattedNumberInput';
+import Combobox from '@/components/Combobox';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
@@ -968,17 +969,14 @@ export default function SupplierDetailPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Barang Gudang</label>
-                  <select
+                  <Combobox
                     className="form-select"
                     value={priceForm.warehouseItemRef}
-                    onChange={(event) => setPriceForm((current) => ({ ...current, warehouseItemRef: event.target.value }))}
+                    onChange={(v: string) => setPriceForm((current) => ({ ...current, warehouseItemRef: v }))}
                     disabled={Boolean(editingPrice) || savingPrice}
-                  >
-                    <option value="">Pilih barang</option>
-                    {activeWarehouseItems.map((item) => (
-                      <option key={item._id} value={item._id}>{item.itemCode} - {item.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Pilih barang"
+                    options={activeWarehouseItems.map((item) => ({ value: item._id, label: `${item.itemCode} - ${item.name}` }))}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Harga dari Supplier (Rp)</label>
@@ -1024,10 +1022,7 @@ export default function SupplierDetailPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Status Harga</label>
-                <select className="form-select" value={priceForm.active ? 'active' : 'inactive'} onChange={(event) => setPriceForm((current) => ({ ...current, active: event.target.value === 'active' }))}>
-                  <option value="active">Bisa dipakai</option>
-                  <option value="inactive">Jangan dipakai</option>
-                </select>
+                <Combobox className="form-select" value={priceForm.active ? 'active' : 'inactive'} onChange={(v: string) => setPriceForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Bisa dipakai' }, { value: 'inactive', label: 'Jangan dipakai' }]} />
               </div>
             </div>
             <div className="modal-footer">
@@ -1077,10 +1072,7 @@ export default function SupplierDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Status</label>
-                  <select className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'active' }))}>
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Nonaktif</option>
-                  </select>
+                  <Combobox className="form-select" value={form.active ? 'active' : 'inactive'} onChange={(v: string) => setForm((current) => ({ ...current, active: v === 'active' }))} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} />
                 </div>
               </div>
               <div className="form-group">

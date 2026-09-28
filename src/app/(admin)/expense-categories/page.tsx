@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Edit, Plus, Save, Tags, Trash2, X } from 'lucide-react';
 
 import AppPagination from '@/components/AppPagination';
+import Combobox from '@/components/Combobox';
 import {
     EXPENSE_CATEGORY_SCOPE_OPTIONS,
     getExpenseCategoryScopeLabel,
@@ -278,16 +279,11 @@ export default function ExpenseCategoriesPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Jenis</label>
-                                    <select className="form-select" value={scope} onChange={event => handleScopeChange(event.target.value as ExpenseCategoryScope)} disabled={saving}>
-                                        {EXPENSE_CATEGORY_SCOPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
+                                    <Combobox className="form-select" value={scope} onChange={(v: string) => handleScopeChange(v as ExpenseCategoryScope)} options={EXPENSE_CATEGORY_SCOPE_OPTIONS} disabled={saving} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
-                                    <select className="form-select" value={active ? 'active' : 'inactive'} onChange={event => setActive(event.target.value === 'active')} disabled={saving}>
-                                        <option value="active">Aktif</option>
-                                        <option value="inactive">Nonaktif</option>
-                                    </select>
+                                    <Combobox className="form-select" value={active ? 'active' : 'inactive'} onChange={(v: string) => setActive(v === 'active')} options={[{ value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Nonaktif' }]} disabled={saving} />
                                 </div>
                             </div>
                             <label className="checkbox-card" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>

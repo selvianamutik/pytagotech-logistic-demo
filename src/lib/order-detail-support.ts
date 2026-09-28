@@ -10,7 +10,7 @@ import {
 } from '@/lib/measurement';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { calculateWeightPortion, getOrderItemProgress, roundQuantity } from '@/lib/order-item-progress';
-import { buildTripResourceLocks } from '@/lib/trip-resource-lock-support';
+import { buildTripResourceAssignments } from '@/lib/trip-resource-lock-support';
 import type { DeliveryOrder, DeliveryOrderItem, Driver, Order, OrderItem, Vehicle } from '@/lib/types';
 
 export type SelectedShipmentMap = Record<string, {
@@ -400,19 +400,13 @@ export function buildCreateDeliveryOrderItems(
         );
 }
 
-export function buildBusyAssignmentIds(params: {
+export function buildOrderResourceAssignmentIndex(params: {
     deliveryOrders?: DeliveryOrder[];
     orders?: Array<Pick<Order, '_id' | 'masterResi' | 'status' | 'tripPlans'>>;
-    excludeDeliveryOrderRef?: string;
-    excludeOrderRef?: string;
-    excludeOrderTripPlanKey?: string;
 }) {
-    return buildTripResourceLocks({
+    return buildTripResourceAssignments({
         deliveryOrders: params.deliveryOrders || [],
         orders: params.orders || [],
-        excludeDeliveryOrderRef: params.excludeDeliveryOrderRef,
-        excludeOrderRef: params.excludeOrderRef,
-        excludeOrderTripPlanKey: params.excludeOrderTripPlanKey,
     });
 }
 
@@ -431,13 +425,12 @@ export function sortOrderDetailVehicles(vehicles: VehicleSummary[], order: Order
         });
 }
 
-export function getAvailableVehicles(vehicles: VehicleSummary[], busyVehicleIds: string[]) {
-    const busyVehicleIdSet = new Set(busyVehicleIds);
-    return vehicles.filter(vehicle => !busyVehicleIdSet.has(vehicle._id));
+export function getAvailableVehicles(vehicles: VehicleSummary[]) {
+    return vehicles.slice();
 }
 
-export function getAvailableDrivers(drivers: Driver[], busyDriverIds: string[]) {
-    return drivers.filter(driver => !busyDriverIds.includes(driver._id));
+export function getAvailableDrivers(drivers: Driver[]) {
+    return drivers.slice();
 }
 
 export function shouldRequireVehicleOverrideReason(order: Order | null, selectedVehicle?: VehicleSummary) {

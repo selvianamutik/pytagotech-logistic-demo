@@ -72,7 +72,7 @@ async function testEntity(
     // CREATE
     try {
         const created = await createDocument(createData as { _type: string; [key: string]: unknown });
-        fixtures.push({ type: docType, id: created._id });
+        fixtures.push({ type: docType, id: created._id as string });
         const createDuration = Date.now() - startTime;
         console.log(`   ✅ CREATE: ${created._id.slice(0, 8)}... (${createDuration}ms)`);
         entityResults.push({

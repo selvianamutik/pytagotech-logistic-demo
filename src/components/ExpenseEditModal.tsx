@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Save, X } from 'lucide-react';
 import { useToast } from '@/app/(admin)/layout';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { getBusinessDateValue } from '@/lib/business-date';
 import { isManualExpenseCategory } from '@/lib/expense-category-scope';
@@ -158,9 +159,7 @@ export default function ExpenseEditModal({
                 <div className="modal-body">
                     {loadingData && <div className="skeleton skeleton-text" style={{ marginBottom: '1rem' }} />}
                     <div className="form-group"><label className="form-label">Kategori <span className="required">*</span></label>
-                        <select className="form-select" value={form.categoryRef} onChange={event => setForm({ ...form, categoryRef: event.target.value })} disabled={saving || loadingData}>
-                            <option value="">Pilih kategori umum</option>{manualCategories.map(category => <option key={category._id} value={category._id}>{category.name}</option>)}
-                        </select>
+                        <Combobox className="form-select" value={form.categoryRef} onChange={(v: string) => setForm({ ...form, categoryRef: v })} options={manualCategories.map(category => ({ value: category._id, label: category.name }))} placeholder="Pilih kategori umum" disabled={saving || loadingData} />
                     </div>
                     <div className="form-row">
                         <div className="form-group"><label className="form-label">Tanggal</label><input type="date" className="form-input" value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} disabled={saving} /></div>
@@ -168,13 +167,10 @@ export default function ExpenseEditModal({
                     </div>
                     <div className="form-group"><label className="form-label">Catatan/Deskripsi</label><textarea className="form-textarea" rows={2} value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} disabled={saving} /></div>
                     <div className="form-group"><label className="form-label">Sumber Dana</label>
-                        <select className="form-select" value={form.bankAccountRef} onChange={event => {
-                            const account = accountOptions.find(item => item._id === event.target.value);
-                            setForm({ ...form, bankAccountRef: event.target.value, bankAccountName: account?.bankName || '' });
-                        }} disabled={saving || loadingData}>
-                            <option value="">Tanpa rekening (hutang biaya)</option>
-                            {accountOptions.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}{account.active === false ? ' (non-aktif)' : ''}</option>)}
-                        </select>
+                        <Combobox className="form-select" value={form.bankAccountRef} onChange={(v: string) => {
+                            const account = accountOptions.find(item => item._id === v);
+                            setForm({ ...form, bankAccountRef: v, bankAccountName: account?.bankName || '' });
+                        }} options={accountOptions.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}${account.active === false ? ' (non-aktif)' : ''}` }))} placeholder="Tanpa rekening (hutang biaya)" disabled={saving || loadingData} />
                         <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
                             {form.bankAccountRef
                                 ? 'Saldo rekening/kas akan terkoreksi mengikuti nominal baru.'
@@ -182,9 +178,7 @@ export default function ExpenseEditModal({
                         </div>
                     </div>
                     {isOwner && <div className="form-group"><label className="form-label">Privacy Level</label>
-                        <select className="form-select" value={form.privacyLevel} onChange={event => setForm({ ...form, privacyLevel: event.target.value as 'internal' | 'ownerOnly' })} disabled={saving}>
-                            <option value="internal">Internal</option><option value="ownerOnly">Owner Only</option>
-                        </select>
+                        <Combobox className="form-select" value={form.privacyLevel} onChange={(v: string) => setForm({ ...form, privacyLevel: v as 'internal' | 'ownerOnly' })} options={[{ value: 'internal', label: 'Internal' }, { value: 'ownerOnly', label: 'Owner Only' }]} disabled={saving} />
                     </div>}
                 </div>
                 <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving || loadingData || !isFormValid}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan Perubahan'}</button></div>

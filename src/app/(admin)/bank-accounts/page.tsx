@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import AppPagination from "@/components/AppPagination";
 import BankLogo from "@/components/BankLogo";
+import Combobox from "@/components/Combobox";
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import {
   BANK_PRESETS,
@@ -1027,57 +1028,45 @@ export default function BankAccountsPage() {
                 <label className="form-label">
                   Dari Rekening <span className="required">*</span>
                 </label>
-                <select
+                <Combobox
                   className="form-select"
                   value={transferForm.fromAccountRef}
-                  disabled={transferring}
-                  onChange={(event) =>
+                  onChange={(v: string) =>
                     setTransferForm({
                       ...transferForm,
-                      fromAccountRef: event.target.value,
+                      fromAccountRef: v,
                       toAccountRef:
-                        transferForm.toAccountRef === event.target.value
+                        transferForm.toAccountRef === v
                           ? ""
                           : transferForm.toAccountRef,
                     })
                   }
-                >
-                  <option value="">-- Pilih sumber --</option>
-                  {accounts.map((account) => (
-                    <option key={account._id} value={account._id}>
-                      {account.bankName} - {account.accountNumber} (
-                      {formatBankAccountCurrency(account.currentBalance || 0)})
-                    </option>
-                  ))}
-                </select>
+                  options={accounts.map((account) => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber} (${formatBankAccountCurrency(account.currentBalance || 0)})` }))}
+                  placeholder="-- Pilih sumber --"
+                  disabled={transferring}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">
                   Ke Rekening <span className="required">*</span>
                 </label>
-                <select
+                <Combobox
                   className="form-select"
                   value={transferForm.toAccountRef}
-                  disabled={transferring}
-                  onChange={(event) =>
+                  onChange={(v: string) =>
                     setTransferForm({
                       ...transferForm,
-                      toAccountRef: event.target.value,
+                      toAccountRef: v,
                     })
                   }
-                >
-                  <option value="">-- Pilih tujuan --</option>
-                  {accounts
+                  options={accounts
                     .filter(
                       (account) => account._id !== transferForm.fromAccountRef,
                     )
-                    .map((account) => (
-                      <option key={account._id} value={account._id}>
-                        {account.bankName} - {account.accountNumber} (
-                        {formatBankAccountCurrency(account.currentBalance || 0)})
-                      </option>
-                    ))}
-                </select>
+                    .map((account) => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber} (${formatBankAccountCurrency(account.currentBalance || 0)})` }))}
+                  placeholder="-- Pilih tujuan --"
+                  disabled={transferring}
+                />
               </div>
               <div className="form-row">
                 <div className="form-group">
@@ -1205,25 +1194,19 @@ export default function BankAccountsPage() {
                     <label className="form-label">
                       Rekening / Kas <span className="required">*</span>
                     </label>
-                    <select
+                    <Combobox
                       className="form-select"
                       value={adjustForm.bankAccountRef}
-                      disabled={adjusting}
-                      onChange={(event) =>
+                      onChange={(v: string) =>
                         setAdjustForm({
                           ...adjustForm,
-                          bankAccountRef: event.target.value,
+                          bankAccountRef: v,
                         })
                       }
-                    >
-                      <option value="">-- Pilih rekening / kas --</option>
-                      {accounts.map((account) => (
-                        <option key={account._id} value={account._id}>
-                          {account.bankName} - {account.accountNumber} (
-                          {formatBankAccountCurrency(account.currentBalance || 0)})
-                        </option>
-                      ))}
-                    </select>
+                      options={accounts.map((account) => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber} (${formatBankAccountCurrency(account.currentBalance || 0)})` }))}
+                      placeholder="-- Pilih rekening / kas --"
+                      disabled={adjusting}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Jenis Penyesuaian</label>

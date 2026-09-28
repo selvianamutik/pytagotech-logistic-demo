@@ -11,6 +11,8 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+env.local
+
 
 # IntelliJ related
 *.iml
@@ -47,3 +49,6 @@ app.*.map.json
 *.jks
 *.keystore
 *.p12
+
+# FVM Version Cache
+.fvm/

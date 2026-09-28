@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CheckCircle, Pencil, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 
 import CollapsibleCard from '@/components/CollapsibleCard';
+import Combobox from '@/components/Combobox';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import PageBackButton from '@/components/PageBackButton';
 import { fetchAdminCollectionData, fetchAdminData, fetchAllAdminCollectionData } from '@/lib/api/admin-client';
@@ -758,10 +759,7 @@ export default function DriverVoucherDetailPage() {
                         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                             <div className="form-group" style={{ minWidth: 260, marginBottom: 0 }}>
                                 <label className="form-label">Rekening / Kas Sumber</label>
-                                <select className="form-select" value={issueBankRepairRef} onChange={event => setIssueBankRepairRef(event.target.value)}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={issueBankRepairRef} onChange={(v: string) => setIssueBankRepairRef(v)} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                             </div>
                             {canRepairIssueLedger ? (
                                 <button className="btn btn-primary" onClick={handleRepairIssueLedger} disabled={repairingIssueLedger}>
@@ -1080,17 +1078,16 @@ export default function DriverVoucherDetailPage() {
                                             disabled={savingManualOvertonase || manualOvertonaseReviewMode === 'automatic'}
                                             placeholder="Isi berat manual"
                                         />
-                                        <select
+                                        <Combobox
                                             className="form-select"
                                             value={manualOvertonaseWeightInputUnit}
-                                            onChange={event => {
-                                                updateManualOvertonaseWeightUnit(event.target.value as WeightInputUnit);
+                                            onChange={(v: string) => {
+                                                updateManualOvertonaseWeightUnit(v as WeightInputUnit);
                                                 setManualOvertonaseReviewMode('manual');
                                             }}
                                             disabled={savingManualOvertonase || manualOvertonaseReviewMode === 'automatic'}
-                                        >
-                                            {WEIGHT_INPUT_UNIT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                        </select>
+                                            options={WEIGHT_INPUT_UNIT_OPTIONS}
+                                        />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -1153,9 +1150,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Kategori</label>
-                                <select className="form-select" value={itemForm.category} onChange={event => setItemForm({ ...itemForm, category: event.target.value })}>
-                                    {DRIVER_VOUCHER_EXPENSE_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={itemForm.category} onChange={(v: string) => setItemForm({ ...itemForm, category: v })} options={DRIVER_VOUCHER_EXPENSE_CATEGORIES} />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Deskripsi</label>
@@ -1198,10 +1193,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Rekening / Kas Sumber <span className="required">*</span></label>
-                                <select className="form-select" value={topUpForm.bankAccountRef} onChange={event => setTopUpForm({ ...topUpForm, bankAccountRef: event.target.value })}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={topUpForm.bankAccountRef} onChange={(v: string) => setTopUpForm({ ...topUpForm, bankAccountRef: v })} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Jumlah Tambahan <span className="required">*</span></label>
@@ -1248,10 +1240,7 @@ export default function DriverVoucherDetailPage() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">{settlementDisplay.bankFieldLabel} {balance !== 0 ? <span className="required">*</span> : null}</label>
-                                <select className="form-select" value={settlementBankRef} onChange={event => setSettlementBankRef(event.target.value)} disabled={settling}>
-                                    <option value="">Pilih rekening atau kas</option>
-                                    {bankAccounts.map(account => <option key={account._id} value={account._id}>{account.bankName} - {account.accountNumber}{account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}</option>)}
-                                </select>
+                                <Combobox className="form-select" value={settlementBankRef} onChange={(v: string) => setSettlementBankRef(v)} disabled={settling} placeholder="Pilih rekening atau kas" options={bankAccounts.map(account => ({ value: account._id, label: `${account.bankName} - ${account.accountNumber}${account.accountType === 'CASH' ? ' (Kas Tunai)' : ''}` }))} />
                                 <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>{settlementDisplay.description}</div>
                             </div>
                             <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '0.6rem', padding: '0.85rem 1rem' }}>

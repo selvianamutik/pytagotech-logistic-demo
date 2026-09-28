@@ -264,25 +264,28 @@ assertIncludes(
     'Admin detail trip harus punya aksi eksplisit Review Tutup Trip.'
 );
 
+// `isDeliveryOrderResourceLocked` no longer gates assignability (a driver/vehicle
+// may be reused across many DOs). It only decides which trips the driver portal
+// keeps listing as active, so these checks are about portal visibility.
 assertIncludes(
     tripResourceLockSource,
     "order.tripEndOdometerKm === 'number'",
-    'Resource lock harus memperhitungkan pending odometer approval.'
+    'Trip aktif di portal supir harus memperhitungkan odometer yang menunggu approval.'
 );
 assertIncludes(
     tripResourceLockSource,
     '!order.odometerConfirmedAt',
-    'Resource lock hanya boleh bebas setelah odometer dikonfirmasi admin.'
+    'Trip hanya boleh berhenti aktif di portal supir setelah odometer dikonfirmasi admin.'
 );
 assertMatches(
     tripResourceLockSource,
     /LOCKING_DELIVERY_ORDER_STATUSES[\s\S]*'DELIVERED'/,
-    'Resource lock harus tetap mengunci driver/kendaraan pada DO DELIVERED sampai admin closure.'
+    'DO DELIVERED harus tetap tampil sebagai trip aktif di portal supir sampai admin closure.'
 );
 assertMatches(
     tripResourceLockSource,
     /order\.status === 'CANCELLED' \|\| order\.tripClosedByAdminAt/,
-    'Resource lock harus membebaskan driver/kendaraan setelah tripClosedByAdminAt.'
+    'Trip harus berhenti tampil aktif di portal supir setelah tripClosedByAdminAt.'
 );
 
-console.log('Driver trip closure audit OK: mobile request, API guards, admin approval, odometer, and resource locks verified.');
+console.log('Driver trip closure audit OK: mobile request, API guards, admin approval, odometer, and active-trip visibility verified.');
