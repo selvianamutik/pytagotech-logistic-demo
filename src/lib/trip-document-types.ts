@@ -171,6 +171,20 @@ export interface SuratJalanRecord {
     billableCargo: CargoSummary;
     holdCargo: CargoSummary;
     returnCargo: CargoSummary;
+    /**
+     * Ditandai saat customer + drop point SJ ini diedit setelah status DELIVERED.
+     * Snapshot original hanya diisi pada edit pertama dan tidak pernah ditimpa.
+     */
+    editedAfterDelivery?: boolean;
+    originalSJCustomerDrop?: {
+        customerRef?: string;
+        customerName?: string;
+        dropPointName?: string;
+        /** Nomor SJ sebelum diedit, supaya perubahan nomor tetap bisa ditelusuri. */
+        suratJalanNumber?: string;
+        editedAt?: string;
+        editedBy?: string;
+    };
 }
 
 export interface SuratJalanItemRecord {

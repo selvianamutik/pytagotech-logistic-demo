@@ -84,7 +84,12 @@ export default function Combobox({
 
   const showClear = !disabled && displayValue !== "";
 
-  const normalizedQuery = displayValue.trim().toLowerCase();
+  // `query === null` means the user is not typing, so the input text is only
+  // the selected label. Filtering on it would narrow the list to the current
+  // choice alone and read as "no other options", so an open dropdown browses
+  // the full list until the user actually types.
+  const isBrowsing = open && query === null;
+  const normalizedQuery = (isBrowsing ? "" : displayValue).trim().toLowerCase();
 
   const filteredOptions = useMemo(() => {
     if (!normalizedQuery) return normalizedOptions;
@@ -230,7 +235,12 @@ export default function Combobox({
           setOpen(true);
           setHighlightedIndex(-1);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          // Select the shown label so the first keystroke replaces it instead
+          // of appending to it.
+          inputRef.current?.select();
+        }}
         onBlur={() => {
           // Blur caused by our own commit (option click / Enter / Escape):
           // the closure still holds pre-commit state, so skip the

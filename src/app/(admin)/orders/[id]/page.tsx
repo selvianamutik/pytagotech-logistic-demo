@@ -3110,8 +3110,8 @@ export default function OrderDetailPage() {
                                                     </div>
                                                     <div style={{ display: 'grid', gap: '0.75rem' }}>
                                                         {group.items.map((item, itemIndex) => (
-                                                            <div key={`${group.id}-item-${itemIndex}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
-                                                                <div style={{ flex: '1 1 240px' }}>
+                                                            <div key={`${group.id}-item-${itemIndex}`} className="cargo-item-fields" style={{ padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
+                                                                <div>
                                                                     <label className="form-label">Barang Customer</label>
                                                                                                                                         <Combobox
                                                                         value={getOrderItemPickerValue(item)}
@@ -3124,7 +3124,7 @@ export default function OrderDetailPage() {
                                                                         className="form-select"
                                                                     />
                                                                 </div>
-                                                                <div style={{ flex: '2 1 260px' }}>
+                                                                <div>
                                                                     <label className="form-label">Deskripsi Barang</label>
                                                                     <input
                                                                         className="form-input"
@@ -3134,7 +3134,7 @@ export default function OrderDetailPage() {
                                                                         disabled={creatingDO}
                                                                     />
                                                                 </div>
-                                                                <div style={{ flex: '0 1 110px' }}>
+                                                                <div>
                                                                     <label className="form-label">Koli</label>
                                                                     <FormattedNumberInput
                                                                         min={0}
@@ -3144,9 +3144,9 @@ export default function OrderDetailPage() {
                                                                         disabled={creatingDO}
                                                                     />
                                                                 </div>
-                                                                <div style={{ flex: '1 1 180px' }}>
+                                                                <div>
                                                                     <label className="form-label">Berat</label>
-                                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                                    <div className="cargo-item-pair">
                                                                         <FormattedNumberInput
                                                                             min={0}
                                                                             maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
@@ -3154,7 +3154,7 @@ export default function OrderDetailPage() {
                                                                             onValueChange={value => updateDirectCargoGroupItem(group.id, itemIndex, 'weightInputValue', value)}
                                                                             disabled={creatingDO || shouldLockOrderItemWeight(item)}
                                                                         />
-                                                                                                                                                <div style={{ width: 92 }}>
+                                                                                                                                                <div className="cargo-item-unit">
                                                                             <Combobox
                                                                                 value={item.weightInputUnit}
                                                                                 onChange={(v: string) => setDirectCargoGroups(previous => previous.map(entry => (
@@ -3176,9 +3176,9 @@ export default function OrderDetailPage() {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <div style={{ flex: '1 1 180px' }}>
+                                                                <div>
                                                                     <label className="form-label">Volume</label>
-                                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                                    <div className="cargo-item-pair">
                                                                         <FormattedNumberInput
                                                                             min={0}
                                                                             maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
@@ -3186,7 +3186,7 @@ export default function OrderDetailPage() {
                                                                             onValueChange={value => updateDirectCargoGroupItem(group.id, itemIndex, 'volumeInputValue', value)}
                                                                             disabled={creatingDO}
                                                                         />
-                                                                                                                                                <div style={{ width: 92 }}>
+                                                                                                                                                <div className="cargo-item-unit">
                                                                             <Combobox
                                                                                 value={item.volumeInputUnit}
                                                                                 onChange={(v: string) => setDirectCargoGroups(previous => previous.map(entry => (

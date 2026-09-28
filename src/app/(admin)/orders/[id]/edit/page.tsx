@@ -720,9 +720,9 @@ export default function OrderEditPage() {
                                     : 'Gunakan master barang customer kalau tersedia supaya deskripsi dan muatan default terisi otomatis.'}
                             </div>
                             {items.map((item, idx) => (
-                                <div key={item.id || idx} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12, padding: 12, background: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)' }}>
+                                <div key={item.id || idx} className="cargo-item-fields" style={{ marginBottom: 12, padding: 12, background: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)' }}>
                                     {isRevisionMode ? (
-                                        <div style={{ flex: '2 1 320px', display: 'grid', gap: '0.35rem' }}>
+                                        <div style={{ display: 'grid', gap: '0.35rem' }}>
                                             <label className="form-label">Item</label>
                                             <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.65rem', padding: '0.8rem 0.9rem', background: 'var(--color-white)' }}>
                                                 <div className="font-medium">{item.description || '-'}</div>
@@ -735,7 +735,7 @@ export default function OrderEditPage() {
                                         </div>
                                     ) : (
                                         <>
-                                            <div style={{ flex: '1 1 260px' }}>
+                                            <div>
                                                 <label className="form-label">Barang Customer</label>
                                                                                                 <Combobox
                                                     value={getOrderItemPickerValue(item)}
@@ -748,21 +748,21 @@ export default function OrderEditPage() {
                                                     className="form-select"
                                                 />
                                             </div>
-                                            <div style={{ flex: '2 1 280px' }}>
+                                            <div>
                                                 <label className="form-label">Deskripsi</label>
                                                 <input className="form-input" value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)} placeholder="Nama/deskripsi barang" />
                                             </div>
                                         </>
                                     )}
-                                    <div style={{ flex: '0 1 110px' }}>
+                                    <div>
                                         <label className="form-label">{isRevisionMode ? 'Target Koli (Opsional)' : 'Koli (Opsional)'}</label>
                                         <FormattedNumberInput min={0} allowDecimal={false} value={item.qtyKoli} onValueChange={value => updateItem(idx, 'qtyKoli', value)} disabled={false} />
                                     </div>
-                                    <div style={{ flex: '1 1 180px' }}>
+                                    <div>
                                         <label className="form-label">{isRevisionMode ? 'Target Berat' : 'Berat'}</label>
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                        <div className="cargo-item-pair">
                                             <FormattedNumberInput min={0} maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)} value={item.weightInputValue} onValueChange={value => updateItem(idx, 'weightInputValue', value)} disabled={shouldLockOrderItemWeight(item)} />
-                                                                                        <div style={{ width: 92 }}>
+                                                                                        <div className="cargo-item-unit">
                                                 <Combobox
                                                     value={item.weightInputUnit}
                                                     onChange={(v: string) => setItems(prev => prev.map((entry, i) => (
@@ -774,11 +774,11 @@ export default function OrderEditPage() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div style={{ flex: '1 1 180px' }}>
+                                    <div>
                                         <label className="form-label">{isRevisionMode ? 'Target Volume' : 'Volume'}</label>
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                        <div className="cargo-item-pair">
                                             <FormattedNumberInput min={0} maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3} value={item.volumeInputValue} onValueChange={value => updateItem(idx, 'volumeInputValue', value)} disabled={shouldLockOrderItemVolume(item)} />
-                                                                                        <div style={{ width: 92 }}>
+                                                                                        <div className="cargo-item-unit">
                                                 <Combobox
                                                     value={item.volumeInputUnit}
                                                     onChange={(v: string) => setItems(prev => prev.map((entry, i) => (
