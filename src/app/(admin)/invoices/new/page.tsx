@@ -333,6 +333,7 @@ export default function NewNotaPage() {
                                 ket: item.ket || '',
                                 plt: item.plt || '',
                                 pc: item.pc || '',
+                                k: item.k || '',
                                 kbl: item.kbl || '',
                                 invoiceLineDate: item.invoiceLineDate || '',
                             }))
@@ -1275,6 +1276,7 @@ export default function NewNotaPage() {
                                 <th style={{ minWidth: 110 }}>UANG RP</th>
                                 <th style={{ minWidth: 70 }}>PLT</th>
                                 <th style={{ minWidth: 70 }}>PC</th>
+                                <th style={{ minWidth: 70 }}>K</th>
                                 <th style={{ minWidth: 70 }}>KBL</th>
                                 <th style={{ minWidth: 110 }}>TGL</th>
                                 <th style={{ minWidth: 80 }}>KET</th>
@@ -1342,11 +1344,15 @@ export default function NewNotaPage() {
                                     </td>
                                     <td>
                                         <FormattedNumberInput
-                                            maxFractionDigits={billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' ? 3 : 2}
+                                            maxFractionDigits={billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER' ? 3 : 2}
                                             value={getFreightNotaDisplayWeightValue(row.beratKg, billingMode, row.volumeM3)}
                                             onValueChange={value => {
                                                 if (billingMode === 'PER_VOLUME') {
                                                     updateRow(row.id, 'volumeM3', value);
+                                                    return;
+                                                }
+                                                if (billingMode === 'PER_LITER') {
+                                                    updateRow(row.id, 'volumeM3', value / 1000);
                                                     return;
                                                 }
                                                 if (billingMode === 'PER_TRIP') {
@@ -1369,9 +1375,11 @@ export default function NewNotaPage() {
                                                     ? 'Ketik tarif per ton'
                                                     : billingMode === 'PER_VOLUME'
                                                         ? 'Ketik tarif per m3'
-                                                        : billingMode === 'PER_TRIP'
-                                                            ? 'Ketik tarif per trip'
-                                                            : 'Ketik tarif per kg'
+                                                        : billingMode === 'PER_LITER'
+                                                            ? 'Ketik tarif per liter'
+                                                            : billingMode === 'PER_TRIP'
+                                                                ? 'Ketik tarif per trip'
+                                                                : 'Ketik tarif per kg'
                                             }
                                         />
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
@@ -1405,6 +1413,13 @@ export default function NewNotaPage() {
                                             className="form-input"
                                             value={row.pc}
                                             onChange={event => updateRow(row.id, 'pc', event.target.value)}
+                                        />
+                                    </td>
+                                    <td>
+                                        <input
+                                            className="form-input"
+                                            value={row.k}
+                                            onChange={event => updateRow(row.id, 'k', event.target.value)}
                                         />
                                     </td>
                                     <td>
@@ -1452,10 +1467,10 @@ export default function NewNotaPage() {
                                     Jumlah
                                 </td>
                                 <td>{formatQuantity(totalCollie)}</td>
-                                <td>{getFreightNotaDisplayWeightValue(totalBerat, billingMode, totalVolume).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' ? 3 : 2 })}</td>
+                                <td>{getFreightNotaDisplayWeightValue(totalBerat, billingMode, totalVolume).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER' ? 3 : 2 })}</td>
                                 <td />
                                 <td style={{ color: 'var(--color-danger)' }}>{formatCurrency(totalAmount)}</td>
-                                <td colSpan={6} />
+                                <td colSpan={7} />
                             </tr>
                         </tbody>
                     </table>
@@ -1637,11 +1652,15 @@ export default function NewNotaPage() {
                                 <div className="form-group">
                                     <label className="form-label">{getFreightNotaWeightColumnLabel(billingMode)}</label>
                                     <FormattedNumberInput
-                                        maxFractionDigits={billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' ? 3 : 2}
+                                        maxFractionDigits={billingMode === 'PER_TON' || billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER' ? 3 : 2}
                                         value={getFreightNotaDisplayWeightValue(editingRow.beratKg, billingMode, editingRow.volumeM3)}
                                         onValueChange={value => {
                                             if (billingMode === 'PER_VOLUME') {
                                                 updateEditingRow('volumeM3', value);
+                                                return;
+                                            }
+                                            if (billingMode === 'PER_LITER') {
+                                                updateEditingRow('volumeM3', value / 1000);
                                                 return;
                                             }
                                             if (billingMode === 'PER_TRIP') {
@@ -1667,8 +1686,10 @@ export default function NewNotaPage() {
                                                 ? 'Ketik tarif per ton'
                                                 : billingMode === 'PER_VOLUME'
                                                     ? 'Ketik tarif per m3'
-                                                    : billingMode === 'PER_TRIP'
-                                                        ? 'Ketik tarif per trip'
+                                                    : billingMode === 'PER_LITER'
+                                                        ? 'Ketik tarif per liter'
+                                                        : billingMode === 'PER_TRIP'
+                                                            ? 'Ketik tarif per trip'
                                                 : 'Ketik tarif per kg'
                                         }
                                     />
@@ -1699,15 +1720,7 @@ export default function NewNotaPage() {
                                 </div>
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label className="form-label">Plt</label>
-                                    <input
-                                        className="form-input"
-                                        value={editingRow.plt}
-                                        onChange={event => updateEditingRow('plt', event.target.value)}
-                                    />
-                                </div>
+<div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Pc</label>
                                     <input
@@ -1716,6 +1729,14 @@ export default function NewNotaPage() {
                                         onChange={event => updateEditingRow('pc', event.target.value)}
                                     />
                                 </div>
+                                <div className="form-group">
+                                    <label className="form-label">K</label>
+                                    <input
+                                        className="form-input"
+                                        value={editingRow.k}
+                                        onChange={event => updateEditingRow('k', event.target.value)}
+                                    />
+</div>
                             </div>
 
                             <div className="form-row">

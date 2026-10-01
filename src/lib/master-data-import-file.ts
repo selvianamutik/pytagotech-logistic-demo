@@ -12,8 +12,10 @@ export const MASTER_DATA_IMPORT_XLSX_MIME = 'application/vnd.openxmlformats-offi
 
 const TEMPLATE_SHEET_NAME = 'Template';
 const GUIDE_SHEET_NAME = 'Panduan';
+const OPTIONS_SHEET_NAME = 'Pilihan';
 const HEADER_ROW_NUMBER = 5;
 const MAX_HEADER_SCAN_ROWS = 20;
+const DROPDOWN_DATA_ROWS = 300;
 const HEADER_FILL = 'FF0F766E';
 const REQUIRED_FILL = 'FFFFF7D6';
 const OPTIONAL_FILL = 'FFF8FAFC';
@@ -159,6 +161,25 @@ function findLastNonEmptyColumn(row: ExcelJS.Row) {
   return lastColumn;
 }
 
+function columnLetter(columnIndex: number) {
+  let number = columnIndex;
+  let letters = '';
+  while (number > 0) {
+    const remainder = (number - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    number = Math.floor((number - 1) / 26);
+  }
+  return letters;
+}
+
+function resolveFieldOptionValues(field: MasterDataImportField, masterOptions?: Record<string, string[]>) {
+  if (!field.options) return [];
+  const values = field.options.kind === 'static' ? field.options.values : (masterOptions?.[field.key] ?? []);
+  const base = field.example ? [field.example, ...values] : values;
+  const resolved = Array.from(new Set(base.filter((value) => value.trim() !== '')));
+  return resolved.sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+}
+
 function findTemplateWorksheet(workbook: ExcelJS.Workbook) {
   return workbook.getWorksheet(TEMPLATE_SHEET_NAME) || workbook.worksheets[0] || null;
 }
@@ -233,7 +254,7 @@ async function stripXlsxCommentParts(buffer: ArrayBuffer) {
   return changed ? zip.generateAsync({ type: 'arraybuffer' }) : buffer;
 }
 
-export async function buildMasterDataImportTemplateWorkbook(config: MasterDataImportTargetConfig) {
+export async function buildMasterDataImportTemplateWorkbook(config: MasterDataImportTargetConfig, masterOptions?: Record<string, string[]>) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'PT Gading Mas Surya';
   workbook.created = new Date();
@@ -242,6 +263,8 @@ export async function buildMasterDataImportTemplateWorkbook(config: MasterDataIm
   const template = workbook.addWorksheet(TEMPLATE_SHEET_NAME, {
     views: [{ state: 'frozen', ySplit: HEADER_ROW_NUMBER }],
   });
+  const optionsSheet = workbook.addWorksheet(OPTIONS_SHEET_NAME);
+  optionsSheet.state = 'hidden';
   const guide = workbook.addWorksheet(GUIDE_SHEET_NAME);
   const headers = config.fields.map((field) => field.key);
   const rows = config.templateRows.length > 0 ? config.templateRows : [Object.fromEntries(headers.map((header) => [header, '']))];
@@ -272,7 +295,7 @@ export async function buildMasterDataImportTemplateWorkbook(config: MasterDataIm
     );
     template.getColumn(column).width = clampWidth(maxExampleLength);
     const headerCell = template.getCell(HEADER_ROW_NUMBER, column);
-    headerCell.value = field.key;
+    headerCell.value = field.label;
     headerCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
     headerCell.border = BORDER_STYLE;
@@ -295,8 +318,52 @@ export async function buildMasterDataImportTemplateWorkbook(config: MasterDataIm
     to: { row: HEADER_ROW_NUMBER, column: headers.length },
   };
 
+  const dropdownColumnRanges = new Map<number, string>();
+  config.fields.forEach((field, index) => {
+    const values = resolveFieldOptionValues(field, masterOptions);
+    if (values.length === 0) return;
+    const optionColumn = index + 1;
+    optionsSheet.getCell(1, optionColumn).value = field.label;
+    optionsSheet.getCell(1, optionColumn).font = { bold: true };
+    values.forEach((value, valueIndex) => {
+      optionsSheet.getCell(valueIndex + 2, optionColumn).value = value;
+    });
+    dropdownColumnRanges.set(
+      optionColumn,
+      `'${OPTIONS_SHEET_NAME}'!${columnLetter(optionColumn)}$2:${columnLetter(optionColumn)}${values.length + 1}`,
+    );
+  });
+  if (dropdownColumnRanges.size > 0) {
+    const firstDataRow = HEADER_ROW_NUMBER + 1;
+    const lastDataRow = HEADER_ROW_NUMBER + DROPDOWN_DATA_ROWS;
+    dropdownColumnRanges.forEach((range, optionColumn) => {
+      const field = config.fields[optionColumn - 1];
+      const suggest = field.options?.kind === 'master' && field.options.mode === 'suggest';
+      const validation: ExcelJS.DataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [range],
+        ...(suggest
+          ? {
+              showErrorMessage: false,
+              showInputMessage: true,
+              promptTitle: 'Pilihan tersedia',
+              prompt: 'Pilih dari opsi yang ada, atau ketik nilai sendiri bila perlu.',
+            }
+          : {
+              showErrorMessage: true,
+              errorTitle: 'Pilihan tidak valid',
+              error: 'Pilih salah satu opsi yang tersedia di sheet Pilihan.',
+            }),
+      };
+      for (let rowNumber = firstDataRow; rowNumber <= lastDataRow; rowNumber += 1) {
+        template.getCell(rowNumber, optionColumn).dataValidation = validation;
+      }
+    });
+  }
+
   const guideHeader = guide.getRow(1);
-  ['Kolom', 'Label', 'Wajib', 'Contoh', 'Catatan / Alias'].forEach((header, index) => {
+  ['Kolom', 'Contoh', 'Wajib', 'Catatan / Alias'].forEach((header, index) => {
     const cell = guideHeader.getCell(index + 1);
     cell.value = header;
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -308,7 +375,7 @@ export async function buildMasterDataImportTemplateWorkbook(config: MasterDataIm
 
   config.fields.forEach((field, index) => {
     const row = guide.getRow(index + 2);
-    const values = [field.key, field.label, field.required ? 'Ya' : 'Tidak', field.example || '', fieldGuideText(field)];
+    const values = [field.label, field.example || '', field.required ? 'Ya' : 'Tidak', fieldGuideText(field)];
     values.forEach((value, valueIndex) => {
       const cell = row.getCell(valueIndex + 1);
       cell.value = value;
@@ -316,7 +383,7 @@ export async function buildMasterDataImportTemplateWorkbook(config: MasterDataIm
     });
     row.commit();
   });
-  [24, 24, 12, 28, 58].forEach((width, index) => {
+  [32, 28, 12, 58].forEach((width, index) => {
     guide.getColumn(index + 1).width = width;
   });
   guide.autoFilter = {

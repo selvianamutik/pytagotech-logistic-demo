@@ -23,6 +23,11 @@ export const FREIGHT_NOTA_BILLING_MODE_OPTIONS: Array<{
         description: 'Invoice dihitung dari volume muatan dalam meter kubik.',
     },
     {
+        value: 'PER_LITER',
+        label: 'Liter / Tarif per liter',
+        description: 'Invoice dihitung dari volume muatan dalam liter (1 m3 = 1000 liter).',
+    },
+    {
         value: 'PER_TRIP',
         label: 'Trip / Tarif per surat jalan',
         description: 'Invoice dihitung satu tarif tetap per baris surat jalan.',
@@ -30,7 +35,7 @@ export const FREIGHT_NOTA_BILLING_MODE_OPTIONS: Array<{
 ];
 
 export function isFreightNotaBillingMode(value: unknown): value is FreightNotaBillingMode {
-    return value === 'PER_KG' || value === 'PER_TON' || value === 'PER_VOLUME' || value === 'PER_TRIP';
+    return value === 'PER_KG' || value === 'PER_TON' || value === 'PER_VOLUME' || value === 'PER_LITER' || value === 'PER_TRIP';
 }
 
 export function normalizeFreightNotaBillingMode(value: unknown): FreightNotaBillingMode {
@@ -61,12 +66,14 @@ export function resolveFreightNotaBillingModeInput(
 export function getFreightNotaBillingModeLabel(mode: FreightNotaBillingMode) {
     if (mode === 'PER_TON') return 'Per Ton';
     if (mode === 'PER_VOLUME') return 'Per Volume';
+    if (mode === 'PER_LITER') return 'Per Liter';
     if (mode === 'PER_TRIP') return 'Per Trip';
     return 'Per Kg';
 }
 
 export function getFreightNotaWeightColumnLabel(mode: FreightNotaBillingMode) {
     if (mode === 'PER_VOLUME') return 'VOLUME';
+    if (mode === 'PER_LITER') return 'LITER';
     if (mode === 'PER_TRIP') return 'QTY';
     return 'BERAT';
 }
@@ -78,6 +85,7 @@ export function getFreightNotaRateColumnLabel(_mode: FreightNotaBillingMode) {
 
 export function getFreightNotaWeightUnitLabel(mode: FreightNotaBillingMode) {
     if (mode === 'PER_VOLUME') return 'm3';
+    if (mode === 'PER_LITER') return 'liter';
     if (mode === 'PER_TRIP') return 'trip';
     return mode === 'PER_TON' ? 'ton' : 'kg';
 }
@@ -86,6 +94,9 @@ export function getFreightNotaDisplayWeightValue(beratKg: unknown, mode: Freight
     const normalizedKg = Math.max(parseFormattedNumberish(beratKg || 0), 0);
     if (mode === 'PER_VOLUME') {
         return Math.max(parseFormattedNumberish(volumeM3 || 0, { maxFractionDigits: 3 }), 0);
+    }
+    if (mode === 'PER_LITER') {
+        return Math.max(parseFormattedNumberish(volumeM3 || 0, { maxFractionDigits: 3 }), 0) * 1000;
     }
     if (mode === 'PER_TRIP') {
         return 1;
@@ -118,6 +129,9 @@ export function calculateFreightNotaRowAmount(params: {
     if (params.billingMode === 'PER_VOLUME') {
         return roundFreightNotaCurrencyAmount(volumeM3 * tarip);
     }
+    if (params.billingMode === 'PER_LITER') {
+        return roundFreightNotaCurrencyAmount(volumeM3 * 1000 * tarip);
+    }
     const billedWeight = params.billingMode === 'PER_TON' ? convertKgToWeightInputValue(beratKg, 'TON') : beratKg;
     return roundFreightNotaCurrencyAmount(billedWeight * tarip);
 }
@@ -138,6 +152,9 @@ export function formatFreightNotaDisplayWeight(params: {
     const beratKg = Math.max(parseFormattedNumberish(params.beratKg || 0), 0);
     if (params.billingMode === 'PER_VOLUME') {
         return `${formatBillingValue(Math.max(parseFormattedNumberish(params.volumeM3 || 0, { maxFractionDigits: 3 }), 0), 3)} m3`;
+    }
+    if (params.billingMode === 'PER_LITER') {
+        return `${formatBillingValue(Math.max(parseFormattedNumberish(params.volumeM3 || 0, { maxFractionDigits: 3 }), 0) * 1000, 3)} liter`;
     }
     if (params.billingMode === 'PER_TRIP') {
         return '1 trip';

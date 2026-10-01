@@ -696,6 +696,7 @@ async function main() {
             ket: 'Audit revisi nota untuk unlink/relink DO',
             plt: '',
             pc: '',
+            k: '',
             kbl: '',
             invoiceLineDate: '',
         }];

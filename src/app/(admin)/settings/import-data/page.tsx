@@ -6,8 +6,10 @@ import { AlertTriangle, CheckCircle, Download, RefreshCw, Save, XCircle } from '
 import {
   MASTER_DATA_IMPORT_MODES,
   MASTER_DATA_IMPORT_TARGETS,
+  getMasterDataImportMasterFieldRequests,
   type MasterDataImportMode,
   type MasterDataImportTarget,
+  type MasterDataImportTargetConfig,
 } from '@/lib/master-data-import-config';
 import Combobox from '@/components/Combobox';
 import { hasPermission } from '@/lib/rbac';
@@ -71,6 +73,33 @@ function downloadBinaryFile(filename: string, content: BlobPart, mimeType: strin
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+async function resolveMasterDataImportOptions(config: MasterDataImportTargetConfig) {
+  const requests = getMasterDataImportMasterFieldRequests(config);
+  if (requests.length === 0) return {};
+  const docsBySource = new Map<string, Array<Record<string, unknown>>>();
+  await Promise.all(
+    Array.from(new Set(requests.map((request) => request.source))).map(async (source) => {
+      try {
+        const response = await fetch(`/api/data?entity=${source}&pageSize=500`);
+        if (!response.ok) return;
+        const body = await response.json() as { data?: Array<Record<string, unknown>> };
+        docsBySource.set(source, (body.data ?? []).filter((doc) => doc.active !== false));
+      } catch {
+        // Dropdown master data optional; tanpa data, kolom tidak memiliki combobox.
+      }
+    }),
+  );
+  const resolve: Record<string, string[]> = {};
+  requests.forEach((request) => {
+    const docs = docsBySource.get(request.source);
+    if (!docs) return;
+    resolve[request.key] = docs
+      .map((doc) => String(doc[request.valueField] ?? ''))
+      .filter((value) => value.trim() !== '');
+  });
+  return resolve;
 }
 
 function formatMessages(row: ImportRowResult) {
@@ -159,7 +188,8 @@ export default function ImportDataPage() {
     setTemplateLoading(true);
     try {
       const { MASTER_DATA_IMPORT_XLSX_MIME, buildMasterDataImportTemplateWorkbook } = await import('@/lib/master-data-import-file');
-      const workbookBuffer = await buildMasterDataImportTemplateWorkbook(selectedConfig);
+      const masterOptions = await resolveMasterDataImportOptions(selectedConfig);
+      const workbookBuffer = await buildMasterDataImportTemplateWorkbook(selectedConfig, masterOptions);
       downloadBinaryFile(
         `template-import-${selectedConfig.target}.xlsx`,
         workbookBuffer as unknown as BlobPart,
@@ -280,7 +310,7 @@ export default function ImportDataPage() {
         <div className="kpi-card"><div className="kpi-content"><div className="kpi-label">Error</div><div className="kpi-value">{currentPreview?.summary.errors || 0}</div></div></div>
       </div>
 
-      <div className="table-container" style={{ marginBottom: '1rem' }}>
+      <div className="table-container import-settings" style={{ marginBottom: '1rem' }}>
         <div className="table-toolbar">
           <div className="table-toolbar-left">
             <div>
@@ -338,7 +368,7 @@ export default function ImportDataPage() {
             <tbody>
               {selectedConfig.fields.map((field) => (
                 <tr key={field.key}>
-                  <td><span className="font-mono">{field.key}</span><div className="text-muted text-xs">{field.label}</div></td>
+                  <td><span className="font-semibold">{field.label}</span><div className="text-muted text-xs font-mono">{field.key}</div></td>
                   <td>{field.required ? <span className="badge badge-warning">Wajib</span> : <span className="badge badge-gray">Opsional</span>}</td>
                   <td>{field.example || '-'}</td>
                   <td>{field.help || (field.aliases?.length ? `Alias: ${field.aliases.slice(0, 4).join(', ')}` : '-')}</td>
