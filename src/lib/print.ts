@@ -604,8 +604,8 @@ export function buildFreightNotaPrintDocument(opts: {
         .invoice-brand-title { font-size: 1.5rem; font-weight: 700; letter-spacing: 0; }
         .invoice-company-box { padding: 0.1rem 0; font-size: 0.84rem; text-align: left; }
         .invoice-company-name { font-weight: 700; font-size: 1rem; margin-bottom: 0.2rem; text-transform: uppercase; }
-        .invoice-top-grid { display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 0.65rem; margin-bottom: 0.75rem; }
-        .invoice-bottom-grid { display: grid; grid-template-columns: fit-content; gap: 0.65rem; margin-bottom: 0.75rem; justify-content: start; }
+        .invoice-top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; margin-bottom: 0.75rem; }
+        .invoice-bottom-grid { display: grid; grid-template-columns: 1fr 0.62fr; gap: 0.65rem; margin-bottom: 0.75rem; }
         .invoice-footer-grid { display: grid; grid-template-columns: 1fr 0.62fr; gap: 0.65rem; margin-bottom: 0.75rem; }
         .invoice-brand-row > *, .invoice-top-grid > *, .invoice-bottom-grid > *, .invoice-footer-grid > * { min-width: 0; }
         .invoice-company-box, .invoice-panel, .invoice-info-table td, .invoice-payment-bank-item, .invoice-signature-box { overflow-wrap: break-word; word-break: break-word; }
@@ -637,8 +637,8 @@ export function buildFreightNotaPrintDocument(opts: {
         .invoice-col-line-date { width: 7.5%; }
         .invoice-filler-row td { color: transparent; height: 34px; }
         .invoice-summary-row td { font-size: 0.7rem; }
-        .invoice-total-box { display: flex; justify-content: flex-end; margin: 0 0 0.5rem; }
-        .invoice-total-table { width: 290px; }
+        .invoice-total-box { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 0.85rem; margin: 0 0 0.5rem; }
+        .invoice-total-table { grid-column: 2; }
         .invoice-total-table td { border: 1px solid #4b5563; padding: 0.34rem 0.5rem; }
         .invoice-total-table td:first-child { width: 62%; }
         .invoice-grand-total-row td { font-weight: 700; font-size: 1rem; }
