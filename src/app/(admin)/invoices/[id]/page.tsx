@@ -908,6 +908,7 @@ export default function NotaDetailPage() {
                                         <th style={{ textAlign: 'right' }}>UANG RP</th>
                                         <th>PLT</th>
                                         <th>PC</th>
+                                        <th>K</th>
                                         <th>KBL</th>
                                         <th>TGL</th>
                                     </tr>
@@ -936,6 +937,7 @@ export default function NotaDetailPage() {
                                             <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(it.uangRp)}</td>
                                             <td className="text-muted">{it.plt || '-'}</td>
                                             <td className="text-muted">{it.pc || '-'}</td>
+                                            <td className="text-muted">{it.k || '-'}</td>
                                             <td className="text-muted">{it.kbl || '-'}</td>
                                             <td className="text-muted">{it.invoiceLineDate ? formatDate(it.invoiceLineDate) : '-'}</td>
                                         </tr>
@@ -946,7 +948,7 @@ export default function NotaDetailPage() {
                                         <td>{totalBilledWeightLabel}</td>
                                         <td></td>
                                         <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{formatCurrency(nota.totalAmount)}</td>
-                                        <td colSpan={4}></td>
+                                        <td colSpan={5}></td>
                                     </tr>
                                 </tbody>
                             </table>

@@ -153,6 +153,7 @@ function normalizeFreightNotaLineMeta(row: Record<string, unknown>) {
     return {
         plt: normalizeOptionalText(row.plt),
         pc: normalizeOptionalText(row.pc),
+        k: normalizeOptionalText(row.k),
         kbl: normalizeOptionalText(row.kbl),
         invoiceLineDate,
     };
@@ -2750,10 +2751,10 @@ export async function handleFreightNotaCreate(
                 if ((!date || !noSJ || !tujuan) && !doRef) {
                 throw new Error('Baris invoice wajib punya tanggal, nomor SJ, dan tujuan');
                 }
-                if ((!Number.isFinite(beratKg) || beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_TRIP' && !doRef) {
+                if ((!Number.isFinite(beratKg) || beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_LITER' && billingMode !== 'PER_TRIP' && !doRef) {
                 throw new Error('Berat pada baris invoice harus lebih besar dari 0');
                 }
-                if ((!Number.isFinite(volumeM3) || volumeM3 <= 0) && billingMode === 'PER_VOLUME' && !doRef) {
+                if ((!Number.isFinite(volumeM3) || volumeM3 <= 0) && (billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER') && !doRef) {
                 throw new Error('Volume pada baris invoice harus lebih besar dari 0');
                 }
                 if (!Number.isFinite(tarip) || tarip <= 0) {
@@ -3152,13 +3153,13 @@ export async function handleFreightNotaCreate(
                 { status: 400 }
             );
         }
-        if ((!Number.isFinite(row.beratKg) || row.beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_TRIP') {
+        if ((!Number.isFinite(row.beratKg) || row.beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_LITER' && billingMode !== 'PER_TRIP') {
             return NextResponse.json(
                 { error: `Berat pada baris invoice ${row.doNumber || row.noSJ || row.doRef || ''} tidak valid` },
                 { status: 400 }
             );
         }
-        if ((!Number.isFinite(row.volumeM3 || 0) || (row.volumeM3 || 0) <= 0) && billingMode === 'PER_VOLUME') {
+        if ((!Number.isFinite(row.volumeM3 || 0) || (row.volumeM3 || 0) <= 0) && (billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER')) {
             return NextResponse.json(
                 { error: `Volume pada baris invoice ${row.doNumber || row.noSJ || row.doRef || ''} tidak valid` },
                 { status: 400 }
@@ -3599,6 +3600,7 @@ export async function handleFreightNotaCreate(
             ket: row.ket,
             plt: row.plt,
             pc: row.pc,
+            k: row.k,
             kbl: row.kbl,
             invoiceLineDate: row.invoiceLineDate,
             status: 'ACTIVE',
@@ -3694,10 +3696,10 @@ export async function handleFreightNotaUpdate(
                 if (!normalizeText(row.noSJ) || !normalizeText(row.tujuan)) {
                 throw new Error('Baris invoice wajib punya nomor SJ dan tujuan');
                 }
-                if ((!Number.isFinite(beratKg) || beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_TRIP') {
+                if ((!Number.isFinite(beratKg) || beratKg <= 0) && billingMode !== 'PER_VOLUME' && billingMode !== 'PER_LITER' && billingMode !== 'PER_TRIP') {
                 throw new Error('Berat pada baris invoice harus lebih besar dari 0');
                 }
-                if ((!Number.isFinite(volumeM3) || volumeM3 <= 0) && billingMode === 'PER_VOLUME') {
+                if ((!Number.isFinite(volumeM3) || volumeM3 <= 0) && (billingMode === 'PER_VOLUME' || billingMode === 'PER_LITER')) {
                 throw new Error('Volume pada baris invoice harus lebih besar dari 0');
                 }
                 if ((!Number.isFinite(tarip) || tarip <= 0) && !doRef) {
@@ -4392,6 +4394,7 @@ export async function handleFreightNotaUpdate(
             ket: row.ket,
             plt: row.plt,
             pc: row.pc,
+            k: row.k,
             kbl: row.kbl,
             invoiceLineDate: row.invoiceLineDate,
             status: 'ACTIVE',

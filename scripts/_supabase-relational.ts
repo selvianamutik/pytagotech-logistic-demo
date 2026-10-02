@@ -1563,6 +1563,7 @@ function mapFreightNotaItems(docs: SeedDoc[]) {
             barang: toText(doc.barang),
             collie: toNumber(doc.collie),
             berat_kg: toNumber(doc.beratKg) ?? 0,
+            volume_m3: toNumber(doc.volumeM3),
             tarip: toNumber(doc.tarip) ?? 0,
             uang_rp: toNumber(doc.uangRp) ?? 0,
             ket: toText(doc.ket),

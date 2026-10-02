@@ -4,19 +4,18 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useApp, useToast } from '../../layout';
-import { Edit, FileDown, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
+import { Edit, Package, DollarSign, Plus, Save, Trash2, X } from 'lucide-react';
 import CollapsibleCard from '@/components/CollapsibleCard';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { fetchAdminData, fetchOptionalAdminCollectionData } from '@/lib/api/admin-client';
 import { buildAdminLoadNotice, getAdminErrorMessage, type AdminLoadNotice } from '@/lib/admin-access-messages';
 import { summarizeCustomerCreditUsage } from '@/lib/customer-credit-limit';
-import { exportToExcel } from '@/lib/export';
-import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
+import { buildTripRateAreaOptions } from '@/lib/trip-route-rate-support';
 import { FREIGHT_NOTA_BILLING_MODE_OPTIONS, getFreightNotaBillingModeLabel } from '@/lib/freight-nota-billing';
 import { buildPph23Label, DEFAULT_PPH23_RATE_PERCENT, PPH23_BASE_MODE_OPTIONS } from '@/lib/pph23';
 import { formatDate, formatCurrency, getReceivableNetAmount } from '@/lib/utils';
 import { formatCargoSummary, getWeightInputFractionDigits, VOLUME_INPUT_UNIT_OPTIONS, WEIGHT_INPUT_UNIT_OPTIONS, type VolumeInputUnit, type WeightInputUnit } from '@/lib/measurement';
-import type { Customer, CustomerBillingRate, CustomerBillingRateBasis, CustomerPickupLocation, CustomerProduct, CustomerRecipient, Order, FreightNota, Service } from '@/lib/types';
+import type { Customer, CustomerBillingRate, CustomerBillingRateBasis, CustomerPickupLocation, CustomerProduct, CustomerRecipient, Order, FreightNota, Service, TripRouteRate } from '@/lib/types';
 import PageBackButton from '@/components/PageBackButton';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import Combobox from '@/components/Combobox';
@@ -116,6 +115,7 @@ export default function CustomerDetailPage() {
     const [customerRecipients, setCustomerRecipients] = useState<CustomerRecipient[]>([]);
     const [customerPickups, setCustomerPickups] = useState<CustomerPickupLocation[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const [tripRouteRates, setTripRouteRates] = useState<TripRouteRate[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [notas, setNotas] = useState<FreightNota[]>([]);
     const [loading, setLoading] = useState(true);
@@ -162,7 +162,6 @@ export default function CustomerDetailPage() {
     const [pickupForm, setPickupForm] = useState<CustomerPickupForm>(DEFAULT_PICKUP_FORM);
     const canOpenCustomerOrderHistory = user ? hasPageAccess(user, 'orders') : false;
     const canManageCustomer = user ? hasPermission(user, 'customers', 'update') : false;
-    const canExportCustomerProducts = user ? hasPermission(user, 'customers', 'export') : false;
 
     useEffect(() => {
         const loadCustomerDetail = async () => {
@@ -171,7 +170,7 @@ export default function CustomerDetailPage() {
             try {
                 const optionalFetchOptions = { onError: (message: string) => addToast('error', message), silentAccessDenied: true };
                 const cust = await fetchAdminData<Customer | null>(`/api/data?entity=customers&id=${customerId}`, 'Gagal memuat data customer');
-                const [productRows, billingRateRows, recipientRows, pickupRows, serviceRows, customerOrders, customerNotas] = await Promise.all([
+                const [productRows, billingRateRows, recipientRows, pickupRows, serviceRows, tripRouteRateRows, customerOrders, customerNotas] = await Promise.all([
                     fetchOptionalAdminCollectionData<CustomerProduct>(`/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: customerId }))}`, 'Gagal memuat barang customer', undefined, optionalFetchOptions),
                     fetchOptionalAdminCollectionData<CustomerBillingRate>(`/api/data?entity=customer-billing-rates&filter=${encodeURIComponent(JSON.stringify({ customerRef: customerId }))}`, 'Gagal memuat tarif customer', undefined, optionalFetchOptions),
                     fetchOptionalAdminCollectionData<CustomerRecipient>(`/api/data?entity=customer-recipients&filter=${encodeURIComponent(JSON.stringify({ customerRef: customerId }))}`, 'Gagal memuat tujuan customer', undefined, optionalFetchOptions),
@@ -179,6 +178,9 @@ export default function CustomerDetailPage() {
                     canManageCustomer
                         ? fetchOptionalAdminCollectionData<Service>('/api/data?entity=services', 'Gagal memuat jenis armada', undefined, optionalFetchOptions)
                         : Promise.resolve([] as Service[]),
+                    canManageCustomer
+                        ? fetchOptionalAdminCollectionData<TripRouteRate>('/api/data?entity=trip-route-rates&pageSize=1000&sortField=originArea&sortDir=asc', 'Gagal memuat data rute', undefined, optionalFetchOptions)
+                        : Promise.resolve([] as TripRouteRate[]),
                     canOpenCustomerOrderHistory
                         ? fetchOptionalAdminCollectionData<Order>(`/api/data?entity=orders&filter=${encodeURIComponent(JSON.stringify({ customerRef: customerId }))}`, 'Gagal memuat riwayat order customer', undefined, optionalFetchOptions)
                         : Promise.resolve([] as Order[]),
@@ -191,6 +193,7 @@ export default function CustomerDetailPage() {
                 setCustomerRecipients(recipientRows || []);
                 setCustomerPickups(pickupRows || []);
                 setServices((serviceRows || []).filter(service => service.active !== false));
+                setTripRouteRates((tripRouteRateRows || []).filter(rate => rate.active !== false));
                 setOrders([...(customerOrders || [])].sort((a, b) => `${b.createdAt || ''}-${b._id}`.localeCompare(`${a.createdAt || ''}-${a._id}`)));
                 setNotas([...(customerNotas || [])].sort((a, b) => `${b.dueDate || b.issueDate || ''}-${b._id}`.localeCompare(`${a.dueDate || a.issueDate || ''}-${a._id}`)));
                 if (cust) {
@@ -231,40 +234,6 @@ export default function CustomerDetailPage() {
         setShowProductModal(true);
     };
 
-    const handleExportProducts = async () => {
-        if (!canExportCustomerProducts) return;
-        try {
-            await exportToExcel(
-                customerProducts.map((product) => ({
-                    customerName: customer?.name || '',
-                    code: product.code || '',
-                    name: product.name,
-                    description: product.description || '',
-                    defaultQtyKoli: product.defaultQtyKoli || 1,
-                    defaultWeightInputValue: product.defaultWeightInputValue || 0,
-                    defaultWeightInputUnit: product.defaultWeightInputUnit || 'KG',
-                    defaultVolumeInputValue: product.defaultVolumeInputValue || 0,
-                    defaultVolumeInputUnit: product.defaultVolumeInputUnit || 'M3',
-                    notes: product.notes || '',
-                    active: product.active !== false ? 'Aktif' : 'Nonaktif',
-                })),
-                getMasterDataImportExportColumns('customer-products').map((column, index) => ({
-                    ...column,
-                    width: [26, 16, 30, 30, 10, 14, 12, 14, 12, 24, 12][index] || 18,
-                })),
-                `master-barang-customer-${new Date().toISOString().slice(0, 10)}`,
-                'Master Barang Customer',
-                {
-                    title: `Master Barang Customer: ${customer?.name || customerId}`,
-                    subtitle: `${customerProducts.length} barang`,
-                },
-            );
-            addToast('success', 'Excel master barang customer berhasil di-download');
-        } catch (error) {
-            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel master barang customer');
-        }
-    };
-
     const openEditProduct = (product: CustomerProduct) => {
         setEditProduct(product);
         setProductForm({
@@ -300,6 +269,40 @@ export default function CustomerDetailPage() {
             active: rate.active !== false,
         });
         setShowBillingRateModal(true);
+    };
+
+    // Mirrors rute-trip: Jenis Armada is the master filter. Swapping it drops
+    // routes that no longer exist for that armada; changing Rute Dari drops a
+    // Rute Tujuan that is no longer reachable from it.
+    const handleBillingRateServiceChange = (serviceRef: string) => {
+        setBillingRateForm(prev => {
+            const originOptions = buildTripRateAreaOptions(tripRouteRates, 'originArea', { serviceRef: serviceRef || undefined });
+            const keptRouteFrom = originOptions.includes(prev.routeFrom) ? prev.routeFrom : '';
+            const destinationOptions = buildTripRateAreaOptions(tripRouteRates, 'destinationArea', {
+                originArea: keptRouteFrom || undefined,
+                serviceRef: serviceRef || undefined,
+            });
+            return {
+                ...prev,
+                serviceRef,
+                routeFrom: keptRouteFrom,
+                routeTo: destinationOptions.includes(prev.routeTo) ? prev.routeTo : '',
+            };
+        });
+    };
+
+    const handleBillingRateOriginChange = (routeFrom: string) => {
+        setBillingRateForm(prev => {
+            const destinationOptions = buildTripRateAreaOptions(tripRouteRates, 'destinationArea', {
+                originArea: routeFrom || undefined,
+                serviceRef: prev.serviceRef || undefined,
+            });
+            return {
+                ...prev,
+                routeFrom,
+                routeTo: destinationOptions.includes(prev.routeTo) ? prev.routeTo : '',
+            };
+        });
     };
 
     const openNewRecipient = () => {
@@ -1066,9 +1069,6 @@ export default function CustomerDetailPage() {
                 defaultOpen
             >
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                    {canExportCustomerProducts && <button className="btn btn-secondary btn-sm" onClick={() => void handleExportProducts()}>
-                        <FileDown size={14} /> Excel
-                    </button>}
                     {canManageCustomer && <button className="btn btn-primary btn-sm" onClick={openNewProduct}>
                         <Plus size={14} /> Tambah Barang
                     </button>}
@@ -1269,7 +1269,7 @@ export default function CustomerDetailPage() {
 
             {canManageCustomer && showBillingRateModal && (
                 <div className="modal-overlay" onClick={() => { if (!savingBillingRate) setShowBillingRateModal(false); }}>
-                    <div className="modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal combobox-overflow-vm" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3 className="modal-title">{editBillingRate ? 'Edit Tarif Billing Customer' : 'Tambah Tarif Billing Customer'}</h3>
                             <button className="modal-close" onClick={() => setShowBillingRateModal(false)} disabled={savingBillingRate}><X size={20} /></button>
@@ -1280,9 +1280,9 @@ export default function CustomerDetailPage() {
                                     <label className="form-label">Jenis Armada</label>
                                                                         <Combobox
                                         value={billingRateForm.serviceRef}
-                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, serviceRef: v }))}
+                                        onChange={handleBillingRateServiceChange}
                                         options={services.map(service => (
-                                            { value: service._id, label: service.name }
+                                            { value: service._id, label: service.code ? `${service.code} - ${service.name}` : service.name }
                                         ))}
                                         placeholder="Semua jenis armada"
                                         className="form-select"
@@ -1318,11 +1318,23 @@ export default function CustomerDetailPage() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Rute Dari</label>
-                                    <input className="form-input" value={billingRateForm.routeFrom} onChange={e => setBillingRateForm(prev => ({ ...prev, routeFrom: e.target.value }))} placeholder="Kosong = semua asal" />
+                                    <Combobox
+                                        value={billingRateForm.routeFrom}
+                                        onChange={handleBillingRateOriginChange}
+                                        options={buildTripRateAreaOptions(tripRouteRates, 'originArea', { serviceRef: billingRateForm.serviceRef || undefined })}
+                                        placeholder="Kosong = semua asal"
+                                        className="form-select"
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Rute Tujuan</label>
-                                    <input className="form-input" value={billingRateForm.routeTo} onChange={e => setBillingRateForm(prev => ({ ...prev, routeTo: e.target.value }))} placeholder="Kosong = semua tujuan" />
+                                    <Combobox
+                                        value={billingRateForm.routeTo}
+                                        onChange={(v: string) => setBillingRateForm(prev => ({ ...prev, routeTo: v }))}
+                                        options={buildTripRateAreaOptions(tripRouteRates, 'destinationArea', { originArea: billingRateForm.routeFrom || undefined, serviceRef: billingRateForm.serviceRef || undefined })}
+                                        placeholder="Kosong = semua tujuan"
+                                        className="form-select"
+                                    />
                                 </div>
                             </div>
                             <div className="form-group">

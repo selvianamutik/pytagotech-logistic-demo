@@ -212,7 +212,7 @@ export interface CustomerPickupLocation {
   isDefault?: boolean;
 }
 
-export type CustomerBillingRateBasis = 'PER_KG' | 'PER_TON' | 'PER_VOLUME' | 'PER_TRIP';
+export type CustomerBillingRateBasis = 'PER_KG' | 'PER_TON' | 'PER_VOLUME' | 'PER_LITER' | 'PER_TRIP';
 
 export interface CustomerBillingRate {
   _id: string;
@@ -996,6 +996,7 @@ export interface FreightNotaItem {
   ket?: string;
   plt?: string;
   pc?: string;
+  k?: string;
   kbl?: string;
   invoiceLineDate?: string;
   status?: 'ACTIVE' | 'VOID';

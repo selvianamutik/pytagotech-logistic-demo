@@ -1045,6 +1045,7 @@ export async function exportFreightNotaDetail(
             uangRp: string | number;
             plt: string;
             pc: string;
+            k: string;
             kbl: string;
             invoiceLineDate: string;
         }>;
@@ -1069,6 +1070,7 @@ export async function exportFreightNotaDetail(
             uangRp: item.uangRp ? fmtNumber(parseFormattedNumberish(item.uangRp)) : '',
             plt: item.plt || '',
             pc: item.pc || '',
+            k: item.k || '',
             kbl: item.kbl || '',
             invoiceLineDate: item.invoiceLineDate ? fmtDate(item.invoiceLineDate) : '',
         };
@@ -1088,7 +1090,7 @@ export async function exportFreightNotaDetail(
 
     const rows: ExportValue[][] = [];
     const merges: MergeRange[] = [];
-    const totalColumns = 14;
+    const totalColumns = 15;
     const companyLine = [issuerProfile.phone ? `TELP. ${issuerProfile.phone}` : '', issuerProfile.email ? `EMAIL : ${issuerProfile.email}` : '']
         .filter(Boolean)
         .join('  ');
@@ -1111,7 +1113,7 @@ export async function exportFreightNotaDetail(
     rows.push([]);
 
     const headerRowIndex = rows.length + 1;
-    rows.push(['NO.TRUCK', 'TANGGAL', 'NO. SJ', 'DARI', 'TUJUAN', 'BARANG', 'COLLIE', getFreightNotaWeightColumnLabel(billingMode), getFreightNotaRateColumnLabel(billingMode), 'UANG RP.', 'PLT', 'PC', 'KBL', 'TGL']);
+    rows.push(['NO.TRUCK', 'TANGGAL', 'NO. SJ', 'DARI', 'TUJUAN', 'BARANG', 'COLLIE', getFreightNotaWeightColumnLabel(billingMode), getFreightNotaRateColumnLabel(billingMode), 'UANG RP.', 'PLT', 'PC', 'K', 'KBL', 'TGL']);
 
     groupedRows.forEach((group) => {
         const groupStartRow = rows.length + 1;
@@ -1129,6 +1131,7 @@ export async function exportFreightNotaDetail(
                 entry.uangRp,
                 entry.plt,
                 entry.pc,
+                entry.k,
                 entry.kbl,
                 entry.invoiceLineDate,
             ]);
@@ -1167,12 +1170,13 @@ export async function exportFreightNotaDetail(
         '',
         '',
         '',
+        '',
     ]);
     merges.push({ startRow: totalRowIndex, startCol: 1, endRow: totalRowIndex, endCol: 6 });
 
     if (adjustmentAmount > 0) {
         const adjustmentRowIndex = rows.length + 1;
-        rows.push(['Potongan / Klaim', '', '', '', '', '', '', '', '', fmtNumber(adjustmentAmount), '', '', '', '']);
+        rows.push(['Potongan / Klaim', '', '', '', '', '', '', '', '', fmtNumber(adjustmentAmount), '', '', '', '', '']);
         merges.push({ startRow: adjustmentRowIndex, startCol: 1, endRow: adjustmentRowIndex, endCol: 9 });
     }
 
@@ -1182,12 +1186,12 @@ export async function exportFreightNotaDetail(
             enabled: pph23Summary.enabled,
             ratePercent: pph23Summary.ratePercent,
             baseMode: pph23Summary.baseMode,
-        }), '', '', '', '', '', '', '', '', fmtNumber(pph23Summary.amount), '', '', '', '']);
+        }), '', '', '', '', '', '', '', '', fmtNumber(pph23Summary.amount), '', '', '', '', '']);
         merges.push({ startRow: pph23RowIndex, startCol: 1, endRow: pph23RowIndex, endCol: 9 });
     }
 
     const transferRowIndex = rows.length + 1;
-    rows.push(['Invoice Transfer Final', '', '', '', '', '', '', '', '', fmtNumber(netAmount), '', '', '', '']);
+    rows.push(['Invoice Transfer Final', '', '', '', '', '', '', '', '', fmtNumber(netAmount), '', '', '', '', '']);
     merges.push({ startRow: transferRowIndex, startCol: 1, endRow: transferRowIndex, endCol: 9 });
 
     rows.push([]);
@@ -1230,7 +1234,7 @@ export async function exportFreightNotaDetail(
         worksheet.getRow(3).height = Math.max(worksheet.getRow(3).height || 0, 20);
     }
 
-    const columnWidths = [14, 12, 20, 16, 16, 16, 8, 12, 12, 14, 8, 8, 8, 12];
+    const columnWidths = [14, 12, 20, 16, 16, 16, 8, 12, 12, 14, 8, 8, 8, 8, 12];
     columnWidths.forEach((width, index) => {
         worksheet.getColumn(index + 1).width = width;
     });

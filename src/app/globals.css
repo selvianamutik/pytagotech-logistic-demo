@@ -1299,6 +1299,12 @@ a:hover {
   max-width: 100%;
 }
 
+/* Panels that wrap forms with combobox dropdowns must not clip the
+   absolutely-positioned dropdown menu that opens below the field. */
+.table-container.import-settings {
+  overflow: visible;
+}
+
 .table-toolbar {
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-gray-100);
@@ -1977,6 +1983,16 @@ tbody td {
   -webkit-overflow-scrolling: touch;
   scroll-padding-top: var(--space-6);
   scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Modals hosting combobox dropdowns near their lower edge must not clip the
+   absolutely-positioned menu (e.g. Rute fields on Tarif Billing Customer). */
+.modal.combobox-overflow-vm {
+  overflow: visible;
+}
+
+.modal.combobox-overflow-vm .modal-body {
+  overflow: visible;
 }
 
 .modal input,
