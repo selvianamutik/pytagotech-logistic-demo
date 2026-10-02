@@ -420,6 +420,7 @@ export function buildFreightNotaPrintDocument(opts: {
                 <td class="r">${escapePrintHtml(fmtCurrency(uangRp))}</td>
                 <td class="c">${escapePrintHtml(item.plt || '')}</td>
                 <td class="c">${escapePrintHtml(item.pc || '')}</td>
+                <td class="c">${escapePrintHtml(item.k || '')}</td>
                 <td class="c">${escapePrintHtml(item.kbl || '')}</td>
                 <td class="c">${escapePrintHtml(item.invoiceLineDate ? fmtPrintDate(item.invoiceLineDate) : '')}</td>
             </tr>
@@ -428,7 +429,7 @@ export function buildFreightNotaPrintDocument(opts: {
 
     const fillerRowsHtml = Array.from({ length: Math.max(6 - items.length, 0) }, () => `
         <tr class="invoice-filler-row">
-            ${Array.from({ length: 14 }, () => '<td>&nbsp;</td>').join('')}
+            ${Array.from({ length: 15 }, () => '<td>&nbsp;</td>').join('')}
         </tr>
     `).join('');
 
@@ -453,7 +454,7 @@ export function buildFreightNotaPrintDocument(opts: {
                 <div class="invoice-brand-left">
                     ${logoHtml}
                     <div>
-                        <div class="invoice-brand-title">Invoice Ongkos</div>
+                        <div class="invoice-brand-title">Invoice</div>
                     </div>
                 </div>
                 <div class="invoice-company-box">
@@ -512,6 +513,7 @@ export function buildFreightNotaPrintDocument(opts: {
                         <th class="r invoice-col-total">Uang Rp</th>
                         <th class="c invoice-col-plt">Plt</th>
                         <th class="c invoice-col-pc">Pc</th>
+                        <th class="c invoice-col-k">K</th>
                         <th class="c invoice-col-kbl">Kbl</th>
                         <th class="c invoice-col-line-date">Tgl</th>
                     </tr>
@@ -525,7 +527,7 @@ export function buildFreightNotaPrintDocument(opts: {
                         <td class="r"><strong>${escapePrintHtml(billedWeightLabel)}</strong></td>
                         <td></td>
                         <td class="r"><strong>${escapePrintHtml(fmtCurrency(grossAmount))}</strong></td>
-                        <td colspan="4"></td>
+                        <td colspan="5"></td>
                     </tr>
                 </tbody>
             </table>
@@ -593,18 +595,21 @@ export function buildFreightNotaPrintDocument(opts: {
     `;
 
     const extraStyles = `
-        body { font-family: "Times New Roman", Arial, serif; padding: 0.45rem 0.6rem; color: #111827; max-width: 900px; }
+        body { font-family: "Times New Roman", Arial, serif; padding: 0.45rem 0.6rem; color: #111827; max-width: 194mm; margin: 0 auto; }
         .invoice-sheet { font-size: 11px; line-height: 1.28; color: #111827; }
         .invoice-brand-row { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 0.85rem; align-items: start; margin-bottom: 0.85rem; }
         .invoice-brand-left { display: flex; gap: 0.75rem; align-items: center; min-height: 68px; }
         .invoice-logo { width: 58px; height: 58px; object-fit: contain; }
-        .invoice-logo-placeholder { display: flex; align-items: center; justify-content: center; border: 0.8px solid #4b5563; font-size: 1.45rem; font-weight: 700; width: 58px; height: 58px; }
+        .invoice-logo-placeholder { display: flex; align-items: center; justify-content: center; border: 1px solid #4b5563; font-size: 1.45rem; font-weight: 700; width: 58px; height: 58px; }
         .invoice-brand-title { font-size: 1.5rem; font-weight: 700; letter-spacing: 0; }
         .invoice-company-box { padding: 0.1rem 0; font-size: 0.84rem; text-align: left; }
         .invoice-company-name { font-weight: 700; font-size: 1rem; margin-bottom: 0.2rem; text-transform: uppercase; }
-        .invoice-top-grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 0.65rem; margin-bottom: 0.75rem; }
-        .invoice-bottom-grid, .invoice-footer-grid { display: grid; grid-template-columns: 1fr 0.62fr; gap: 0.65rem; margin-bottom: 0.75rem; }
-        .invoice-panel { border: 0.8px solid #4b5563; padding: 0.55rem 0.65rem; min-height: 100%; }
+        .invoice-top-grid { display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 0.65rem; margin-bottom: 0.75rem; }
+        .invoice-bottom-grid { display: grid; grid-template-columns: fit-content; gap: 0.65rem; margin-bottom: 0.75rem; justify-content: start; }
+        .invoice-footer-grid { display: grid; grid-template-columns: 1fr 0.62fr; gap: 0.65rem; margin-bottom: 0.75rem; }
+        .invoice-brand-row > *, .invoice-top-grid > *, .invoice-bottom-grid > *, .invoice-footer-grid > * { min-width: 0; }
+        .invoice-company-box, .invoice-panel, .invoice-info-table td, .invoice-payment-bank-item, .invoice-signature-box { overflow-wrap: break-word; word-break: break-word; }
+        .invoice-panel { border: 1px solid #4b5563; padding: 0.55rem 0.65rem; min-height: 100%; }
         .invoice-panel-title, .invoice-section-title { font-weight: 700; font-style: italic; margin-bottom: 0.35rem; }
         .invoice-section-title { margin: 0.75rem 0 0.3rem; padding-left: 0.2rem; }
         .invoice-section-title.compact { margin-top: 0; font-style: italic; }
@@ -612,28 +617,29 @@ export function buildFreightNotaPrintDocument(opts: {
         .invoice-recipient-address { white-space: pre-line; }
         .invoice-recipient-contact { margin-top: 0.2rem; font-size: 0.82rem; }
         .invoice-info-table, .invoice-items-table, .invoice-total-table { width: 100%; border-collapse: collapse; }
-        .invoice-info-table td { border: 0.8px solid #4b5563; padding: 0.3rem 0.4rem; vertical-align: top; }
+        .invoice-info-table td { border: 1px solid #4b5563; padding: 0.3rem 0.4rem; vertical-align: top; }
+        .invoice-info-table { table-layout: fixed; }
         .invoice-info-table td:first-child { width: 42%; font-weight: 600; background: #fff; }
-        .invoice-items-table { table-layout: fixed; }
-        .invoice-items-table th, .invoice-items-table td { border: 0.8px solid #4b5563; padding: 0.22rem 0.22rem; vertical-align: top; font-size: 0.62rem; word-break: break-word; }
+        .invoice-items-table { table-layout: fixed; max-width: 100%; }
+        .invoice-items-table th, .invoice-items-table td { border: 1px solid #4b5563; padding: 0.22rem 0.22rem; vertical-align: top; font-size: 0.62rem; word-break: break-word; }
         .invoice-items-table th { background: #fff; font-weight: 700; }
-        .invoice-col-truck { width: 7%; }
-        .invoice-col-date { width: 7%; }
-        .invoice-col-sj { width: 11%; }
-        .invoice-col-origin { width: 9%; }
-        .invoice-col-destination { width: 10%; }
-        .invoice-col-goods { width: 11%; }
+        .invoice-col-truck { width: 7.5%; }
+        .invoice-col-date { width: 7.5%; }
+        .invoice-col-sj { width: 10%; }
+        .invoice-col-origin { width: 10.5%; }
+        .invoice-col-destination { width: 6.5%; }
+        .invoice-col-goods { width: 9%; }
         .invoice-col-qty { width: 5%; }
-        .invoice-col-weight { width: 8%; }
-        .invoice-col-price { width: 8%; }
+        .invoice-col-weight { width: 6.5%; }
+        .invoice-col-price { width: 6.5%; }
         .invoice-col-total { width: 9%; }
-        .invoice-col-plt, .invoice-col-pc, .invoice-col-kbl { width: 4%; }
-        .invoice-col-line-date { width: 5%; }
+        .invoice-col-plt, .invoice-col-pc, .invoice-col-k, .invoice-col-kbl { width: 3%; }
+        .invoice-col-line-date { width: 7.5%; }
         .invoice-filler-row td { color: transparent; height: 34px; }
         .invoice-summary-row td { font-size: 0.7rem; }
-        .invoice-total-box { display: flex; justify-content: flex-end; margin: 0; }
+        .invoice-total-box { display: flex; justify-content: flex-end; margin: 0 0 0.5rem; }
         .invoice-total-table { width: 290px; }
-        .invoice-total-table td { border: 0.8px solid #4b5563; padding: 0.34rem 0.5rem; }
+        .invoice-total-table td { border: 1px solid #4b5563; padding: 0.34rem 0.5rem; }
         .invoice-total-table td:first-child { width: 62%; }
         .invoice-grand-total-row td { font-weight: 700; font-size: 1rem; }
         .invoice-bottom-label { font-weight: 700; margin-bottom: 0.25rem; }
@@ -641,24 +647,24 @@ export function buildFreightNotaPrintDocument(opts: {
         .invoice-payment-line { margin-bottom: 0.45rem; }
         .invoice-payment-subtitle { font-weight: 700; margin-bottom: 0.2rem; }
         .invoice-payment-bank-list { display: flex; flex-direction: column; gap: 0.3rem; }
-        .invoice-payment-bank-item { border: 0.8px solid #4b5563; padding: 0.35rem 0.45rem; }
+        .invoice-payment-bank-item { border: 1px solid #4b5563; padding: 0.35rem 0.45rem; }
         .invoice-payment-bank-name { font-weight: 700; margin-bottom: 0.12rem; }
         .invoice-payment-note { margin-top: 0.35rem; color: #111827; }
-        .invoice-signature-box { border: 0.8px solid #4b5563; padding: 0.55rem 0.65rem; display: flex; flex-direction: column; justify-content: space-between; }
+        .invoice-signature-box { border: 1px solid #4b5563; padding: 0.55rem 0.65rem; display: flex; flex-direction: column; justify-content: space-between; }
         .invoice-signature-title { margin-bottom: 0.15rem; }
         .invoice-signature-company { font-weight: 700; text-transform: uppercase; margin-bottom: 0.45rem; }
         .invoice-signature-area { min-height: 95px; display: flex; align-items: flex-end; justify-content: center; }
         .invoice-signature-image { max-width: 150px; max-height: 92px; object-fit: contain; }
-        .invoice-signature-name { font-weight: 700; text-transform: uppercase; margin-top: 0.3rem; border-top: 0.8px solid #4b5563; padding-top: 0.25rem; }
+        .invoice-signature-name { font-weight: 700; text-transform: uppercase; margin-top: 0.3rem; border-top: 1px solid #4b5563; padding-top: 0.25rem; }
         .invoice-signature-role { color: #111827; font-size: 0.8rem; text-transform: uppercase; }
         .c { text-align: center; }
         .r { text-align: right; }
         @page { size: A4 portrait; margin: 8mm; }
-        @media print { body { padding: 0; } }
+        @media print { body { padding: 0; max-width: 100%; } }
     `;
 
     return {
-        title: 'Invoice Ongkos Angkut',
+        title: 'Invoice',
         subtitle: displayNumber,
         bodyHtml,
         extraStyles,
