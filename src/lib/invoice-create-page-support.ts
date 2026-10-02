@@ -38,6 +38,7 @@ export interface NotaItemRow {
     ket: string;
     plt: string;
     pc: string;
+    k: string;
     kbl: string;
     invoiceLineDate: string;
 }
@@ -64,6 +65,7 @@ export function createEmptyNotaRow(): NotaItemRow {
         ket: '',
         plt: '',
         pc: '',
+        k: '',
         kbl: '',
         invoiceLineDate: '',
     };
@@ -83,6 +85,7 @@ export function isEmptyNotaRow(row: NotaItemRow) {
         !row.ket &&
         !row.plt &&
         !row.pc &&
+        !row.k &&
         !row.kbl &&
         !row.invoiceLineDate &&
         (row.collie || 0) === 0 &&
@@ -300,6 +303,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
         ket: '',
         plt: '',
         pc: '',
+        k: '',
         kbl: '',
         invoiceLineDate: '',
     };

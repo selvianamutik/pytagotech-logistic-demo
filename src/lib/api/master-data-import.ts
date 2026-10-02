@@ -11,10 +11,14 @@ import {
   getAllDocuments,
   updateDocument,
 } from '@/lib/repositories/document-store';
+import {
+  isFreightNotaBillingMode,
+} from '@/lib/freight-nota-billing';
 import { hasPermission, type AppModule } from '@/lib/rbac';
-import type { Customer, CustomerProduct, Service, Supplier, TripRouteRate, UserRole, WarehouseItem } from '@/lib/types';
+import type { Customer, CustomerBillingRate, CustomerProduct, Service, Supplier, TripRouteRate, UserRole, WarehouseItem } from '@/lib/types';
 
 import {
+  normalizeCustomerBillingRatePayload,
   normalizeCustomerProductPayload,
   normalizeCustomerPayload,
   normalizeSupplierPayload,
@@ -78,12 +82,12 @@ export type MasterDataImportResult = {
   batchId?: string;
 };
 
-type ExistingDocument = (Customer | CustomerProduct | Supplier | WarehouseItem | TripRouteRate) & { _rev?: string };
+type ExistingDocument = (Customer | CustomerBillingRate | CustomerProduct | Supplier | WarehouseItem | TripRouteRate) & { _rev?: string };
 
 type TargetRuntimeConfig = {
   target: MasterDataImportTarget;
   entity: string;
-  docType: 'customer' | 'customerProduct' | 'supplier' | 'warehouseItem' | 'tripRouteRate';
+  docType: 'customer' | 'customerBillingRate' | 'customerProduct' | 'supplier' | 'warehouseItem' | 'tripRouteRate';
   module: AppModule;
   keyField: string;
   nameField: string;
@@ -94,6 +98,8 @@ type TargetRuntimeConfig = {
       action: ImportAction;
       existing?: ExistingDocument;
       customerProductCustomer?: Customer;
+      customerBillingRateCustomer?: Customer;
+      customerBillingRateService?: Service;
       supplierLookup?: SupplierLookup;
       tripRouteRateService?: Service;
       errors: string[];
@@ -180,6 +186,23 @@ const TARGETS: Record<MasterDataImportTarget, TargetRuntimeConfig> = {
     buildPayload: buildTripRouteRatePayload,
     normalizePayload: (data, existing) => normalizeTripRouteRatePayload(data, existing as Record<string, unknown> | undefined),
   },
+  'customer-billing-rates': {
+    target: 'customer-billing-rates',
+    entity: 'customer-billing-rates',
+    docType: 'customerBillingRate',
+    module: 'customers',
+    keyField: 'basis',
+    nameField: 'rate',
+    keyFromExisting: (doc) => buildCustomerBillingRateImportKey(
+      (doc as CustomerBillingRate).customerRef,
+      (doc as CustomerBillingRate).basis,
+      (doc as CustomerBillingRate).serviceRef,
+      (doc as CustomerBillingRate).routeFrom,
+      (doc as CustomerBillingRate).routeTo,
+    ),
+    buildPayload: buildCustomerBillingRatePayload,
+    normalizePayload: (data, existing) => normalizeCustomerBillingRatePayload(data, existing as Record<string, unknown> | undefined),
+  },
 };
 
 function normalizeHeader(value: string) {
@@ -213,6 +236,15 @@ function buildTripRouteRateImportKey(originArea: unknown, destinationArea: unkno
   const destinationKey = normalizeNameKey(destinationArea);
   const serviceKey = normalizeTextInput(serviceRef) || '__SEMUA_ARMADA__';
   return originKey && destinationKey ? `${originKey}->${destinationKey}::${serviceKey}` : '';
+}
+
+function buildCustomerBillingRateImportKey(customerRef: unknown, basis: unknown, serviceRef?: unknown, routeFrom?: unknown, routeTo?: unknown) {
+  const customerKey = normalizeTextInput(customerRef);
+  const basisKey = normalizeTextInput(basis).toUpperCase();
+  const serviceKey = normalizeTextInput(serviceRef) || '__UMUM__';
+  const fromKey = normalizeNameKey(routeFrom);
+  const toKey = normalizeNameKey(routeTo);
+  return customerKey && basisKey ? `${customerKey}::${basisKey}::${serviceKey}::${fromKey}->${toKey}` : '';
 }
 
 function normalizeNameKey(value: unknown) {
@@ -498,6 +530,78 @@ function buildTripRouteRatePayload(
   return payload;
 }
 
+function resolveCustomerBillingRateServiceReference(
+  raw: Record<string, string>,
+  serviceLookup: ServiceLookup | undefined,
+  errors: string[],
+  warnings: string[]
+) {
+  const code = normalizeCodeKey(raw.serviceCode);
+  const nameKey = normalizeNameKey(raw.serviceName);
+  if (!code && !nameKey) return null;
+  if (!serviceLookup) {
+    errors.push('Lookup jenis armada tarif customer tidak tersedia');
+    return null;
+  }
+
+  const matches = code
+    ? serviceLookup.byCode.get(code) || []
+    : serviceLookup.byName.get(nameKey) || [];
+  if (matches.length === 0) {
+    errors.push(code ? `Jenis armada tarif customer ${code} tidak ditemukan` : `Jenis armada tarif customer ${raw.serviceName} tidak ditemukan`);
+    return null;
+  }
+  if (matches.length > 1) {
+    errors.push(code ? `Jenis armada tarif customer ${code} duplikat` : `Nama jenis armada tarif customer ${raw.serviceName} duplikat. Isi Kode Jenis Armada.`);
+    return null;
+  }
+
+  const service = matches[0];
+  if (service.active === false) {
+    errors.push(`Jenis armada tarif customer ${service.code || service.name} tidak aktif`);
+    return null;
+  }
+  if (!code && nameKey) {
+    warnings.push('Jenis armada tarif customer dicocokkan dari nama. Lebih aman isi Kode Jenis Armada.');
+  }
+  if (code && nameKey && normalizeNameKey(service.name) !== nameKey) {
+    warnings.push(`Jenis armada "${raw.serviceName}" tidak sama persis dengan kode ${service.code}. Import memakai kode jenis armada.`);
+  }
+  return service;
+}
+
+function buildCustomerBillingRatePayload(
+  raw: Record<string, string>,
+  params: {
+    action: ImportAction;
+    customerBillingRateCustomer?: Customer;
+    customerBillingRateService?: Service;
+    errors: string[];
+  }
+) {
+  const payload: Record<string, unknown> = {};
+  if (!params.customerBillingRateCustomer) {
+    params.errors.push('Customer tarif tidak ditemukan');
+    return payload;
+  }
+  payload.customerRef = params.customerBillingRateCustomer._id;
+  payload.basis = raw.basis;
+  setIfPresent(payload, 'rate', raw.rate);
+  if (params.customerBillingRateService) {
+    payload.serviceRef = params.customerBillingRateService._id;
+  }
+  setIfPresent(payload, 'routeFrom', raw.routeFrom);
+  setIfPresent(payload, 'routeTo', raw.routeTo);
+  setIfPresent(payload, 'notes', raw.notes);
+  setBooleanIfPresent(payload, 'active', raw.active, 'Status tarif customer', params.errors);
+
+  if (params.action === 'create') {
+    payload.active = payload.active ?? true;
+  }
+
+  return payload;
+}
+
 function buildFieldAliasMap(target: MasterDataImportTarget) {
   const config = getMasterDataImportTargetConfig(target);
   const map = new Map<string, string>();
@@ -551,7 +655,7 @@ function resolveMode(value: unknown): MasterDataImportMode | null {
 }
 
 function resolveTarget(value: unknown): MasterDataImportTarget | null {
-  return value === 'customers' || value === 'customer-products' || value === 'suppliers' || value === 'warehouse-items' || value === 'trip-route-rates' ? value : null;
+  return value === 'customers' || value === 'customer-products' || value === 'suppliers' || value === 'warehouse-items' || value === 'trip-route-rates' || value === 'customer-billing-rates' ? value : null;
 }
 
 function resolveRequiredPermission(mode: MasterDataImportMode) {
@@ -666,8 +770,8 @@ async function evaluateImportRows(params: {
   const runtime = TARGETS[params.target];
   const existingIndex = await loadExistingIndex(runtime);
   const supplierLookup = params.target === 'warehouse-items' ? await loadSupplierLookup() : undefined;
-  const customerLookup = params.target === 'customer-products' ? await loadCustomerLookup() : undefined;
-  const serviceLookup = params.target === 'trip-route-rates' ? await loadServiceLookup() : undefined;
+  const customerLookup = params.target === 'customer-products' || params.target === 'customer-billing-rates' ? await loadCustomerLookup() : undefined;
+  const serviceLookup = params.target === 'trip-route-rates' || params.target === 'customer-billing-rates' ? await loadServiceLookup() : undefined;
   const seenKeys = new Map<string, number>();
   const results: MasterDataImportRowResult[] = [];
 
@@ -677,6 +781,8 @@ async function evaluateImportRows(params: {
     const errors: string[] = [];
     const warnings: string[] = [];
     let customerProductCustomer: Customer | undefined;
+    let customerBillingRateCustomer: Customer | undefined;
+    let customerBillingRateService: Service | undefined;
     let tripRouteRateService: Service | undefined;
     let keyValue = '';
     let displayName = '';
@@ -714,6 +820,35 @@ async function evaluateImportRows(params: {
         `${normalizeTextInput(mapped.originArea) || '-'} -> ${normalizeTextInput(mapped.destinationArea) || '-'}`,
         resolvedService?.name || (serviceInput ? 'Jenis armada tidak valid' : 'Semua armada'),
       ].filter(Boolean).join(' / ');
+    } else if (params.target === 'customer-billing-rates') {
+      const resolvedCustomer = resolveCustomerReference(mapped, customerLookup, errors);
+      customerBillingRateCustomer = resolvedCustomer || undefined;
+
+      const basisInput = normalizeTextInput(mapped.basis).toUpperCase();
+      let basisValue = '';
+      if (!basisInput) {
+        errors.push('Basis billing wajib diisi');
+      } else if (isFreightNotaBillingMode(basisInput)) {
+        basisValue = basisInput;
+      } else {
+        errors.push(`Basis billing ${mapped.basis} tidak valid. Pilihan: PER_KG, PER_TON, PER_VOLUME, PER_LITER, atau PER_TRIP.`);
+      }
+      if (!normalizeTextInput(mapped.rate)) {
+        errors.push('Tarif wajib diisi');
+      }
+
+      const serviceInput = normalizeCodeKey(mapped.serviceCode) || normalizeNameKey(mapped.serviceName);
+      const resolvedService = resolveCustomerBillingRateServiceReference(mapped, serviceLookup, errors, warnings);
+      customerBillingRateService = resolvedService || undefined;
+      if (resolvedCustomer && basisValue && (!serviceInput || resolvedService)) {
+        keyValue = buildCustomerBillingRateImportKey(resolvedCustomer._id, basisValue, resolvedService?._id, mapped.routeFrom, mapped.routeTo);
+      }
+      displayName = [
+        resolvedCustomer?.name || normalizeTextInput(mapped.customerName),
+        basisValue || mapped.basis || '-',
+        resolvedService?.name || (serviceInput ? 'Jenis armada tidak valid' : 'Semua armada'),
+        `${normalizeTextInput(mapped.routeFrom) || '-'} -> ${normalizeTextInput(mapped.routeTo) || '-'}`,
+      ].filter(Boolean).join(' / ');
     } else {
       keyValue = runtime.target === 'customers'
         ? normalizeNameKey(mapped[runtime.keyField])
@@ -729,7 +864,7 @@ async function evaluateImportRows(params: {
       }
     }
 
-    if (!keyValue && params.target !== 'customer-products' && params.target !== 'trip-route-rates') {
+    if (!keyValue && params.target !== 'customer-products' && params.target !== 'trip-route-rates' && params.target !== 'customer-billing-rates') {
       errors.push(`${runtime.keyField === 'name' ? 'Nama customer' : runtime.keyField === 'supplierCode' ? 'Kode supplier' : 'Kode barang'} wajib diisi`);
     }
 
@@ -764,12 +899,17 @@ async function evaluateImportRows(params: {
         ? 'Kode barang customer sudah ada lebih dari satu untuk customer ini. Perbaiki data master dulu sebelum import.'
         : params.target === 'trip-route-rates'
           ? 'Biaya rute trip sudah ada lebih dari satu untuk kombinasi asal, tujuan, dan jenis armada ini. Perbaiki data master dulu sebelum import.'
-          : `${runtime.keyField === 'name' ? 'Nama customer' : 'Kode'} sudah ada lebih dari satu di database. Perbaiki data master dulu sebelum import.`);
+          : params.target === 'customer-billing-rates'
+            ? 'Tarif customer sudah ada lebih dari satu untuk kombinasi customer, basis, jenis armada, dan rute ini. Perbaiki data master dulu sebelum import.'
+            : `${runtime.keyField === 'name' ? 'Nama customer' : 'Kode'} sudah ada lebih dari satu di database. Perbaiki data master dulu sebelum import.`);
     }
     const existing = matches.length === 1 ? matches[0] : undefined;
     const action = resolveRowAction(params.mode, existing);
     if (params.target === 'customer-products' && customerProductCustomer?.active === false && action === 'create') {
       errors.push(`Customer ${customerProductCustomer.name} tidak aktif dan tidak bisa dipakai untuk master barang baru`);
+    }
+    if (params.target === 'customer-billing-rates' && customerBillingRateCustomer?.active === false && action === 'create') {
+      errors.push(`Customer ${customerBillingRateCustomer.name} tidak aktif dan tidak bisa dipakai untuk tarif billing baru`);
     }
     if (action === 'skip') {
       warnings.push(existing ? 'Data sudah ada, dilewati oleh mode Tambah baru saja' : 'Data belum ada, dilewati oleh mode Update data yang sudah ada');
@@ -781,6 +921,8 @@ async function evaluateImportRows(params: {
         action,
         existing,
         customerProductCustomer,
+        customerBillingRateCustomer,
+        customerBillingRateService,
         supplierLookup,
         tripRouteRateService,
         errors,

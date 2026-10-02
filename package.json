@@ -70,7 +70,8 @@
     "reset:bank-account:cash": "node scripts/reset-bank-account.mjs --account=bank-cash-on-hand --prune-test-artifacts",
     "repair:supabase:bank-ledgers": "node scripts/repair-supabase-bank-ledgers.mjs",
     "reseed:supabase:safe-workflow": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:safe-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
-    "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting"
+    "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
+    "seed:invoice-test": "npx tsx --conditions react-server scripts/seed-invoice-test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

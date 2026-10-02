@@ -33,6 +33,7 @@ export type NormalizedFreightNotaRow = {
     ket?: string;
     plt?: string;
     pc?: string;
+    k?: string;
     kbl?: string;
     invoiceLineDate?: string;
 };

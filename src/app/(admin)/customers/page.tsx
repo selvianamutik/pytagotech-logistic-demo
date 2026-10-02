@@ -12,7 +12,7 @@ import { exportToExcel } from '@/lib/export';
 import { getMasterDataImportExportColumns } from '@/lib/master-data-import-config';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { fetchAdminData, fetchAdminListPayload } from '@/lib/api/admin-client';
-import type { Customer } from '@/lib/types';
+import type { Customer, CustomerBillingRate, CustomerProduct, Service } from '@/lib/types';
 import { hasPermission } from '@/lib/rbac';
 
 export default function CustomersPage() {
@@ -75,6 +75,27 @@ export default function CustomersPage() {
 
         return allItems;
     }, [buildCustomersQuery]);
+
+    const fetchAllRows = useCallback(async (buildQuery: (page: number, pageSize: number) => string) => {
+        const pageSize = 200;
+        let currentPage = 1;
+        let total = 0;
+        const allItems: unknown[] = [];
+
+        do {
+            const payload = await fetchAdminListPayload<unknown>(
+                `/api/data?${buildQuery(currentPage, pageSize)}`,
+                'Gagal memuat data'
+            );
+            const nextItems = (payload.data || []) as unknown[];
+            total = payload.meta?.total || nextItems.length;
+            allItems.push(...nextItems);
+            if (nextItems.length === 0) break;
+            currentPage += 1;
+        } while (allItems.length < total);
+
+        return allItems;
+    }, []);
 
     const loadCustomers = useCallback(async () => {
         setLoading(true);
@@ -157,6 +178,96 @@ export default function CustomersPage() {
             addToast('success', 'Excel customer berhasil di-download');
         } catch (error) {
             addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel customer');
+        }
+    };
+
+    const handleExportProducts = async () => {
+        if (!canExportCustomers) return;
+        try {
+            const products = await fetchAllRows((page, pageSize) => new URLSearchParams({
+                entity: 'customer-products',
+                page: String(page),
+                pageSize: String(pageSize),
+                sortField: 'customerName',
+                sortDir: 'asc',
+            }).toString()) as CustomerProduct[];
+            await exportToExcel(
+                products.map((product) => ({
+                    customerName: product.customerName || '',
+                    code: product.code || '',
+                    name: product.name,
+                    description: product.description || '',
+                    defaultQtyKoli: product.defaultQtyKoli || 1,
+                    defaultWeightInputValue: product.defaultWeightInputValue || 0,
+                    defaultWeightInputUnit: product.defaultWeightInputUnit || 'KG',
+                    defaultVolumeInputValue: product.defaultVolumeInputValue || 0,
+                    defaultVolumeInputUnit: product.defaultVolumeInputUnit || 'M3',
+                    notes: product.notes || '',
+                    active: product.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('customer-products').map((column, index) => ({
+                    ...column,
+                    width: [26, 16, 30, 30, 10, 14, 12, 14, 12, 24, 12][index] || 18,
+                })),
+                `master-barang-customer-${new Date().toISOString().slice(0, 10)}`,
+                'Master Barang Customer',
+                {
+                    title: 'Master Barang Semua Customer',
+                    subtitle: `${products.length} barang`,
+                },
+            );
+            addToast('success', 'Excel master barang semua customer berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel master barang customer');
+        }
+    };
+
+    const handleExportBillingRates = async () => {
+        if (!canExportCustomers) return;
+        try {
+            const [rates, services] = await Promise.all([
+                fetchAllRows((page, pageSize) => new URLSearchParams({
+                    entity: 'customer-billing-rates',
+                    page: String(page),
+                    pageSize: String(pageSize),
+                    sortField: 'customerName',
+                    sortDir: 'asc',
+                }).toString()) as Promise<CustomerBillingRate[]>,
+                fetchAllRows((page, pageSize) => new URLSearchParams({
+                    entity: 'services',
+                    page: String(page),
+                    pageSize: String(pageSize),
+                    sortField: 'code',
+                    sortDir: 'asc',
+                }).toString()) as Promise<Service[]>,
+            ]);
+            const serviceCodeByRef = new Map(services.filter((service) => service.active !== false).map((service) => [service._id, service.code]));
+            await exportToExcel(
+                rates.map((rate) => ({
+                    customerName: rate.customerName || '',
+                    basis: rate.basis || '',
+                    rate: rate.rate || 0,
+                    serviceCode: rate.serviceRef ? (serviceCodeByRef.get(rate.serviceRef) || rate.serviceName || '') : '',
+                    routeFrom: rate.routeFrom || '',
+                    routeTo: rate.routeTo || '',
+                    notes: rate.notes || '',
+                    active: rate.active !== false ? 'Aktif' : 'Nonaktif',
+                })),
+                getMasterDataImportExportColumns('customer-billing-rates').map((column, index) => ({
+                    ...column,
+                    width: [28, 14, 14, 18, 22, 22, 24, 12][index] || 18,
+                    ...(column.key === 'rate' ? { formatter: (value: unknown) => Number(value || 0).toLocaleString('id-ID') } : {}),
+                })),
+                `tarif-billing-customer-${new Date().toISOString().slice(0, 10)}`,
+                'Tarif Billing Customer',
+                {
+                    title: 'Tarif Billing Semua Customer',
+                    subtitle: `${rates.length} tarif`,
+                },
+            );
+            addToast('success', 'Excel tarif billing customer berhasil di-download');
+        } catch (error) {
+            addToast('error', error instanceof Error ? error.message : 'Gagal menyiapkan Excel tarif billing customer');
         }
     };
 
@@ -270,6 +381,8 @@ export default function CustomersPage() {
                 </div>
                 <div className="page-actions">
                     {canExportCustomers && <button className="btn btn-secondary" onClick={() => void handleExport()}><FileDown size={18} /> Excel</button>}
+                    {canExportCustomers && <button className="btn btn-secondary" onClick={() => void handleExportProducts()}><FileDown size={18} /> Barang Customer</button>}
+                    {canExportCustomers && <button className="btn btn-secondary" onClick={() => void handleExportBillingRates()}><FileDown size={18} /> Tarif Billing</button>}
                     {canCreateCustomers && <button className="btn btn-primary" onClick={openNew}>
                         <Plus size={18} /> Tambah Customer
                     </button>}
