@@ -14,6 +14,8 @@ import 'delivery_completion_page.dart';
 import 'delivery_manifest_page.dart';
 import 'mobile_action_feedback.dart';
 import 'mobile_numeric_input_formatter.dart';
+import 'trip_picker_page.dart';
+import 'trip_widgets.dart';
 
 import 'voucher_history_page.dart';
 import 'voucher_widgets.dart';
@@ -87,6 +89,38 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     }
     return vouchers;
   }
+
+  /// The single bon issued for [trip]. The admin enforces one bon per DO
+  /// (`driver-workflows.ts` returns 409 on a second create), so at most one
+  /// match is expected; the first is returned defensively.
+  DriverTripVoucher? _voucherForTrip(DeliveryTrip trip) {
+    final vouchers = _visibleDriverVouchers;
+    final deliveryOrderRef = trip.deliveryOrderId.trim();
+    if (deliveryOrderRef.isNotEmpty) {
+      for (final voucher in vouchers) {
+        if ((voucher.deliveryOrderRef ?? '').trim() == deliveryOrderRef) {
+          return voucher;
+        }
+      }
+    }
+    final doNumber = trip.doNumber.trim().toLowerCase();
+    if (doNumber.isEmpty) return null;
+    for (final voucher in vouchers) {
+      if ((voucher.doNumber ?? '').trim().toLowerCase() == doNumber) {
+        return voucher;
+      }
+    }
+    return null;
+  }
+
+  /// Bon milik trip yang sedang dipilih, dipakai oleh tab "Uang Jalan".
+  DriverTripVoucher? get _selectedTripVoucher {
+    final trip = _selectedTrip;
+    return trip == null ? null : _voucherForTrip(trip);
+  }
+
+  // Search + filter status + pagination untuk daftar trip sudah pindah ke
+  // TripPickerPage (trip_picker_page.dart).
 
   void _showSuccess(String message) {
     showMobileFeedback(
@@ -1270,6 +1304,21 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     return trips.firstWhereOrNull(_shouldAutoTrack);
   }
 
+  /// Retry untuk banner error lokasi / ping.
+  ///
+  /// Sengaja memakai `_activeTrip`, bukan `_selectedTrip`: yang dipilih driver
+  /// di daftar bisa trip berbeda dari trip yang sedang dilacak. Kalau retry
+  /// memakai `_selectedTrip`, pings GPS akan diarahkan ke trip yang salah.
+  void _retryAutoTracking() {
+    final target = _activeTrip ?? _selectedTrip;
+    if (target == null) return;
+    setState(() {
+      _locationError = null;
+      _pingError = null;
+    });
+    unawaited(_syncAutoTracking(target));
+  }
+
   Future<void> _syncAutoTracking(DeliveryTrip? trip) async {
     if (!mounted) return;
 
@@ -1351,6 +1400,8 @@ class _TrackingHomePageState extends State<TrackingHomePage>
       initialAction: initialAction,
       onPingSuccess: () {
         if (!mounted) return;
+        // Ping sukses = koneksi pulih, jadi banner error ping harus hilang.
+        setState(() => _pingError = null);
         unawaited(_loadTrips());
       },
       onTrackingInactive: (message) {
@@ -2343,8 +2394,6 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 const SizedBox(height: 12),
                 _DriverSectionSwitcher(
                   activeSection: _activeSection,
-                  tripCount: _trips.length + pendingTripPlans.length,
-                  voucherCount: _visibleDriverVouchers.length,
                   onChanged: (section) => setState(() {
                     _activeSection = section;
                   }),
@@ -2380,7 +2429,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ],
                   _SectionHeader(title: 'Trip', count: _trips.length),
                   const SizedBox(height: 10),
-                  _buildTripList(scheme),
+                  _buildTripPickerEntry(scheme),
                   if (_selectedTrip != null) ...[
                     const SizedBox(height: 20),
                     const _SectionHeader(title: 'Trip dipilih'),
@@ -2479,8 +2528,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                       _ErrorBanner(
                         icon: Icons.location_off_rounded,
                         message: _locationError!,
-                        onRetry: () =>
-                            unawaited(_syncAutoTracking(_selectedTrip)),
+                        onRetry: _retryAutoTracking,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -2489,6 +2537,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                         icon: Icons.cloud_off_rounded,
                         message: _pingError!,
                         isWarning: true,
+                        onRetry: _retryAutoTracking,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -2528,26 +2577,21 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                     ],
                   ],
                 ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _SectionHeader(
-                            title: 'Riwayat Bon Uang Jalan',
-                            count: _visibleDriverVouchers.length,
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: _openVoucherHistory,
-                          icon: const Icon(Icons.history_rounded, size: 18),
-                          label: const Text('Lihat Riwayat'),
-                        ),
-                      ],
-                    ),
+                  _SectionHeader(
+                    title: 'Uang Jalan',
+                    count: _selectedTripVoucher == null ? 0 : 1,
                   ),
                   const SizedBox(height: 10),
-                  _buildVoucherList(scheme),
+                  _buildSelectedTripVoucher(scheme),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _loadingTrips ? null : _openVoucherHistory,
+                      icon: const Icon(Icons.history_rounded, size: 18),
+                      label: const Text('Lihat Riwayat'),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -2674,58 +2718,160 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     );
   }
 
-  Widget _buildTripList(ColorScheme scheme) {
-    if (_loadingTrips) {
-      return const _DriverTripListSkeleton();
+  Future<void> _openTripPicker() async {
+    if (_loadingTrips) return;
+    if (_loadError != null) {
+      _showError(_loadError!);
+      return;
     }
+
+    final picked = await Navigator.of(context).push<DeliveryTrip>(
+      MaterialPageRoute(
+        builder: (_) => TripPickerPage(
+          trips: _trips,
+          selectedDeliveryOrderId: _selectedTrip?.deliveryOrderId,
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _selectedTrip = picked);
+  }
+
+  Widget _buildTripPickerEntry(ColorScheme scheme) {
+    if (_loadingTrips) return const _DriverTripListSkeleton();
     if (_loadError != null) {
       return _ErrorCard(message: _loadError!, onRetry: _loadTrips);
     }
     if (_trips.isEmpty) return const _EmptyCard();
-    return Column(
-      children: _trips
-          .map(
-            (trip) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _TripListCard(
-                trip: trip,
-                isSelected:
-                    _selectedTrip?.deliveryOrderId == trip.deliveryOrderId,
-                onTap: () => setState(() => _selectedTrip = trip),
+
+    final selected = _selectedTrip;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: selected == null
+              ? const Color(0xFFE2E8E4)
+              : scheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => unawaited(_openTripPicker()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(15, 14, 15, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.local_shipping_outlined,
+                    size: 18,
+                    color: scheme.onSurface.withValues(alpha: 0.45),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selected == null ? 'Pilih trip' : selected.doNumber,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          selected == null
+                              ? '${_trips.length} trip tersedia'
+                              : '${selected.customerName} | '
+                                    '${selected.vehiclePlate}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurface.withValues(alpha: 0.55),
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: scheme.onSurface.withValues(alpha: 0.35),
+                  ),
+                ],
               ),
             ),
-          )
-          .toList(),
+            if (selected != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                color: scheme.primary.withValues(alpha: 0.06),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.swap_horiz_rounded,
+                      size: 16,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Ganti trip',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildVoucherList(ColorScheme scheme) {
+  Widget _buildSelectedTripVoucher(ColorScheme scheme) {
     if (_loadingTrips) {
       return const _DriverVoucherListSkeleton();
     }
     if (_loadError != null) {
       return _ErrorCard(message: _loadError!, onRetry: _loadTrips);
     }
-    final vouchers = _visibleDriverVouchers;
-    if (vouchers.isEmpty) {
-      return const _EmptyCard(
-        title: 'Belum ada uang jalan trip',
+
+    final trip = _selectedTrip;
+    if (trip == null) {
+      return _VoucherPlaceholderCard(
+        icon: Icons.touch_app_outlined,
+        title: 'Pilih trip dulu',
         message:
-            'Bon uang jalan akan muncul setelah admin menerbitkan bon untuk trip kamu.',
+            'Uang Jalan ditampilkan untuk trip yang dipilih di menu Cek Trip.',
+        actionLabel: 'Buka Cek Trip',
+        onAction: () =>
+            setState(() => _activeSection = _DriverHomeSection.trips),
       );
     }
-    return Column(
-      children: vouchers
-          .map(
-            (voucher) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: DriverVoucherCard(
-                voucher: voucher,
-                onPreview: () => _openVoucherPreview(voucher),
-              ),
-            ),
-          )
-          .toList(growable: false),
+
+    final voucher = _selectedTripVoucher;
+    if (voucher == null) {
+      return _VoucherPlaceholderCard(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'Belum ada uang jalan untuk ${trip.doNumber}',
+        message:
+            'Bon akan muncul di sini setelah admin menerbitkannya untuk trip ini.',
+      );
+    }
+
+    return DriverVoucherCard(
+      voucher: voucher,
+      onPreview: () => _openVoucherPreview(voucher),
     );
   }
 
@@ -3135,14 +3281,10 @@ class _DriverCard extends StatelessWidget {
 class _DriverSectionSwitcher extends StatelessWidget {
   const _DriverSectionSwitcher({
     required this.activeSection,
-    required this.tripCount,
-    required this.voucherCount,
     required this.onChanged,
   });
 
   final _DriverHomeSection activeSection;
-  final int tripCount;
-  final int voucherCount;
   final ValueChanged<_DriverHomeSection> onChanged;
 
   @override
@@ -3153,7 +3295,6 @@ class _DriverSectionSwitcher extends StatelessWidget {
       required _DriverHomeSection section,
       required IconData icon,
       required String label,
-      required int count,
     }) {
       final selected = activeSection == section;
       final content = Row(
@@ -3162,7 +3303,7 @@ class _DriverSectionSwitcher extends StatelessWidget {
         children: [
           Icon(icon, size: 18),
           const SizedBox(width: 8),
-          Flexible(child: Text('$label ($count)')),
+          Flexible(child: Text(label)),
         ],
       );
       final shape = RoundedRectangleBorder(
@@ -3197,14 +3338,12 @@ class _DriverSectionSwitcher extends StatelessWidget {
           section: _DriverHomeSection.trips,
           icon: Icons.local_shipping_outlined,
           label: 'Cek Trip',
-          count: tripCount,
         ),
         const SizedBox(width: 10),
         buildButton(
           section: _DriverHomeSection.vouchers,
           icon: Icons.account_balance_wallet_outlined,
           label: 'Uang Jalan',
-          count: voucherCount,
         ),
       ],
     );
@@ -3410,93 +3549,81 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Trip list card ─────────────────────────────────────────
-class _TripListCard extends StatelessWidget {
-  const _TripListCard({
-    required this.trip,
-    required this.isSelected,
-    required this.onTap,
+// -- Uang jalan placeholder --
+class _VoucherPlaceholderCard extends StatelessWidget {
+  const _VoucherPlaceholderCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
   });
-  final DeliveryTrip trip;
-  final bool isSelected;
-  final VoidCallback onTap;
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected
-                ? scheme.primary.withValues(alpha: 0.5)
-                : const Color(0xFFE2E8E4),
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  trip.doNumber,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8E4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: scheme.onSurface.withValues(alpha: 0.35),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.58),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
                 ),
-                if (isSelected)
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: scheme.primary,
-                    size: 16,
-                  ),
-                _StatusChip(status: trip.status, prefix: 'Trip'),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${trip.customerName} | ${trip.vehiclePlate}',
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.5),
-                fontSize: 12.5,
+              ),
+            ],
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.local_shipping_outlined, size: 16),
+                label: Text(actionLabel!),
               ),
             ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.route_rounded,
-                  size: 13,
-                  color: scheme.onSurface.withValues(alpha: 0.35),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    '${trip.originLabel} -> ${trip.destinationLabel}',
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.62),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -3781,7 +3908,7 @@ class _ManifestReferenceAccordion extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              _SuratJalanStatusChip(status: status),
+              SuratJalanStatusChip(status: status),
             ],
           ),
           subtitle: Padding(
@@ -4337,7 +4464,7 @@ class _TripDetailCard extends StatelessWidget {
                     fontSize: 15,
                   ),
                 ),
-                _StatusChip(status: trip.status, prefix: 'Trip'),
+                StatusChip(status: trip.status, prefix: 'Trip'),
               ],
             ),
             const SizedBox(height: 8),
@@ -4804,74 +4931,6 @@ class _CloseTripButton extends StatelessWidget {
   }
 }
 
-Color _deliveryStatusColor(String status, ColorScheme scheme) {
-  return switch (status.trim().toUpperCase()) {
-    'CREATED' => const Color(0xFF64748B),
-    'ON_DELIVERY' => scheme.primary,
-    'ARRIVED' => const Color(0xFFB45309),
-    'PARTIAL_HOLD' => const Color(0xFFB45309),
-    'DELIVERED' => const Color(0xFF15803D),
-    'CANCELLED' => const Color(0xFFB91C1C),
-    _ => scheme.onSurface.withValues(alpha: 0.68),
-  };
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status, this.prefix});
-  final TripStatus status;
-  final String? prefix;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final apiStatus = deliveryStatusApiValue(status);
-    final color = _deliveryStatusColor(apiStatus, scheme);
-    final statusLabel = deliveryStatusLabel(apiStatus);
-    final label = prefix == null ? statusLabel : '$prefix: $statusLabel';
-    return _StatusPill(label: label, color: color);
-  }
-}
-
-class _SuratJalanStatusChip extends StatelessWidget {
-  const _SuratJalanStatusChip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = _deliveryStatusColor(status, scheme);
-    return _StatusPill(label: deliveryStatusLabel(status), color: color);
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
 // ── Error / empty states ───────────────────────────────────
 class _ErrorCard extends StatelessWidget {
   const _ErrorCard({required this.message, required this.onRetry});
@@ -4926,10 +4985,7 @@ class _ErrorCard extends StatelessWidget {
 }
 
 class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({this.title = 'Tidak ada DO aktif', this.message});
-
-  final String title;
-  final String? message;
+  const _EmptyCard();
 
   @override
   Widget build(BuildContext context) {
@@ -4946,27 +5002,12 @@ class _EmptyCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              title,
+              'Tidak ada DO aktif',
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: 0.5),
                 fontWeight: FontWeight.w700,
               ),
             ),
-            if (message?.trim().isNotEmpty == true) ...[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  message!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.45),
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),

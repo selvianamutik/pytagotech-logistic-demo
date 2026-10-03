@@ -316,116 +316,136 @@ class DriverVoucherCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Card(
+      child: DriverVoucherCardContent(voucher: voucher, onPreview: onPreview),
+    );
+  }
+}
+
+class DriverVoucherCardContent extends StatelessWidget {
+  const DriverVoucherCardContent({
+    super.key,
+    required this.voucher,
+    required this.onPreview,
+    this.showPreviewButton = true,
+  });
+
+  final DriverTripVoucher voucher;
+  final VoidCallback onPreview;
+  final bool showPreviewButton;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final settlementColor = voucher.netSettlementAmount < 0
         ? scheme.error
         : scheme.primary;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: scheme.primary,
-                  ),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        voucher.bonNumber,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'DO ${_textOrDash(voucher.doNumber)} | ${_formatDateText(voucher.issuedDate)}',
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.62),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: scheme.primary,
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    voucher.statusLabel,
-                    style: TextStyle(
-                      color: scheme.secondary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      voucher.bonNumber,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'DO ${_textOrDash(voucher.doNumber)} | ${_formatDateText(voucher.issuedDate)}',
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.62),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  voucher.statusLabel,
+                  style: TextStyle(
+                    color: scheme.secondary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                _voucherDisbursementSummary(voucher),
-                style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.74),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _voucherDisbursementSummary(voucher),
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.74),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 12),
-            _VoucherInfoGrid(
-              items: [
-                _VoucherInfoItem(
-                  label: 'Total Uang',
-                  value: formatRupiah(voucher.totalIssuedAmount),
-                ),
-                _VoucherInfoItem(
-                  label: 'Biaya Lain-lain',
-                  value: formatRupiah(voucher.operationalSpent),
-                ),
-                _VoucherInfoItem(
-                  label: 'Upah Borongan',
-                  value: formatRupiah(voucher.driverFeeAmount),
-                ),
-                _VoucherInfoItem(
-                  label: voucher.settlementDisplayLabel,
-                  value: formatRupiah(voucher.netSettlementAmount.abs()),
-                  color: settlementColor,
-                  caption: voucher.settlementLabel,
-                ),
-              ],
-            ),
+          ),
+          const SizedBox(height: 12),
+          _VoucherInfoGrid(
+            items: [
+              _VoucherInfoItem(
+                label: 'Total Uang',
+                value: formatRupiah(voucher.totalIssuedAmount),
+              ),
+              _VoucherInfoItem(
+                label: 'Biaya Lain-lain',
+                value: formatRupiah(voucher.operationalSpent),
+              ),
+              _VoucherInfoItem(
+                label: 'Upah Borongan',
+                value: formatRupiah(voucher.driverFeeAmount),
+              ),
+              _VoucherInfoItem(
+                label: voucher.settlementDisplayLabel,
+                value: formatRupiah(voucher.netSettlementAmount.abs()),
+                color: settlementColor,
+                caption: voucher.settlementLabel,
+              ),
+            ],
+          ),
+          if (showPreviewButton) ...[
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -436,8 +456,149 @@ class DriverVoucherCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+/// Kartu bon dengan rincian yang bisa dibuka-tutup di tempat, tanpa perlu
+/// keluar ke dialog. Dipakai di halaman riwayat.
+class DriverVoucherExpandableCard extends StatefulWidget {
+  const DriverVoucherExpandableCard({
+    super.key,
+    required this.voucher,
+    required this.onPreview,
+  });
+
+  final DriverTripVoucher voucher;
+  final VoidCallback onPreview;
+
+  @override
+  State<DriverVoucherExpandableCard> createState() =>
+      _DriverVoucherExpandableCardState();
+}
+
+class _DriverVoucherExpandableCardState
+    extends State<DriverVoucherExpandableCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DriverVoucherCardContent(
+            voucher: widget.voucher,
+            onPreview: widget.onPreview,
+          ),
+          Divider(height: 1, color: scheme.outlineVariant),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _expanded ? 'Tutup rincian' : 'Lihat rincian',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest.withValues(
+                        alpha: 0.28,
+                      ),
+                      borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(16),
+                      ),
+                    ),
+                    child: DriverVoucherDetailBody(voucher: widget.voucher),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Isi rincian bon. Dipakai oleh dialog preview maupun kartu expandable
+/// supaya tampilan detailnya sama persis.
+class DriverVoucherDetailBody extends StatelessWidget {
+  const DriverVoucherDetailBody({super.key, required this.voucher});
+
+  final DriverTripVoucher voucher;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _VoucherInfoGrid(
+          items: [
+            _VoucherInfoItem(label: 'DO', value: _textOrDash(voucher.doNumber)),
+            _VoucherInfoItem(
+              label: 'Tanggal',
+              value: _formatDateText(voucher.issuedDate),
+            ),
+            _VoucherInfoItem(
+              label: 'Kendaraan',
+              value: _textOrDash(voucher.vehiclePlate),
+            ),
+            _VoucherInfoItem(label: 'Rute', value: _textOrDash(voucher.route)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        const Text('Ringkasan', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        _VoucherSummaryLine(
+          label: 'Total uang diberikan',
+          value: formatRupiah(voucher.totalIssuedAmount),
+        ),
+        _VoucherSummaryLine(
+          label: 'Biaya lain-lain',
+          value: formatRupiah(voucher.operationalSpent),
+        ),
+        _VoucherSummaryLine(
+          label: 'Sisa bon operasional',
+          value: formatRupiah(voucher.operationalBalance),
+        ),
+        _VoucherSummaryLine(
+          label: 'Upah borongan',
+          value: formatRupiah(voucher.driverFeeAmount),
+        ),
+        _VoucherSummaryLine(
+          label: voucher.settlementDisplayLabel,
+          value: formatRupiah(voucher.netSettlementAmount.abs()),
+        ),
+        const SizedBox(height: 18),
+        _VoucherHistorySection(voucher: voucher),
+      ],
     );
   }
 }
@@ -601,81 +762,54 @@ class DriverVoucherPreviewDialog extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _VoucherInfoGrid(
-                      items: [
-                        _VoucherInfoItem(
-                          label: 'DO',
-                          value: _textOrDash(voucher.doNumber),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Tanggal',
-                          value: _formatDateText(voucher.issuedDate),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Kendaraan',
-                          value: _textOrDash(voucher.vehiclePlate),
-                        ),
-                        _VoucherInfoItem(
-                          label: 'Rute',
-                          value: _textOrDash(voucher.route),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Ringkasan',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 10),
-                    _VoucherSummaryLine(
-                      label: 'Total uang diberikan',
-                      value: formatRupiah(voucher.totalIssuedAmount),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Biaya lain-lain',
-                      value: formatRupiah(voucher.operationalSpent),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Sisa bon operasional',
-                      value: formatRupiah(voucher.operationalBalance),
-                    ),
-                    _VoucherSummaryLine(
-                      label: 'Upah borongan',
-                      value: formatRupiah(voucher.driverFeeAmount),
-                    ),
-                    _VoucherSummaryLine(
-                      label: voucher.settlementDisplayLabel,
-                      value: formatRupiah(voucher.netSettlementAmount.abs()),
-                    ),
-                    const SizedBox(height: 18),
-                    _VoucherHistorySection(voucher: voucher),
-                  ],
-                ),
+                child: DriverVoucherDetailBody(voucher: voucher),
               ),
             ),
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Tutup'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => _downloadPdf(context),
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: const Text('Download PDF'),
-                    ),
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final closeButton = OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: _dialogActionStyle,
+                    child: const Text('Tutup', maxLines: 1),
+                  );
+                  final downloadButton = FilledButton.icon(
+                    onPressed: () => _downloadPdf(context),
+                    // Ukuran icon diambil dari style, bukan dari Icon(),
+                    // supaya tinggi tombol sama persis dengan "Tutup".
+                    icon: const Icon(Icons.download_rounded),
+                    label: const Text('Download PDF', maxLines: 1),
+                    style: _dialogActionStyle,
+                  );
+
+                  // Di layar sempit "Download PDF" tidak muat dalam setengah
+                  // lebar, teksnya membungkus, lalu tombol jadi lebih tinggi
+                  // dari "Tutup". Kondisi itu tombolnya ditumpuk.
+                  const minHalfWidth = 236.0;
+                  final fitsSideBySide =
+                      constraints.maxWidth >= minHalfWidth * 2 + 10;
+                  if (!fitsSideBySide) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        closeButton,
+                        const SizedBox(height: 10),
+                        downloadButton,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: closeButton),
+                      const SizedBox(width: 10),
+                      Expanded(child: downloadButton),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -684,6 +818,21 @@ class DriverVoucherPreviewDialog extends StatelessWidget {
     );
   }
 }
+
+/// Style tombol aksi di dialog preview. Dipakai "Tutup" dan "Download PDF"
+/// supaya keduanya persis sama tinggi, lebar, dan ukuran teks.
+ButtonStyle get _dialogActionStyle => ButtonStyle(
+  minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+  padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 16)),
+  textStyle: const WidgetStatePropertyAll(
+    TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+  ),
+  iconSize: const WidgetStatePropertyAll(18),
+  tapTargetSize: MaterialTapTargetSize.padded,
+  shape: WidgetStatePropertyAll(
+    RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  ),
+);
 
 class _VoucherSummaryLine extends StatelessWidget {
   const _VoucherSummaryLine({required this.label, required this.value});
