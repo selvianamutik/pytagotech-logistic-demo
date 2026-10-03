@@ -68,6 +68,7 @@
     "import:supabase": "node scripts/import-supabase.mjs",
     "reset:supabase": "node scripts/reset-supabase.mjs",
     "reset:supabase:workflow-transactions": "node scripts/reset-supabase-workflow-transactions.mjs",
+    "seed:driver-app": "npx tsx --conditions react-server scripts/seed-driver-app-demo.ts",
     "seed:supabase": "node scripts/seed-supabase.mjs",
     "ensure:supabase:trip-rates": "node scripts/ensure-supabase-trip-rates.mjs",
     "seed:supabase:safe-workflow": "node scripts/seed-supabase.mjs --derive-trip-surat-jalan --skip-doc-types=user,service,tripRouteRate --skip-doc-ids=cust-004,sup-003,expcat-008 --skip-workflow-transactions --enforce-inventory-linked-tires",
