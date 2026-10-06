@@ -367,3 +367,29 @@ export async function getCompanyProfile<T = Record<string, unknown>>() {
 export async function getNextNumber(prefix: string, dateValue?: string) {
     return getRelationalNextNumber(prefix, dateValue);
 }
+
+/**
+ * Read-only preview of the next number for a prefix.
+ *
+ * Mirrors getRelationalNextNumber but never claims the counter, so showing a
+ * preview (e.g. the auto-filled No. Invoice on the create form) cannot burn a number.
+ */
+export async function peekNextNumber(prefix: string, dateValue?: string) {
+    const config = NUMBERING_CONFIG[prefix as keyof typeof NUMBERING_CONFIG];
+    if (!config) {
+        return `${prefix}-${Date.now()}`;
+    }
+
+    const period = buildNumberingPeriod(prefix as keyof typeof NUMBERING_CONFIG, dateValue);
+    const company = await getRelationalCompanyProfileRow();
+    const settings = isRecord(company?.numbering_settings) ? company.numbering_settings : {};
+    const normalizedPrefix = normalizePrefix(settings[config.prefixField], config.defaultPrefix);
+    const currentPeriod =
+        typeof settings[config.periodField] === 'string' ? settings[config.periodField] : '';
+    const currentCounter = currentPeriod === period ? numberFromUnknown(settings[config.counterField]) : 0;
+    const maxExistingSuffix =
+        await relationalMaxNumericSuffixByPrefix(config.docType, config.docField, `${normalizedPrefix}${period}-`)
+        ?? 0;
+
+    return `${normalizedPrefix}${period}-${String(Math.max(currentCounter, maxExistingSuffix) + 1).padStart(4, '0')}`;
+}

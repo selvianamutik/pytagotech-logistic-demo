@@ -21,3 +21,27 @@ export function buildFreightNotaDisplayNumberFromParts(
 
     return `${year}/${romanMonth}/${seriesCode}/${sequence}`;
 }
+
+/**
+ * Single place that decides the printed number ("No. Cetak Invoice").
+ *
+ * It is independent from the internal `notaNumber`: when the operator sets it, it is used
+ * verbatim (e.g. `INV/DJABES/001` must not become `26/X/3/001`); otherwise it is derived
+ * from the internal number into YY/ROMAN/SERIES/SEQ.
+ */
+export function resolveFreightNotaDisplayNumber(params: {
+    notaNumber: string;
+    issueDate: string;
+    notaSeriesCode?: string | null;
+    manualDisplayNumber?: string | null;
+}) {
+    const manualDisplayNumber = (params.manualDisplayNumber || '').trim();
+    if (manualDisplayNumber) {
+        return manualDisplayNumber;
+    }
+    return buildFreightNotaDisplayNumberFromParts(
+        params.notaNumber,
+        params.issueDate,
+        params.notaSeriesCode,
+    );
+}
