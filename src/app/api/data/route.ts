@@ -62,6 +62,7 @@ import {
     handleExpenseDelete,
     handleFreightNotaCreate,
     handleFreightNotaDelete,
+    handleFreightNotaPeekNumber,
     handleFreightNotaPph23Update,
     handleFreightNotaTaxInvoiceUpdate,
     handleFreightNotaUpdate,
@@ -414,6 +415,11 @@ function hasSpecialMutationPermission(session: Session, entity: string, action?:
 
     if (entity === 'accounting-periods' && (action === 'close-period' || action === 'open-period')) {
         return hasPermission(session, 'reports', 'update');
+    }
+
+    // Read-only preview of the next invoice number, shown on the create-invoice form.
+    if (entity === 'freight-notas' && action === 'peek-number') {
+        return hasPermission(session, 'invoices', 'create');
     }
 
     return null;
@@ -1787,6 +1793,12 @@ export async function POST(request: Request) {
             }
         }
     }
+
+        // Read-only preview of the invoice numbers. It never consumes the numbering counter
+        // and runs before the accounting-period guard so a closed period cannot block it.
+        if (entity === 'freight-notas' && action === 'peek-number') {
+            return await handleFreightNotaPeekNumber(data);
+        }
 
         if (LEGACY_READ_ONLY_ENTITIES.has(entity)) {
             return jsonNoStore(

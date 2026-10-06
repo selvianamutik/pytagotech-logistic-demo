@@ -943,6 +943,10 @@ export interface FreightNota {
   _type: 'freightNota';
   notaNumber: string;
   notaDisplayNumber?: string;
+  /** True when the operator typed the internal invoice number instead of using the counter. */
+  notaNumberManual?: boolean;
+  /** True when the operator typed the printed number ("No. Cetak Invoice") themselves. */
+  notaDisplayNumberManual?: boolean;
   issuerCompanyName?: string;
   issuerCompanyAddress?: string;
   issuerCompanyPhone?: string;
