@@ -66,6 +66,7 @@ next-env.d.ts
 
 # local agent/skill state
 .agents/
+.agent/
 skills-lock.json
 
 # supabase cli local link/cache state
@@ -87,3 +88,14 @@ src/__tests__/
 
 # Test coverage
 TEST_COVERAGE.md
+
+# dev server log
+dev-server.log
+
+# Playwright E2E
+test/playwright/.artifacts/
+test/playwright/.artifacts-report/
+test/playwright/*/error/
+test/playwright/*/last-run.json
+test-results/
+playwright-report/
