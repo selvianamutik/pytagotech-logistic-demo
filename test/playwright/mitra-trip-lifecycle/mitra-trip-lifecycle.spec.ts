@@ -43,9 +43,12 @@ const SJ_NUMBERS = {
 // E2E number would collide with the duplicate-reference guard
 // ("No. SJ pengirim X ditulis lebih dari sekali") and leave that SJ with no
 // items. So the placeholder gets its own distinct number.
+// NOTE: process.pid alone is NOT unique across runs (OS recycles pids), so a
+// timestamp is included — otherwise a rerun can 409 against its own placeholder
+// from an earlier run (seen with R-202610-0028 vs R-202610-0043).
 const PLACEHOLDER_SJ_NUMBER =
     process.env.E2E_PLACEHOLDER_SJ ??
-    `SJ/PROCESS/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}/${process.pid}`;
+    `SJ/PROCESS/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}/${process.pid}-${Date.now().toString(36).toUpperCase()}`;
 
 test.describe('MITRA trip lifecycle', () => {
     // The steps share in-memory state (orderId / tripId / SJ numbers), so they

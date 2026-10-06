@@ -1893,6 +1893,21 @@ tbody td {
   min-width: 0;
 }
 
+/* Empat blok rincian upah trip (kapasitas, overtonase, pengurangan, total).
+   Selalu 2x2 di layar normal supaya label dan angka tidak bertumpuk, lalu
+   menumpuk 1 kolom di layar sempit. */
+.trip-fee-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .trip-fee-section-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .form-textarea {
   min-height: 100px;
   resize: vertical;

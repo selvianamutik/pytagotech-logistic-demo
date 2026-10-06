@@ -449,6 +449,13 @@ export async function deriveDeliveryOrdersForResponse(
             deliveryOrderOvertonaseRatePerKg > 0
                 ? deliveryOrderOvertonaseRatePerKg
                 : routeOvertonaseRatePerKg;
+        const deliveryOrderUnderloadRatePerKg = normalizeCurrencyNumber(deliveryOrder.underloadDriverRatePerKg ?? 0);
+        const effectiveUnderloadRatePerKg =
+            deliveryOrderUnderloadRatePerKg > 0
+                ? deliveryOrderUnderloadRatePerKg
+                : routeOvertonaseRatePerKg;
+        const underloadRateMode: DeliveryOrder['underloadRateMode'] =
+            deliveryOrder.underloadRateMode === 'custom' ? 'custom' : undefined;
         const serviceMaxPayloadKg =
             normalizeNumber(deliveryOrder.serviceMaxPayloadKg, { maxFractionDigits: 2 }) > 0
                 ? normalizeNumber(deliveryOrder.serviceMaxPayloadKg, { maxFractionDigits: 2 })
@@ -470,6 +477,8 @@ export async function deriveDeliveryOrdersForResponse(
                     baseTripFee: normalizeCurrencyNumber(deliveryOrder.baseTaripBorongan ?? deliveryOrder.taripBorongan ?? 0),
                     overtonaseDriverRatePerKg: effectiveOvertonaseRatePerKg,
                     manualOvertonaseWeightKg: deliveryOrder.manualOvertonaseWeightKg,
+                    underloadDriverRatePerKg: effectiveUnderloadRatePerKg,
+                    manualUnderloadWeightKg: deliveryOrder.manualUnderloadWeightKg,
                 })
                 : null;
 
@@ -505,6 +514,17 @@ export async function deriveDeliveryOrdersForResponse(
                 derivedOvertonage?.overtonaseDriverAmount,
             vehicleCapacityExceededKg:
                 derivedOvertonage?.vehicleCapacityExceededKg,
+            underloadWeightKg:
+                derivedOvertonage?.underloadWeightKg,
+            manualUnderloadWeightKg:
+                derivedOvertonage?.manualUnderloadWeightKg ?? deliveryOrder.manualUnderloadWeightKg,
+            underloadRateMode,
+            underloadDriverRatePerKg:
+                deliveryOrderUnderloadRatePerKg > 0
+                    ? deliveryOrderUnderloadRatePerKg
+                    : derivedOvertonage?.underloadDriverRatePerKg,
+            underloadDeductionAmount:
+                derivedOvertonage?.underloadDeductionAmount,
         };
     });
 

@@ -7047,6 +7047,126 @@ export async function handleDeliveryOrderManualOvertonaseUpdate(
     });
 }
 
+export async function handleDeliveryOrderManualUnderloadUpdate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = typeof data.id === 'string' ? data.id : '';
+    if (!id) {
+        return NextResponse.json({ error: 'Trip tidak valid' }, { status: 400 });
+    }
+
+    const deliveryOrder = await getDocumentById<DeliveryOrder & { _rev?: string }>(id, 'deliveryOrder');
+    if (!deliveryOrder) {
+        return NextResponse.json({ error: 'Trip tidak ditemukan' }, { status: 404 });
+    }
+    if (deliveryOrder.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'Pengurangan muatan kurang tidak bisa diubah untuk trip yang sudah dibatalkan.' }, { status: 409 });
+    }
+    if (deliveryOrder.tripClosedByAdminAt) {
+        return NextResponse.json({ error: 'Trip ini sudah ditutup admin sehingga pengurangan tidak bisa diubah lagi.' }, { status: 409 });
+    }
+
+    const manualInputUnit = data.manualUnderloadWeightInputUnit === 'TON' ? 'TON' : 'KG';
+    const manualInputValue = normalizeNumber(
+        data.manualUnderloadWeightInputValue ?? data.manualUnderloadWeightKg ?? 0,
+        { maxFractionDigits: manualInputUnit === 'TON' ? 5 : 2 }
+    );
+    if (!Number.isFinite(manualInputValue) || manualInputValue < 0) {
+        return NextResponse.json({ error: 'Berat manual pengurangan tidak valid' }, { status: 400 });
+    }
+    const manualUnderloadWeightKg =
+        manualInputValue > 0
+            ? roundQuantity(convertWeightToKg(manualInputValue, manualInputUnit), 2)
+            : 0;
+
+    const underloadRateMode = data.underloadRateMode === 'custom' ? 'custom' : 'default';
+    const underloadRateInput = underloadRateMode === 'custom'
+        ? normalizeCurrencyNumber(data.underloadDriverRatePerKg ?? 0)
+        : 0;
+    if (!Number.isFinite(underloadRateInput) || underloadRateInput < 0) {
+        return NextResponse.json({ error: 'Rate pengurangan tidak valid' }, { status: 400 });
+    }
+    if (underloadRateMode === 'custom' && underloadRateInput <= 0) {
+        return NextResponse.json({ error: 'Rate khusus pengurangan harus lebih dari 0' }, { status: 400 });
+    }
+
+    const actualDropTotals = summarizeActualDropPointCargo(deliveryOrder.actualDropPoints || []);
+    const persistedActualWeight = normalizeNumber(deliveryOrder.actualTotalWeightKg ?? 0, { maxFractionDigits: 2 });
+    const actualTotalTripWeightKg = persistedActualWeight > 0 ? persistedActualWeight : actualDropTotals.weightKg;
+    const deliveryOrderForCalculation = {
+        ...deliveryOrder,
+        manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : undefined,
+        underloadDriverRatePerKg: underloadRateInput > 0 ? underloadRateInput : undefined,
+    };
+    const tripOvertonage = await computeTripOvertonageAdjustment({
+        deliveryOrder: deliveryOrderForCalculation,
+        actualTotalTripWeightKg,
+    });
+    const overtonageResult = tripOvertonage.overtonageResult;
+    const baseTripFee = normalizeCurrencyNumber(deliveryOrder.baseTaripBorongan ?? deliveryOrder.taripBorongan ?? 0);
+    const timestamp = new Date().toISOString();
+
+    try {
+        await updateDocument(id, {
+            manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : null,
+            underloadRateMode,
+            baseTaripBorongan: baseTripFee > 0 ? baseTripFee : undefined,
+            taripBorongan: overtonageResult.effectiveTripFee || normalizeCurrencyNumber(deliveryOrder.taripBorongan ?? 0) || undefined,
+            actualTotalWeightKg: overtonageResult.actualTotalWeightKg || undefined,
+            serviceMaxPayloadKg: overtonageResult.serviceMaxPayloadKg,
+            vehicleCapacityKg: overtonageResult.vehicleCapacityKg,
+            overtonaseWeightKg: overtonageResult.overtonaseWeightKg,
+            overtonaseDriverRatePerKg: overtonageResult.overtonaseDriverRatePerKg,
+            overtonaseDriverAmount: overtonageResult.overtonaseDriverAmount,
+            vehicleCapacityExceededKg: overtonageResult.vehicleCapacityExceededKg,
+            underloadWeightKg: overtonageResult.underloadWeightKg,
+            underloadDriverRatePerKg: overtonageResult.underloadDriverRatePerKg,
+            underloadDeductionAmount: overtonageResult.underloadDeductionAmount,
+            underloadUpdatedAt: timestamp,
+            underloadUpdatedBy: session._id,
+            underloadUpdatedByName: session.name,
+        }, 'deliveryOrder');
+
+        if (tripOvertonage.linkedVoucherPatch) {
+            await updateDocument(tripOvertonage.linkedVoucherPatch._id, {
+                driverFeeAmount: tripOvertonage.linkedVoucherPatch.driverFeeAmount,
+                totalClaimAmount: tripOvertonage.linkedVoucherPatch.totalClaimAmount,
+                balance: tripOvertonage.linkedVoucherPatch.balance,
+            }, 'driverVoucher');
+        }
+    } catch (error) {
+        if (isMutationConflictError(error)) {
+            return NextResponse.json({ error: 'Pengurangan berubah karena update lain. Refresh lalu coba lagi.' }, { status: 409 });
+        }
+        throw error;
+    }
+
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'delivery-orders',
+        id,
+        manualUnderloadWeightKg > 0
+            ? `Ubah manual pengurangan muatan kurang menjadi ${manualUnderloadWeightKg} kg (rate ${underloadRateMode})`
+            : `Hapus manual pengurangan muatan kurang dan kembali ke hitungan otomatis (rate ${underloadRateMode})`
+    );
+
+    return NextResponse.json({
+        data: {
+            _id: id,
+            manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : undefined,
+            underloadRateMode,
+            underloadWeightKg: overtonageResult.underloadWeightKg,
+            underloadDeductionAmount: overtonageResult.underloadDeductionAmount,
+            taripBorongan: overtonageResult.effectiveTripFee,
+            linkedVoucherAdjustmentSummary: tripOvertonage.linkedVoucherAdjustmentSummary,
+            settledVoucherOvertonageWarning: tripOvertonage.settledVoucherOvertonageWarning,
+        },
+    });
+}
+
 export async function handleDeliveryOrderTripResourceAssign(
     session: ApiSession,
     data: Record<string, unknown>,

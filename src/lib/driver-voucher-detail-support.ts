@@ -306,6 +306,8 @@ export function buildDriverVoucherPrintHtml(params: {
         ?? deliveryOrder?.taripBorongan
         ?? 0;
     const deliveryOrderOvertonaseAmount = deliveryOrder?.overtonaseDriverAmount || 0;
+    const deliveryOrderUnderloadDeductionAmount = deliveryOrder?.underloadDeductionAmount || 0;
+    const deliveryOrderShowsUnderload = deliveryOrderUnderloadDeductionAmount > 0 || (deliveryOrder?.manualUnderloadWeightKg || 0) > 0;
     const deliveryOrderHasFinalActualWeight = (deliveryOrder?.actualTotalWeightKg || 0) > 0;
     const deliveryOrderFinalTripFee = deliveryOrder?.taripBorongan || driverFeeAmount;
 
@@ -455,6 +457,12 @@ export function buildDriverVoucherPrintHtml(params: {
                             <td>Tambahan Overtonase</td>
                             <td class="r">${deliveryOrderHasFinalActualWeight ? escapePrintHtml(formatCurrency(deliveryOrderOvertonaseAmount)) : 'Menunggu aktual final'}</td>
                         </tr>
+                        ${deliveryOrderShowsUnderload ? `
+                        <tr>
+                            <td>Pengurangan Muatan Kurang</td>
+                            <td class="r">${deliveryOrderHasFinalActualWeight ? escapePrintHtml(`-${formatCurrency(deliveryOrderUnderloadDeductionAmount)}`) : 'Menunggu aktual final'}</td>
+                        </tr>
+                        ` : ''}
                         <tr>
                             <td>Upah Borongan Final DO</td>
                             <td class="r">${deliveryOrderHasFinalActualWeight ? escapePrintHtml(formatCurrency(deliveryOrderFinalTripFee)) : 'Menunggu aktual final'}</td>
@@ -468,6 +476,12 @@ export function buildDriverVoucherPrintHtml(params: {
                                 <td>Berat Overtonase</td>
                                 <td class="r">${escapePrintHtml(deliveryOrder.overtonaseWeightKg ? `${deliveryOrder.overtonaseWeightKg} kg` : '-') }</td>
                             </tr>
+                            ${deliveryOrderShowsUnderload ? `
+                            <tr>
+                                <td>Berat Muatan Kurang</td>
+                                <td class="r">${escapePrintHtml(deliveryOrder.underloadWeightKg ? `${deliveryOrder.underloadWeightKg} kg` : '-') }</td>
+                            </tr>
+                            ` : ''}
                         ` : ''}
                     </tbody>
                 </table>

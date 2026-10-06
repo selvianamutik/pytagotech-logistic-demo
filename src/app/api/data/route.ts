@@ -109,6 +109,7 @@ import {
     handleDeliveryOrderCargoItemUpdate,
     handleDeliveryOrderCargoItemRemove,
     handleDeliveryOrderManualOvertonaseUpdate,
+    handleDeliveryOrderManualUnderloadUpdate,
     handleDeliveryOrderSuratJalanActualCargoUpdate,
     handleDeliveryOrderCancelTrip,
     handleDeliveryOrderContinueHeldCargo,
@@ -1961,6 +1962,10 @@ export async function POST(request: Request) {
 
         if (entity === 'delivery-orders' && action === 'update-manual-overtonase') {
             return await handleDeliveryOrderManualOvertonaseUpdate(session, data, addAuditLog);
+        }
+
+        if (entity === 'delivery-orders' && action === 'update-manual-underload') {
+            return await handleDeliveryOrderManualUnderloadUpdate(session, data, addAuditLog);
         }
 
         if (entity === 'delivery-orders' && action === 'remove-cargo-item') {
