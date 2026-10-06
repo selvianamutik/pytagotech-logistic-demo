@@ -1145,6 +1145,16 @@ export default function OrderDetailPage() {
         }
     }, [requiresTripDraftOverrideReason, tripDraft.vehicleOverrideReason]);
 
+    useEffect(() => {
+        if (!order) return;
+        const hash = window.location.hash;
+        if (!hash) return;
+        const target = document.querySelector(hash);
+        if (target instanceof HTMLElement) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [order, hasPlannedTrips]);
+
     const usesExistingItemsForDeliveryOrder = !isHeaderOnlyOrder;
     const canCreateDeliveryOrder =
         !orderIsCancelled &&

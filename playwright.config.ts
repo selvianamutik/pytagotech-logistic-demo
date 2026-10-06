@@ -25,7 +25,9 @@ export default defineConfig({
     workers: 1,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 1 : 0,
-    timeout: 120_000,
+    // Step 4 drives three batch transitions with a reload after each, so it
+    // legitimately needs ~60s. 120s was tight enough to flake on a busy machine.
+    timeout: 240_000,
     expect: { timeout: 15_000 },
     reporter: [
         ['list'],
