@@ -31,6 +31,7 @@ import {
     shouldLockActualCargoVolume,
     getAssignableTripDrivers,
     getAssignableTripVehicles,
+    canTripAdvanceToStatus,
     getNextDeliveryOrderStatuses,
     getTripResourceActionLabel,
     shouldRequireTripVehicleOverrideReason,
@@ -125,7 +126,7 @@ import {
     inferDriverVoucherDisbursementCount,
     sortDriverVoucherDisbursements,
 } from '@/lib/driver-voucher-detail-support';
-import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPTION_VALUE, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
+import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPTION_VALUE, MANUAL_PICKUP_OPTION_VALUE, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
 import { generateDOPdf } from '@/lib/pdf/doTemplate';
 import { hasPageAccess, hasPermission, normalizeUserRole } from '@/lib/rbac';
 import { getSuratJalanActualDropDestinations } from '@/lib/surat-jalan-destination';
@@ -133,6 +134,7 @@ import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRat
 import { roundToPrecision } from '@/lib/number-precision';
 import type { SuratJalanDocument, Trip, TripCashLinkSummary, TripDetailReferencesSnapshot, TripDetailSnapshot, TripTrackingEvent } from '@/lib/trip-document-types';
 import type { BankAccount, Customer, CustomerProduct, CustomerRecipient, DeliveryOrder, DeliveryOrderItem, CompanyProfile, FreightNota, FreightNotaItem, Order, OrderItem, Driver, DriverVoucher, DriverVoucherDisbursement, ExpenseCategory, PendingDriverStatusRequest, Service, TireEvent, TripRouteRate, Vehicle } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 
 const BATCH_SURAT_JALAN_STATUS_OPTIONS = ['ON_DELIVERY', 'ARRIVED', 'DELIVERED'] as const;
 
@@ -1495,7 +1497,7 @@ export default function TripDetailPage() {
         setCargoDraftGroups([createDefaultDeliveryOrderCargoDraftGroup(getDefaultCargoDraftPickupKey())]);
     };
 
-    const updateCargoDraftGroup = <K extends keyof Pick<DeliveryOrderCargoDraftGroup, 'pickupStopKey' | 'shipperReferenceNumber'>>(
+    const updateCargoDraftGroup = <K extends keyof Pick<DeliveryOrderCargoDraftGroup, 'pickupStopKey' | 'pickupAddress' | 'shipperReferenceNumber'>>(
         groupId: string,
         field: K,
         value: DeliveryOrderCargoDraftGroup[K]
@@ -1769,8 +1771,8 @@ export default function TripDetailPage() {
                     ? pendingDriverStatusSuratJalanRefs
                     : suratJalanDocuments
                     .filter(document =>
-                        getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusModalDOData?.status || doData?.status || ''))
-                            .filter(status => status === 'CREATED' || status === 'CANCELLED' || hasTripResourcesAssigned)
+getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusModalDOData?.status || doData?.status || ''))
+   .filter(status => canAdvanceTripStatus(status))
                             .includes(requestedStatus)
                     )
                     .map(document => document._id)
@@ -1892,6 +1894,7 @@ export default function TripDetailPage() {
         const normalizedGroups = cargoDraftGroupsWithItems.map(group => ({
             ...group,
             resolvedPickupStopKey: group.pickupStopKey || (pickupStopList.length === 1 ? pickupStopList[0]._key : ''),
+            resolvedPickupAddress: group.pickupAddress.trim(),
             resolvedShipperReferenceNumber: group.shipperReferenceNumber.trim().toUpperCase(),
         }));
         const invalidReferenceIndex = normalizedGroups.findIndex(group => group.draftItems.length > 0 && !group.resolvedShipperReferenceNumber);
@@ -1899,9 +1902,21 @@ export default function TripDetailPage() {
             addToast('error', `No. SJ pengirim wajib diisi pada SJ ${invalidReferenceIndex + 1}`);
             return;
         }
-        const invalidPickupIndex = normalizedGroups.findIndex(group => pickupStopList.length > 0 && !group.resolvedPickupStopKey);
+        // Tanpa stop yang dipilih, alamat manual wajib ada. Stop yang sudah tidak
+        // ada di order juga ditolak di sini supaya user tidak diam-diam menyimpan
+        // key yang tidak resolve (dulu jatuh ke fallback alamat pickup lain).
+        const missingManualPickupIndex = normalizedGroups.findIndex(group => (
+            !group.resolvedPickupStopKey && !group.resolvedPickupAddress
+        ));
+        if (missingManualPickupIndex >= 0) {
+            addToast('error', `Titik pickup wajib dipilih atau alamatnya diisi manual pada SJ ${missingManualPickupIndex + 1}`);
+            return;
+        }
+        const invalidPickupIndex = normalizedGroups.findIndex(group => (
+            Boolean(group.pickupStopKey) && !pickupStopMap.has(group.pickupStopKey)
+        ));
         if (invalidPickupIndex >= 0) {
-            addToast('error', `Titik pickup wajib dipilih pada SJ ${invalidPickupIndex + 1}`);
+            addToast('error', `Titik pickup pada SJ ${invalidPickupIndex + 1} tidak lagi ada di order. Pilih ulang titik pickupnya.`);
             return;
         }
         const duplicateGroupReferenceNumber = (() => {
@@ -1940,7 +1955,9 @@ export default function TripDetailPage() {
                 .filter(group => !existingReferenceNumbers.has(group.resolvedShipperReferenceNumber))
                 .map(group => ({
                     referenceNumber: group.resolvedShipperReferenceNumber,
+                    // Hanya salah satu yang terisi: stop yang dipilih, atau alamat ketik manual.
                     pickupStopKey: group.resolvedPickupStopKey || undefined,
+                    pickupAddress: group.resolvedPickupStopKey ? undefined : (group.resolvedPickupAddress || undefined),
                 }));
             const payloadData = editingCargoItemId
                 ? {
@@ -1950,6 +1967,7 @@ export default function TripDetailPage() {
                         ...normalizedGroups[0].draftItems[0],
                         shipperReferenceNumber: normalizedGroups[0].resolvedShipperReferenceNumber,
                         pickupStopKey: normalizedGroups[0].resolvedPickupStopKey || undefined,
+                        pickupAddress: normalizedGroups[0].resolvedPickupStopKey ? undefined : (normalizedGroups[0].resolvedPickupAddress || undefined),
                     },
                 }
                 : {
@@ -1963,6 +1981,7 @@ export default function TripDetailPage() {
                             ...item,
                             shipperReferenceNumber: group.resolvedShipperReferenceNumber,
                             pickupStopKey: group.resolvedPickupStopKey || undefined,
+                            pickupAddress: group.resolvedPickupStopKey ? undefined : (group.resolvedPickupAddress || undefined),
                         }))
                     ),
                 };
@@ -2002,6 +2021,14 @@ export default function TripDetailPage() {
         const nextClosed = !isTripClosedByAdmin;
         setPendingTripClosure(nextClosed);
         if (!nextClosed) {
+            setTripClosureTires([]);
+            return;
+        }
+        // Trip Mitra tidak punya armada sendiri: tidak ada odometer, servis oli,
+        // atau ban unit yang perlu dikonfirmasi. Lewati semua pengambilan data
+        // itu supaya tutup trip langsung jadi konfirmasi biasa.
+        if (isMitraTrip) {
+            setTripClosureOdometer(0);
             setTripClosureTires([]);
             return;
         }
@@ -2070,7 +2097,7 @@ export default function TripDetailPage() {
                     data: {
                         id: doData._id,
                         closed: nextClosed,
-                        newOdometer: nextClosed ? tripClosureOdometer : undefined,
+                        newOdometer: nextClosed && !isMitraTrip ? tripClosureOdometer : undefined,
                         pendingDriverRequestId: reviewingDriverRequestId || undefined,
                     },
                 }),
@@ -4626,7 +4653,7 @@ export default function TripDetailPage() {
     if (loading) return <div><div className="skeleton skeleton-title" /><div className="skeleton skeleton-card" style={{ height: 200 }} /></div>;
     if (!doData) return <div className="empty-state"><div className="empty-state-title">{loadNotice?.title || 'Trip tidak ditemukan'}</div>{loadNotice?.text && <div className="empty-state-text">{loadNotice.text}</div>}</div>;
 
-    const hasTripResourcesAssigned = Boolean(doData.vehicleRef && doData.driverRef);
+    const canAdvanceTripStatus = (status: string) => canTripAdvanceToStatus(status, doData);
     const displayTripStatus = tripData?.status || doData.status;
     const tripResourceActionLabel = getTripResourceActionLabel(doData);
     const tripResourceAssignments = buildTripResourceAssignmentIndex({
@@ -5228,6 +5255,7 @@ export default function TripDetailPage() {
             SETTLED: { label: 'Selesai', cls: 'badge-success' },
         }[linkedTripCashStatus || 'DRAFT'])
         : null;
+    const isMitraTrip = normalizeTripOwnership(doData.tripOwnership) === 'MITRA';
     const baseTripFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
     const overtonaseDriverAmount = doData.overtonaseDriverAmount || 0;
     const totalTripFee = doData.taripBorongan || 0;
@@ -5273,6 +5301,7 @@ export default function TripDetailPage() {
         !doData.taripBorongan || doData.taripBorongan <= 0 ? 'upah borongan bisa diisi saat terbit bon' : null,
     ].filter((value): value is string => Boolean(value));
     const canIssueVoucherFromDo =
+        !isMitraTrip &&
         canCreateTripCash &&
         !hasLinkedTripCash &&
         voucherIssueBlockingReasons.length === 0;
@@ -5301,11 +5330,9 @@ export default function TripDetailPage() {
     const displayTripNumber = tripData?.tripNumber || formatInternalDeliveryOrderNumber(doData);
     const suratJalanStatusOptions = suratJalanDocuments.filter(document => document.itemCount > 0);
     const getEligibleStatusesForSuratJalan = (document: SuratJalanDocument) =>
-        getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKey).status).filter(status =>
-            status === 'CREATED' ||
-            status === 'CANCELLED' ||
-            hasTripResourcesAssigned
-        );
+getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKey).status).filter(status =>
+   canAdvanceTripStatus(status)
+   );
     const availableBatchStatuses = BATCH_SURAT_JALAN_STATUS_OPTIONS.filter(status =>
         suratJalanStatusOptions.some(document => getEligibleStatusesForSuratJalan(document).includes(status))
     );
@@ -6632,6 +6659,7 @@ export default function TripDetailPage() {
                             <span className={`badge badge-${displayStatusMeta.color}`}>
                                 <span className="badge-dot" /> {displayStatusMeta.label}
                             </span>
+                            {isMitraTrip && <span className="badge badge-info">Trip Mitra</span>}
                         </h1>
                         <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                             Status trip ini dibaca otomatis dari progres seluruh Surat Jalan di bawahnya.
@@ -6662,7 +6690,7 @@ export default function TripDetailPage() {
                 </div>
             </div>
 
-            {doData.status === 'CREATED' && (!doData.vehicleRef || !doData.driverRef) && (
+            {!isMitraTrip && doData.status === 'CREATED' && (!doData.vehicleRef || !doData.driverRef) && (
                 <div className="card" style={{ marginBottom: 'var(--space-4)', border: '1px solid var(--color-warning-light)', background: 'var(--color-warning-soft)' }}>
                     <div className="card-body">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
@@ -6789,7 +6817,7 @@ export default function TripDetailPage() {
                                 : 'Trip masih terbuka. Admin masih bisa menambah SJ baru walaupun seluruh SJ sebelumnya sudah selesai.'}
                         </div>
                         <div className="detail-action-group" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            {doData.status === 'CREATED' && canAssignTripResources && !hasLinkedTripCash && (
+                            {doData.status === 'CREATED' && canAssignTripResources && !hasLinkedTripCash && !isMitraTrip && (
                                 <button className="btn btn-secondary btn-sm" onClick={() => void openTripResourcesModal()}>
                                     <Truck size={14} /> Edit Trip / Armada
                                 </button>
@@ -6816,7 +6844,7 @@ export default function TripDetailPage() {
                                             : 'Tutup Trip'}
                                 </button>
                             )}
-                            {canManageTripFee && !hasLinkedTripCash && !editingTarip && (
+                            {canManageTripFee && !isMitraTrip && !hasLinkedTripCash && !editingTarip && (
                                 <button className="btn btn-secondary btn-sm" onClick={openTripFeeEditor}>
                                     <Edit size={14} /> {doData.taripBorongan ? 'Edit Upah Trip' : 'Isi Upah Trip'}
                                 </button>
@@ -6836,7 +6864,7 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {(canViewTripCash || canCreateTripCash || hasLinkedTripCash) && (
+            {!isMitraTrip && (canViewTripCash || canCreateTripCash || hasLinkedTripCash) && (
                 <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <span className="card-header-title">Uang Jalan Trip</span>
@@ -7003,10 +7031,18 @@ export default function TripDetailPage() {
                             <div className="detail-item"><div className="detail-label">No. Trip Internal</div><div className="detail-value font-mono"><Link href={`/trips/${doData._id}`}>{displayTripNumber}</Link></div></div>
                             <div className="detail-item"><div className="detail-label">Tanggal Trip</div><div className="detail-value">{formatDate(doData.date)}</div></div>
                         </div>
-                        <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{canOpenVehiclePage && doData.vehicleRef ? <Link href={withReturnTo(`/fleet/vehicles/${doData.vehicleRef}`)}>{doData.vehiclePlate || '-'}</Link> : (doData.vehiclePlate || '-')}</div></div>
-                            <div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{canOpenDriverPage && doData.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${doData.driverRef}`)}>{doData.driverName || '-'}</Link> : (doData.driverName || '-')}</div></div>
-                        </div>
+                        {!isMitraTrip && (
+                            <div className="detail-row">
+                                <div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{canOpenVehiclePage && doData.vehicleRef ? <Link href={withReturnTo(`/fleet/vehicles/${doData.vehicleRef}`)}>{doData.vehiclePlate || '-'}</Link> : (doData.vehiclePlate || '-')}</div></div>
+                                <div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{canOpenDriverPage && doData.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${doData.driverRef}`)}>{doData.driverName || '-'}</Link> : (doData.driverName || '-')}</div></div>
+                            </div>
+                        )}
+                        {isMitraTrip && (
+                            <div className="detail-row">
+                                <div className="detail-item"><div className="detail-label">Jenis Trip</div><div className="detail-value">Mitra (tanpa armada &amp; upah internal)</div></div>
+                                <div className="detail-item"><div className="detail-label">Armada / Driver</div><div className="detail-value">Dikelola Mitra</div></div>
+                            </div>
+                        )}
                         <div className="detail-row">
                             <div className="detail-item"><div className="detail-label">Customer</div><div className="detail-value">{canOpenCustomerPage && doData.customerRef ? <Link href={withReturnTo(`/customers/${doData.customerRef}`)}>{doData.customerName || '-'}</Link> : (doData.customerName || '-')}</div></div>
                             <div className="detail-item"><div className="detail-label">Master Resi</div><div className="detail-value">{canOpenSourceOrderPage ? <Link href={withReturnTo(`/orders/${doData.orderRef}`)}>{doData.masterResi}</Link> : doData.masterResi}</div></div>
@@ -7436,6 +7472,7 @@ export default function TripDetailPage() {
                     )}
             </CollapsibleCard>
 
+            {!isMitraTrip && (
             <div id="delivery-order-trip-fee-card">
             <CollapsibleCard
                 title="Trip Overtonase & Upah Driver"
@@ -7659,6 +7696,7 @@ export default function TripDetailPage() {
                     )}
             </CollapsibleCard>
             </div>
+            )}
 
             {/* Items */}
             <CollapsibleCard
@@ -7955,7 +7993,7 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {showTripCashIssueModal && (
+            {showTripCashIssueModal && !isMitraTrip && (
                 <div className="modal-overlay" onClick={() => { if (!issuingTripCash) setShowTripCashIssueModal(false); }}>
                     <div className="modal" style={{ maxWidth: 920 }} onClick={event => event.stopPropagation()}>
                         <div className="modal-header">
@@ -8370,7 +8408,7 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {showTripResourcesModal && (
+            {showTripResourcesModal && !isMitraTrip && (
                 <div className="modal-overlay" onClick={() => { if (!savingTripResources) setShowTripResourcesModal(false); }}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
@@ -10405,7 +10443,7 @@ export default function TripDetailPage() {
                                                                         maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
                                                                         value={item.weightInputValue}
                                                                         onValueChange={value => updateSelectedExistingShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
-                                                                        disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
+                                                                        disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
                                                                     />
                                                                     <div style={{ width: 92 }}>
                                                                         <Combobox
@@ -10425,7 +10463,7 @@ export default function TripDetailPage() {
                                                                         maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                                         value={item.volumeInputValue}
                                                                         onValueChange={value => updateSelectedExistingShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
-                                                                        disabled={savingShipperReference}
+                                                                        disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
                                                                     />
                                                                     <div style={{ width: 92 }}>
                                                                         <Combobox
@@ -10510,7 +10548,7 @@ export default function TripDetailPage() {
                                                             maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
                                                             value={item.weightInputValue}
                                                             onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
-                                                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
+                                                            disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
                                                         />
                                                         <div style={{ width: 92 }}>
                                                         <Combobox
@@ -10530,7 +10568,7 @@ export default function TripDetailPage() {
                                                             maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                             value={item.volumeInputValue}
                                                             onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
-                                                            disabled={savingShipperReference}
+                                                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
                                                         />
                                                         <div style={{ width: 92 }}>
                                                         <Combobox
@@ -10594,7 +10632,7 @@ export default function TripDetailPage() {
                                     ? 'Setelah trip ditutup admin, tambah SJ dan edit muatan SJ akan dikunci sampai trip dibuka kembali.'
                                     : 'Setelah trip dibuka kembali, admin bisa menambah SJ baru dan mengubah muatan SJ lagi.'}
                             </div>
-                            {pendingTripClosure && (
+                            {pendingTripClosure && !isMitraTrip && (
                                 <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
                                     <div className="form-row">
                                         <div className="form-group">
@@ -10677,7 +10715,7 @@ export default function TripDetailPage() {
                             <button
                                 className={pendingTripClosure ? 'btn btn-danger' : 'btn btn-primary'}
                                 onClick={() => void confirmTripClosure()}
-                                disabled={togglingTripClosure || loadingTripClosureTires || tripClosureOdometerInvalid}
+                                disabled={togglingTripClosure || (!isMitraTrip && (loadingTripClosureTires || tripClosureOdometerInvalid))}
                             >
                                 {togglingTripClosure ? 'Menyimpan...' : (pendingTripClosure ? 'Tutup Trip' : 'Buka Kembali')}
                             </button>
@@ -10843,13 +10881,46 @@ export default function TripDetailPage() {
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label className="form-label">Titik Pickup</label>
                                                     <Combobox
-                                                        value={group.pickupStopKey}
-                                                        onChange={(v: string) => updateCargoDraftGroup(group.id, 'pickupStopKey', v)}
-                                                        options={pickupStopList.map(stop => ({
-                                                            value: stop._key,
-                                                            label: `Pickup ${stop.sequence}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}`,
-                                                        }))}
+                                                        value={group.pickupStopKey || (group.pickupAddress ? MANUAL_PICKUP_OPTION_VALUE : '')}
+                                                        onChange={(v: string) => {
+                                                            if (v === MANUAL_PICKUP_OPTION_VALUE) {
+                                                                updateCargoDraftGroup(group.id, 'pickupStopKey', '');
+                                                                return;
+                                                            }
+                                                            updateCargoDraftGroup(group.id, 'pickupStopKey', v);
+                                                            updateCargoDraftGroup(group.id, 'pickupAddress', '');
+                                                        }}
+                                                        options={[
+                                                            { value: MANUAL_PICKUP_OPTION_VALUE, label: 'Tambah manual' },
+                                                            ...pickupStopList.map(stop => ({
+                                                                value: stop._key,
+                                                                label: `Pickup ${stop.sequence}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}`,
+                                                            })),
+                                                        ]}
                                                         placeholder="Pilih titik pickup"
+                                                        disabled={savingCargo}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {pickupStopList.length === 0 && (
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label className="form-label">Titik Pickup</label>
+                                                    <div className="text-muted text-sm">Order ini belum punya titik pickup, jadi isi alamatnya manual.</div>
+                                                </div>
+                                            )}
+
+                                            {(group.pickupAddress || (!group.pickupStopKey && pickupStopList.length === 0)) && (
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label className="form-label">
+                                                        Alamat Pickup Manual <span className="required">*</span>
+                                                    </label>
+                                                    <textarea
+                                                        className="form-textarea"
+                                                        rows={2}
+                                                        value={group.pickupAddress}
+                                                        onChange={e => updateCargoDraftGroup(group.id, 'pickupAddress', e.target.value)}
+                                                        placeholder="Alamat lokasi pengambilan barang"
                                                         disabled={savingCargo}
                                                     />
                                                 </div>
@@ -10913,7 +10984,7 @@ export default function TripDetailPage() {
                                                                     maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
                                                                     value={item.weightInputValue}
                                                                     onValueChange={value => updateCargoDraftItem(group.id, itemIndex, 'weightInputValue', value)}
-                                                                    disabled={savingCargo || shouldLockOrderItemVolume(item)}
+                                                                    disabled={savingCargo || shouldLockOrderItemWeight(item)}
                                                                 />
                                                                 <div style={{ width: 92 }}>
                                                                     <Combobox
@@ -10948,7 +11019,7 @@ export default function TripDetailPage() {
                                                                     maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                                     value={item.volumeInputValue}
                                                                     onValueChange={value => updateCargoDraftItem(group.id, itemIndex, 'volumeInputValue', value)}
-                                                                    disabled={savingCargo}
+                                                                    disabled={savingCargo || shouldLockOrderItemVolume(item)}
                                                                 />
 <div style={{ width: 92 }}>
                                                                     <Combobox

@@ -147,6 +147,7 @@ import {
     getDeliveryOrderReturnCargoSummary,
 } from '@/lib/delivery-order-completion';
 import type { CompanyProfile, DeliveryOrder, DeliveryOrderItem, DOStatus, Expense, ExpenseCategory, Maintenance, Order, OrderPickupStop, OrderTripPlan, PendingDriverStatusRequest, Service, TireEvent, TireHistoryLog, Vehicle } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 
 type AuditLogFn = (
     session: Pick<ApiSession, '_id' | 'name'>,
@@ -201,6 +202,15 @@ function getFreightNotaUsageItemRefs(row: Pick<DeliveryOrderInvoiceUsageRow, 'de
 
 function normalizeInvoiceLookupText(value: unknown) {
     return normalizeOptionalText(value)?.toUpperCase() || '';
+}
+
+function describeOrderTripPlanResource(plan: OrderTripPlan) {
+    if (normalizeTripOwnership(plan.tripOwnership) === 'MITRA') {
+        return 'Mitra (tanpa armada internal)';
+    }
+    const vehicle = plan.vehiclePlate || plan.vehicleRef;
+    const driver = plan.driverName || plan.driverRef;
+    return [vehicle, driver].filter(Boolean).join(' / ') || 'Tanpa armada';
 }
 
 function collectActualDropPointKeys(points: NonNullable<DeliveryOrder['actualDropPoints']>) {
@@ -872,6 +882,12 @@ export async function handleOrderCreate(
     if (tripPlans.length > 0 && pickupStops.length === 0) {
         return NextResponse.json({ error: 'Minimal 1 titik pickup wajib diisi' }, { status: 400 });
     }
+    // `orders.service_ref` NOT NULL di DB. Tanpa guard ini, insert gagal dengan
+    // error Postgres mentah. Trip MITRA juga butuh nilai ini karena tidak punya
+    // `vehicleRef` internal sebagai fallback lookup tarif rute.
+    if (!serviceRef) {
+        return NextResponse.json({ error: 'Kategori Truk / Armada wajib dipilih' }, { status: 400 });
+    }
     if (!customer._rev && !isSupabaseBackendEnabled()) {
         return NextResponse.json({ error: 'Revisi customer tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
     }
@@ -1180,6 +1196,13 @@ export async function handleOrderHeaderBookingUpdate(
     if (!order) {
         return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
+    // Kategori armada tidak boleh dikosongkan lewat edit header. Kalau payload
+    // tidak mengirim `serviceRef`, nilai lama order yang dipakai; string kosong
+    // di kolom NOT NULL lolos constraint DB tapi merusak lookup tarif rute.
+    const effectiveServiceRef = serviceRef || normalizeOptionalText(order.serviceRef);
+    if (!effectiveServiceRef) {
+        return NextResponse.json({ error: 'Kategori Truk / Armada wajib dipilih' }, { status: 400 });
+    }
     if (order.cargoEntryMode !== 'DELIVERY_ORDER') {
         return NextResponse.json(
             { error: 'Order ini masih memakai flow item target di order. Gunakan edit order biasa.' },
@@ -1244,7 +1267,7 @@ export async function handleOrderHeaderBookingUpdate(
     let customerRecipient: ResolvedCustomerRecipientData | null = null;
     let customerPickup: ResolvedCustomerPickupData | null = null;
     try {
-        const party = await resolveOrderPartyData(customerRef, serviceRef);
+        const party = await resolveOrderPartyData(customerRef, effectiveServiceRef);
         customer = party.customer;
         service = party.service;
         serviceName = party.serviceName;
@@ -1280,7 +1303,7 @@ export async function handleOrderHeaderBookingUpdate(
     if (!customer._rev && !isSupabaseBackendEnabled()) {
         return NextResponse.json({ error: 'Revisi customer tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
     }
-    if (serviceRef && !service?._rev && !isSupabaseBackendEnabled()) {
+    if (effectiveServiceRef && !service?._rev && !isSupabaseBackendEnabled()) {
         return NextResponse.json({ error: 'Revisi kategori armada tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
     }
     if (customerRecipientRef && !customerRecipient?._rev && !isSupabaseBackendEnabled()) {
@@ -1314,7 +1337,7 @@ export async function handleOrderHeaderBookingUpdate(
     try {
         const mutationTimestamp = new Date().toISOString();
         await updateDocument(customer._id, { updatedAt: mutationTimestamp }, 'customer');
-        if (serviceRef && service?._id) {
+        if (effectiveServiceRef && service?._id) {
             await updateDocument(service._id, { updatedAt: mutationTimestamp }, 'service');
         }
         if (customerRecipientRef && customerRecipient?._id) {
@@ -1336,7 +1359,7 @@ export async function handleOrderHeaderBookingUpdate(
             pickupAddress: pickupStops[0]?.pickupAddress || normalizeOptionalText(data.pickupAddress) || normalizeOptionalText(customerPickup?.pickupAddress) || customer.address || undefined,
             pickupStops,
             tripPlans: nextTripPlans.length > 0 ? nextTripPlans : undefined,
-            serviceRef: serviceRef || '',
+            serviceRef: effectiveServiceRef,
             serviceName,
             notes,
         }, 'order');
@@ -1479,7 +1502,7 @@ export async function handleOrderTripPlanAppend(
         'UPDATE',
         'orders',
         id,
-        `Tambah rencana trip pada ${order.masterResi || id}: ${createdTripPlan.vehiclePlate || createdTripPlan.vehicleRef} / ${createdTripPlan.driverName || createdTripPlan.driverRef}`
+        `Tambah rencana trip pada ${order.masterResi || id}: ${describeOrderTripPlanResource(createdTripPlan)}`
     );
     return NextResponse.json({ data: updatedOrder, id, tripPlan: createdTripPlan });
 }
@@ -1619,7 +1642,7 @@ export async function handleOrderTripPlanUpdate(
         'UPDATE',
         'orders',
         id,
-        `Edit rencana trip pada ${order.masterResi || id}: ${updatedTripPlan.vehiclePlate || updatedTripPlan.vehicleRef} / ${updatedTripPlan.driverName || updatedTripPlan.driverRef}`
+        `Edit rencana trip pada ${order.masterResi || id}: ${describeOrderTripPlanResource(updatedTripPlan)}`
     );
     return NextResponse.json({ data: updatedOrder, id, tripPlan: updatedTripPlan });
 }
@@ -1929,6 +1952,7 @@ export async function handleDeliveryOrderStatusUpdate(
         driverRef?: unknown;
         serviceRef?: unknown;
         vehicleRef?: unknown;
+        tripOwnership?: unknown;
         tripRouteRateRef?: unknown;
         trackingState?: string;
         podReceiverName?: string;
@@ -1965,12 +1989,14 @@ export async function handleDeliveryOrderStatusUpdate(
         return NextResponse.json({ error: 'Revisi surat jalan tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
     }
 
+    const isMitraTripStatus = normalizeTripOwnership(deliveryOrder.tripOwnership) === 'MITRA';
     const hasTripVehicle = Boolean(extractRefId(deliveryOrder.vehicleRef));
     const hasTripDriver = Boolean(extractRefId(deliveryOrder.driverRef));
     const requiresTripResources =
-        status === 'ON_DELIVERY' ||
-        status === 'ARRIVED' ||
-        status === 'DELIVERED';
+        !isMitraTripStatus &&
+        (status === 'ON_DELIVERY' ||
+            status === 'ARRIVED' ||
+            status === 'DELIVERED');
     if (requiresTripResources && (!hasTripVehicle || !hasTripDriver)) {
         return NextResponse.json(
             {
@@ -4870,6 +4896,9 @@ export async function handleDeliveryOrderCreate(
     if (orderTripPlanKey && !selectedTripPlan) {
         return NextResponse.json({ error: 'Rencana trip order tidak ditemukan atau sudah dipakai. Refresh lalu coba lagi.' }, { status: 409 });
     }
+    const tripOwnership = normalizeTripOwnership(selectedTripPlan?.tripOwnership ?? data.tripOwnership);
+    const isMitraTrip = tripOwnership === 'MITRA';
+
     if (selectedTripPlan?.linkedDeliveryOrderRef) {
         const linkedDeliveryOrder = await getDocumentById<{ _id: string; doNumber?: string; status?: string }>(
             selectedTripPlan.linkedDeliveryOrderRef,
@@ -4993,12 +5022,14 @@ export async function handleDeliveryOrderCreate(
         return NextResponse.json({ error: 'Customer order tidak ditemukan' }, { status: 404 });
     }
 
-    const vehicleRef =
-        (typeof data.vehicleRef === 'string' ? data.vehicleRef : '') ||
-        selectedTripPlan?.vehicleRef ||
-        '';
-    let vehiclePlate =
-        typeof data.vehiclePlate === 'string' && data.vehiclePlate.trim()
+    const vehicleRef = isMitraTrip
+        ? ''
+        : (typeof data.vehicleRef === 'string' ? data.vehicleRef : '') ||
+          selectedTripPlan?.vehicleRef ||
+          '';
+    let vehiclePlate = isMitraTrip
+        ? ''
+        : typeof data.vehiclePlate === 'string' && data.vehiclePlate.trim()
             ? data.vehiclePlate.trim()
             : selectedTripPlan?.vehiclePlate || '';
     let selectedVehicle: {
@@ -5013,12 +5044,14 @@ export async function handleDeliveryOrderCreate(
     const vehicleCategoryOverrideReason =
         normalizeOptionalText(data.vehicleCategoryOverrideReason) ||
         selectedTripPlan?.vehicleCategoryOverrideReason;
-    const driverRef =
-        (typeof data.driverRef === 'string' ? data.driverRef : '') ||
-        selectedTripPlan?.driverRef ||
-        '';
-    let driverName =
-        typeof data.driverName === 'string' && data.driverName.trim()
+    const driverRef = isMitraTrip
+        ? ''
+        : (typeof data.driverRef === 'string' ? data.driverRef : '') ||
+          selectedTripPlan?.driverRef ||
+          '';
+    let driverName = isMitraTrip
+        ? ''
+        : typeof data.driverName === 'string' && data.driverName.trim()
             ? data.driverName.trim()
             : selectedTripPlan?.driverName || '';
     let selectedDriver: { _id: string; _rev?: string; name?: string; active?: boolean } | null = null;
@@ -5138,8 +5171,9 @@ export async function handleDeliveryOrderCreate(
     }
     const customerDoPrefix = normalizeCustomerDoPrefix(customer?.deliveryOrderPrefix);
     const customerDoNumber = manualCustomerDoNumber || undefined;
-    const effectiveTripFee =
-        matchedTripRouteRateFee > 0
+    const effectiveTripFee = isMitraTrip
+        ? 0
+        : matchedTripRouteRateFee > 0
             ? matchedTripRouteRateFee
             : taripBorongan;
 
@@ -5485,6 +5519,7 @@ export async function handleDeliveryOrderCreate(
         shipperReferences: deliveryOrderShipperReferences.length > 0 ? deliveryOrderShipperReferences : undefined,
         serviceRef: order.serviceRef,
         serviceName: order.serviceName,
+        tripOwnership,
         vehicleServiceRef,
         vehicleServiceName,
         vehicleCategoryOverrideReason: vehicleCategoryOverrideReasonToStore,
@@ -5496,12 +5531,14 @@ export async function handleDeliveryOrderCreate(
         tripOriginArea: tripRouteSelection?.tripOriginArea,
         tripDestinationArea: tripRouteSelection?.tripDestinationArea,
         orderTripPlanKey: selectedTripPlan?._key,
-        plannedTripIssueBankRef: selectedTripPlan?.issueBankRef,
-        plannedTripIssueBankName: selectedTripPlan?.issueBankName,
-        plannedTripCashGiven: selectedTripPlan?.cashGiven,
+        plannedTripIssueBankRef: isMitraTrip ? undefined : selectedTripPlan?.issueBankRef,
+        plannedTripIssueBankName: isMitraTrip ? undefined : selectedTripPlan?.issueBankName,
+        plannedTripCashGiven: isMitraTrip ? undefined : selectedTripPlan?.cashGiven,
         baseTaripBorongan: effectiveTripFee > 0 ? effectiveTripFee : undefined,
         taripBorongan: effectiveTripFee > 0 ? effectiveTripFee : undefined,
-        overtonaseDriverRatePerKg: matchedTripRouteOvertonaseRatePerKg > 0 ? matchedTripRouteOvertonaseRatePerKg : undefined,
+        overtonaseDriverRatePerKg: isMitraTrip || matchedTripRouteOvertonaseRatePerKg <= 0
+            ? undefined
+            : matchedTripRouteOvertonaseRatePerKg,
         date: doDate,
         notes: normalizeOptionalText(data.notes),
         doNumber,
@@ -6478,7 +6515,7 @@ export async function handleDeliveryOrderCargoItemUpdate(
     }
 
     const usesQtyBasis = normalizedItem.qtyKoli > 0;
-    const shouldUpdateCargoItemContext = Boolean(normalizedItem.pickupStopKey || normalizedItem.shipperReferenceNumber);
+    const shouldUpdateCargoItemContext = Boolean(normalizedItem.pickupStopKey || normalizedItem.pickupAddress || normalizedItem.shipperReferenceNumber);
     const cargoItemContext = shouldUpdateCargoItemContext
         ? resolveDeliveryOrderCargoItemContext(normalizedItem, deliveryOrder)
         : null;
@@ -7036,6 +7073,7 @@ export async function handleDeliveryOrderTripResourceAssign(
         trackingState?: string;
         serviceRef?: unknown;
         serviceName?: string;
+        tripOwnership?: string;
         vehicleRef?: unknown;
         vehiclePlate?: string;
         vehicleServiceRef?: unknown;
@@ -7049,6 +7087,12 @@ export async function handleDeliveryOrderTripResourceAssign(
     }
     if (deliveryOrder.status !== 'CREATED') {
         return NextResponse.json({ error: 'Armada trip hanya bisa dilengkapi saat status surat jalan masih Dibuat' }, { status: 409 });
+    }
+    if (normalizeTripOwnership(deliveryOrder.tripOwnership) === 'MITRA') {
+        return NextResponse.json(
+            { error: 'Trip mitra tidak memakai kendaraan atau supir internal.' },
+            { status: 409 }
+        );
     }
     if (deliveryOrder.trackingState === 'ACTIVE' || deliveryOrder.trackingState === 'PAUSED') {
         return NextResponse.json({ error: 'Armada trip tidak bisa diubah saat tracking driver masih aktif' }, { status: 409 });

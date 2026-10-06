@@ -75,6 +75,7 @@ type CustomerProductOrderSource = {
 export type NormalizedOrderItemInput = {
     id?: string;
     pickupStopKey?: string;
+    pickupAddress?: string;
     shipperReferenceNumber?: string;
     customerProductRef?: string;
     customerProductRevision?: string;
@@ -437,8 +438,9 @@ export async function normalizeOrderItemsInput(
 
             return {
                 id: normalizeOptionalText(item.id),
-                pickupStopKey: normalizeOptionalText(item.pickupStopKey),
-                shipperReferenceNumber: normalizeOptionalText(item.shipperReferenceNumber)?.toUpperCase(),
+pickupStopKey: normalizeOptionalText(item.pickupStopKey),
+        pickupAddress: normalizeOptionalText(item.pickupAddress),
+        shipperReferenceNumber: normalizeOptionalText(item.shipperReferenceNumber)?.toUpperCase(),
                 customerProductRef,
                 description,
                 qtyKoli,

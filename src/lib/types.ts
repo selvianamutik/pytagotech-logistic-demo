@@ -238,9 +238,26 @@ export interface OrderPickupStop {
   notes?: string;
 }
 
+export type TripOwnership = 'INTERNAL' | 'MITRA';
+
+export const TRIP_OWNERSHIP_LABELS: Record<TripOwnership, string> = {
+  INTERNAL: 'Internal',
+  MITRA: 'Mitra',
+};
+
+export const TRIP_OWNERSHIP_OPTIONS: Array<{ value: TripOwnership; label: string }> = (
+    Object.keys(TRIP_OWNERSHIP_LABELS) as TripOwnership[]
+).map(value => ({ value, label: TRIP_OWNERSHIP_LABELS[value] }));
+
+export function normalizeTripOwnership(value: unknown): TripOwnership {
+    const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+    return normalized === 'MITRA' ? 'MITRA' : 'INTERNAL';
+}
+
 export interface OrderTripPlan {
   _key?: string;
   sequence: number;
+  tripOwnership?: TripOwnership;
   pickupStopKeys?: string[];
   vehicleRef: string;
   vehiclePlate?: string;
@@ -783,6 +800,7 @@ export interface DeliveryOrder {
   shipperReferences?: DeliveryOrderShipperReference[];
   serviceRef?: string;
   serviceName?: string;
+  tripOwnership?: TripOwnership;
   vehicleServiceRef?: string;
   vehicleServiceName?: string;
   vehicleCategoryOverrideReason?: string;

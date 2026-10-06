@@ -1851,6 +1851,48 @@ tbody td {
   margin-top: var(--space-1);
 }
 
+/* Penjelasan konsekuensi pilihan di bawah kontrol (mis. pemilih jenis
+   trip). Memakai .form-hint sebagai sumber, tapi dengan ikon + line-height
+   supaya dua baris tetap enak dibaca. */
+.trip-ownership-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: var(--space-2) 0 0;
+  max-width: 34rem;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--color-gray-500);
+}
+
+.trip-ownership-hint svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Pemilih jenis trip. Dipakai sebagai "input": judul di atas, kotak
+   switch di bawah selebar kolom form (sama seperti .form-input), dan dua
+   opsi membagi lebar kotak secara sama. Panjang teks penjelasan di bawah
+   tidak boleh ikut menentukan lebar tombol. */
+.trip-ownership-switch {
+  min-width: 0;
+}
+
+.trip-ownership-switch .segmented-tabs {
+  width: 100%;
+  border-color: var(--color-gray-300);
+}
+
+.trip-ownership-switch .segmented-tabs:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-50);
+}
+
+.trip-ownership-switch .segmented-tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .form-textarea {
   min-height: 100px;
   resize: vertical;
@@ -2782,9 +2824,20 @@ details[open] > summary .foldable-chevron {
   left: 0;
   right: auto;
   width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   max-height: 220px;
   overflow-y: auto;
   z-index: 30;
+}
+
+/* Men.unit dropdown membuka ke atas saat ruang di bawah tidak cukup, supaya
+   menu tidak menambah tinggi scroll container (modal) saat diklik. */
+.combobox-menu-up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: var(--space-1);
 }
 
 .combobox-item-active {
@@ -2804,6 +2857,60 @@ details[open] > summary .foldable-chevron {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* Pemilih rencana trip di modal Edit/Hapus Trip.
+   Sengaja TIDAK memakai Combobox: dropdown-nya position:absolute di dalam
+   .modal yang overflow:hidden, jadi menu-nya ikut terpotong dan user harus
+   menggulir di dalam list yang setengah tertutup. Daftar di body dengan
+   area bergulir sendiri supaya banyak trip tetap terbaca dan tidak terpotong. */
+.trip-plan-picker {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.trip-plan-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.trip-plan-option:hover {
+  border-color: var(--color-gray-300);
+  background: var(--color-gray-50);
+}
+
+.trip-plan-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-surface);
+}
+
+.trip-plan-option input[type="radio"] {
+  flex-shrink: 0;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+
+.trip-plan-option-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.trip-plan-option-meta {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--color-gray-500);
 }
 
 .combobox-item-selected {

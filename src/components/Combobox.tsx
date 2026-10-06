@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
 
+// Must stay in sync with .combobox-menu max-height in globals.css.
+const MENU_MAX_HEIGHT = 220;
+
 export type ComboboxOption = string | { value: string; label: string; meta?: ReactNode };
 
 type NormalizedOption = { value: string; label: string; meta?: ReactNode };
@@ -39,6 +42,7 @@ export default function Combobox({
   allowCustomValue = true,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [query, setQuery] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +170,37 @@ export default function Combobox({
       activeItemRef.current?.scrollIntoView({ block: "nearest" });
     }
   }, [open, highlightedIndex, filteredOptions.length]);
+
+  // A dropdown that always opens downward grows the scrollable overflow of the
+  // nearest scroll container (the modal body), so clicking a field near the
+  // bottom edge makes the modal show a scrollbar it did not have before. Flip
+  // the menu above the field whenever there is more room up there.
+  useEffect(() => {
+    if (!open) {
+      setOpenUpward(false);
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setOpenUpward(spaceBelow < MENU_MAX_HEIGHT && spaceAbove > spaceBelow);
+
+    const handleViewportChange = () => {
+      const next = container.getBoundingClientRect();
+      const below = window.innerHeight - next.bottom;
+      setOpenUpward(below < MENU_MAX_HEIGHT && next.top > below);
+    };
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [open]);
 
   const selectOption = (option: NormalizedOption) => {
     if (disabledValues?.includes(option.value)) return;
@@ -303,7 +338,12 @@ export default function Combobox({
         <ChevronDown size={16} />
       </button>
       {open && (
-        <ul className="dropdown-menu combobox-menu" role="listbox">
+        <ul
+          className={
+            openUpward ? "dropdown-menu combobox-menu combobox-menu-up" : "dropdown-menu combobox-menu"
+          }
+          role="listbox"
+        >
           {filteredOptions.map((option, index) => (
             <li
               key={option.value + "::" + option.label}

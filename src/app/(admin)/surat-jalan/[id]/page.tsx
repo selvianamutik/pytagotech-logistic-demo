@@ -20,6 +20,7 @@ import {
     buildDeliveryOrderDetailState,
     createEmptyActualDropDraft,
     getActualCargoDraftsForDrop,
+    canTripAdvanceToStatus,
     getNextDeliveryOrderStatuses,
     shouldLockActualCargoVolume,
     shouldLockActualDropWeight,
@@ -280,9 +281,7 @@ export default function SuratJalanDetailPage() {
         : rawSuratJalanStatus;
     const tripStatusMeta = DO_STATUS_MAP[effectiveSuratJalanStatus] || getDeliveryOrderDisplayStatusMeta(deliveryOrder);
     const availableStatuses = getNextDeliveryOrderStatuses(effectiveSuratJalanStatus).filter(status =>
-        status === 'CREATED' ||
-        status === 'CANCELLED' ||
-        Boolean(deliveryOrder.vehicleRef && deliveryOrder.driverRef)
+        canTripAdvanceToStatus(status, deliveryOrder)
     );
     const isDeliveredStatus = effectiveSuratJalanStatus === 'DELIVERED';
     /**

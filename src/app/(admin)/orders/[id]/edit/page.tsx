@@ -17,12 +17,16 @@ import {
     type WeightInputUnit,
 } from '@/lib/measurement';
 import {
+    applyCustomerPickupMasterSelection,
     applyCustomerPickupToStop,
     applyOrderItemAutoWeightFromQty,
     createDefaultOrderItemForm,
     createDefaultPickupStopForm,
     findDefaultCustomerPickup,
     getDraftPickupStops,
+    getPickupStopMasterValue,
+    MANUAL_PICKUP_MASTER_LABEL,
+    MANUAL_PICKUP_MASTER_VALUE,
     sortCustomerPickups,
     summarizePickupStopList,
     applyOrderItemPickerSelection,
@@ -256,11 +260,10 @@ export default function OrderEditPage() {
 
     const handleCustomerPickupChange = (index: number, nextPickupRef: string) => {
         setShouldAutoApplyDefaultPickup(false);
-        const pickup = customerPickups.find(item => item._id === nextPickupRef);
         setForm(prev => {
             const nextStops = prev.pickupStops.map((stop, stopIndex) => (
                 stopIndex === index
-                    ? applyCustomerPickupToStop({ ...stop, customerPickupRef: nextPickupRef }, pickup)
+                    ? applyCustomerPickupMasterSelection(stop, nextPickupRef, customerPickups)
                     : stop
             ));
             return syncPickupFields({
@@ -586,14 +589,17 @@ export default function OrderEditPage() {
                                                 )}
                                             </div>
                                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                                <label className="form-label">Master Pickup Customer</label>
-                                                                                                <Combobox
-                                                    value={stop.customerPickupRef}
+<label className="form-label">Master Pickup Customer</label>
+                                                                                            <Combobox
+                                                    value={getPickupStopMasterValue(stop)}
                                                     onChange={(v: string) => handleCustomerPickupChange(index, v)}
-                                                    options={sortedCustomerPickups.map(pickup => (
-                                                        { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
-                                                    ))}
-                                                    placeholder={form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup') : 'Pilih customer dulu'}
+                                                    options={[
+                                                        { value: MANUAL_PICKUP_MASTER_VALUE, label: MANUAL_PICKUP_MASTER_LABEL },
+                                                        ...sortedCustomerPickups.map(pickup => (
+                                                            { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
+                                                        )),
+                                                    ]}
+                                                    placeholder={form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup, atau tulis manual' : 'Tulis manual di bawah') : 'Pilih customer dulu'}
                                                     disabled={isRevisionMode || headerFieldsLocked || !form.customerRef}
                                                     className="form-select"
                                                 />

@@ -81,26 +81,23 @@ function readRawCommaDecimal(value: unknown) {
   };
 }
 
+export const KG_PER_TON = 1000;
+export const LITERS_PER_M3 = 1000;
+
 export function convertWeightToKg(value: number, unit: WeightInputUnit) {
-  return unit === 'TON' ? value * 1000 : value;
+  return unit === 'TON' ? value * KG_PER_TON : value;
 }
 
 export function convertKgToWeightInputValue(valueKg: number, unit: WeightInputUnit) {
-  return unit === 'TON' ? valueKg / 1000 : valueKg;
+  return unit === 'TON' ? valueKg / KG_PER_TON : valueKg;
 }
 
 export function convertVolumeToM3(value: number, unit: VolumeInputUnit) {
-  if (unit === 'LITER') {
-    return value / 1000;
-  }
-  return value;
+  return unit === 'LITER' ? value / LITERS_PER_M3 : value;
 }
 
 export function convertM3ToVolumeInputValue(valueM3: number, unit: VolumeInputUnit) {
-  if (unit === 'LITER') {
-    return valueM3 * 1000;
-  }
-  return valueM3;
+  return unit === 'LITER' ? valueM3 * LITERS_PER_M3 : valueM3;
 }
 
 export function formatWeightDisplay(input: {

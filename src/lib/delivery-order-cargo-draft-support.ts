@@ -9,12 +9,15 @@ export type DeliveryOrderCargoDraftGroup = {
     id: string;
     shipperReferenceKey?: string;
     pickupStopKey: string;
+    // Alamat pickup ketik manual. Dipakai hanya saat pickupStopKey kosong
+    // (opsi "Tambah manual"), lalu dikirim sebagai pickupAddress.
+    pickupAddress: string;
     shipperReferenceNumber: string;
     items: DeliveryOrderCargoDraftItem[];
 };
 
 type PickupStopLike = Pick<DeliveryOrderPickupStop, '_key'>;
-type ShipperReferenceLike = Pick<DeliveryOrderShipperReference, '_key' | 'referenceNumber' | 'pickupStopKey'>;
+type ShipperReferenceLike = Pick<DeliveryOrderShipperReference, '_key' | 'referenceNumber' | 'pickupStopKey' | 'pickupAddress'>;
 
 export function toDeliveryOrderCargoDraftItem(item: DeliveryOrderCargoDraftItem | OrderItemForm): DeliveryOrderCargoDraftItem {
     return {
@@ -45,6 +48,7 @@ export function createDefaultDeliveryOrderCargoDraftGroup(pickupStopKey = ''): D
         id: crypto.randomUUID(),
         shipperReferenceKey: '',
         pickupStopKey,
+        pickupAddress: '',
         shipperReferenceNumber: '',
         items: [createDefaultDeliveryOrderCargoDraftItem()],
     };
@@ -93,6 +97,7 @@ export function buildInitialDeliveryOrderCargoDraftGroups(params: {
             shipperReferenceKey: reference._key || '',
             referenceNumber: reference.referenceNumber?.trim().toUpperCase() || '',
             pickupStopKey: reference.pickupStopKey || defaultPickupStopKey,
+            pickupAddress: reference.pickupAddress?.trim() || '',
         }))
         .filter(reference => Boolean(reference.referenceNumber));
 
@@ -104,6 +109,7 @@ export function buildInitialDeliveryOrderCargoDraftGroups(params: {
         id: crypto.randomUUID(),
         shipperReferenceKey: reference.shipperReferenceKey,
         pickupStopKey: reference.pickupStopKey,
+        pickupAddress: reference.pickupAddress,
         shipperReferenceNumber: reference.referenceNumber,
         items: [createDefaultDeliveryOrderCargoDraftItem()],
     }));

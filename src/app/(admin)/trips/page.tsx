@@ -11,6 +11,7 @@ import { DO_STATUS_MAP, formatDate } from '@/lib/utils';
 import { formatCargoSummary } from '@/lib/measurement';
 import type { CargoSummary, Trip } from '@/lib/trip-document-types';
 import type { DriverVoucher } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 import { hasPageAccess } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
 import Combobox from '@/components/Combobox';
@@ -36,6 +37,10 @@ function getTripBonStatusMeta(trip: Trip, voucher?: DriverVoucher): TripBonStatu
     }
 
     return { label: 'Bon berjalan', color: 'info' };
+}
+
+function isMitraTrip(trip: Pick<Trip, 'tripOwnership'>) {
+    return normalizeTripOwnership(trip.tripOwnership) === 'MITRA';
 }
 
 function matchesTripSearch(trip: Trip, search: string) {
@@ -293,12 +298,12 @@ export default function TripsPage() {
                                 const bonStatusMeta = getTripBonStatusMeta(item, voucher);
                                 return (
                                     <tr key={item._id}>
-                                        <td><Link className="font-semibold" style={{ color: 'var(--color-primary)' }} href={`/trips/${item._id}`}>{item.tripNumber}</Link></td>
+                                        <td><Link className="font-semibold" style={{ color: 'var(--color-primary)' }} href={`/trips/${item._id}`}>{item.tripNumber}</Link>{isMitraTrip(item) && <div><span className="badge badge-info">Mitra</span></div>}</td>
                                         <td>{canOpenSourceOrderPage ? <Link href={`/orders/${item.orderRef}`}>{item.masterResi || '-'}</Link> : (item.masterResi || '-')}</td>
                                         <td>{item.customerRef && canOpenCustomerPage ? <Link href={`/customers/${item.customerRef}`}>{item.customerName || '-'}</Link> : (item.customerName || '-')}</td>
                                         <td>{item.tripOriginArea && item.tripDestinationArea ? `${item.tripOriginArea} -> ${item.tripDestinationArea}` : `${item.pickupAddress || '-'} -> ${item.receiverAddress || '-'}`}</td>
-                                        <td>{item.vehicleRef && canOpenVehiclePage ? <Link href={`/fleet/vehicles/${item.vehicleRef}`}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-')}</td>
-                                        <td>{item.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${item.driverRef}`}>{item.driverName || '-'}</Link> : (item.driverName || '-')}</td>
+                                        <td>{isMitraTrip(item) ? <span className="text-muted">Dikelola Mitra</span> : (item.vehicleRef && canOpenVehiclePage ? <Link href={`/fleet/vehicles/${item.vehicleRef}`}>{item.vehiclePlate || '-'}</Link> : (item.vehiclePlate || '-'))}</td>
+                                        <td>{isMitraTrip(item) ? <span className="text-muted">Dikelola Mitra</span> : (item.driverRef && canOpenDriverPage ? <Link href={`/fleet/drivers/${item.driverRef}`}>{item.driverName || '-'}</Link> : (item.driverName || '-'))}</td>
                                         <td>{formatDate(item.date)}</td>
                                         <td>
                                             {renderTripSuratJalanLinks(item)}
@@ -306,15 +311,21 @@ export default function TripsPage() {
                                         </td>
                                         <td><span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span></td>
                                         <td>
-                                            <span className={`badge badge-${bonStatusMeta.color}`}>
-                                                <span className="badge-dot" /> {bonStatusMeta.label}
-                                            </span>
-                                            {voucher?.bonNumber && (
-                                                <div className="text-muted text-sm" style={{ marginTop: 4 }}>
-                                                    {canOpenDriverVoucherPage ? (
-                                                        <Link href={`/driver-vouchers/${voucher._id}`}>{voucher.bonNumber}</Link>
-                                                    ) : voucher.bonNumber}
-                                                </div>
+                                            {isMitraTrip(item) && !voucher ? (
+                                                <span className="text-muted">Tidak ada (Mitra)</span>
+                                            ) : (
+                                                <>
+                                                <span className={`badge badge-${bonStatusMeta.color}`}>
+                                                    <span className="badge-dot" /> {bonStatusMeta.label}
+                                                </span>
+                                                {voucher?.bonNumber && (
+                                                    <div className="text-muted text-sm" style={{ marginTop: 4 }}>
+                                                        {canOpenDriverVoucherPage ? (
+                                                            <Link href={`/driver-vouchers/${voucher._id}`}>{voucher.bonNumber}</Link>
+                                                        ) : voucher.bonNumber}
+                                                    </div>
+                                                )}
+                                                </>
                                             )}
                                         </td>
                                         <td><Link className="table-action-btn" href={`/trips/${item._id}`}><Eye size={14} /> Detail</Link></td>
@@ -333,11 +344,14 @@ export default function TripsPage() {
                             <div className="mobile-data-card" key={item._id}>
                                 <div className="mobile-card-header">
                                     <Link className="mobile-card-title" href={`/trips/${item._id}`}>{item.tripNumber}</Link>
-                                    <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                        <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
+                                        {isMitraTrip(item) && <span className="badge badge-info">Mitra</span>}
+                                    </div>
                                 </div>
                                 <div className="mobile-card-body">
                                     <div><strong>{item.masterResi || '-'}</strong> | {item.customerName || '-'}</div>
-                                    <div>{item.vehiclePlate || '-'} | {item.driverName || '-'}</div>
+                                    <div>{isMitraTrip(item) ? 'Armada & driver: Dikelola Mitra' : `${item.vehiclePlate || '-'} | ${item.driverName || '-'}`}</div>
                                     <div>{formatDate(item.date)}</div>
                                     <div>{renderTripSuratJalanLinks(item)}</div>
                                     <div className="text-muted text-sm">{renderTripCargoSummary(item)}</div>
