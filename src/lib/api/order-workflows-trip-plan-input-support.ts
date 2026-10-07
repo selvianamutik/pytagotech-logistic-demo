@@ -1,9 +1,9 @@
 import { getBusinessDateValue } from '@/lib/business-date';
 import {
     getDocumentById,
-    listDocumentsByFilter,
 } from '@/lib/repositories/document-store';
 import type { OrderPickupStop, OrderTripPlan } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 
 import {
     assertIsoDate,
@@ -87,16 +87,25 @@ export async function resolveOrderPickupStopExpansion(params: {
     extraPickupRefs: string[];
     orderCustomerRef: string | null | undefined;
 }) {
-    const extraPickupDocs = params.extraPickupRefs.length > 0
-        ? await listDocumentsByFilter<{
-            _id: string;
-            customerRef?: unknown;
-            label?: string;
-            pickupAddress?: string;
-            notes?: string;
-            active?: boolean;
-        }>('customerPickupLocation', { _id: params.extraPickupRefs })
-        : [];
+    if (params.extraPickupRefs.length > 0) {
+        return {
+            error: {
+                message: 'Titik pickup dari master data tidak bisa dipakai langsung. Tambahkan dulu sebagai titik pickup order.',
+                status: 409,
+            },
+            effectiveOrderPickupStops: params.currentOrderPickupStops,
+            pickupStopKeyAlias: new Map<string, string>(),
+            addedPickupStopCount: 0,
+        };
+    }
+    const extraPickupDocs: Array<{
+        _id: string;
+        customerRef?: unknown;
+        label?: string;
+        pickupAddress?: string;
+        notes?: string;
+        active?: boolean;
+    }> = [];
     if (extraPickupDocs.length !== params.extraPickupRefs.length) {
         return {
             error: {
@@ -182,9 +191,11 @@ export async function normalizeOrderTripPlansInput(
     const validPickupStopKeys = new Set(pickupStops.map(stop => stop._key).filter((key): key is string => Boolean(key)));
 
     for (const [index, rawPlan] of rawPlans.filter(isPlainObject).entries()) {
-        const vehicleRef = normalizeText(rawPlan.vehicleRef);
-        const driverRef = normalizeText(rawPlan.driverRef);
-        const issueBankRef = normalizeText(rawPlan.issueBankRef);
+        const tripOwnership = normalizeTripOwnership(rawPlan.tripOwnership);
+        const isMitraTrip = tripOwnership === 'MITRA';
+        const vehicleRef = isMitraTrip ? '' : normalizeText(rawPlan.vehicleRef);
+        const driverRef = isMitraTrip ? '' : normalizeText(rawPlan.driverRef);
+        const issueBankRef = isMitraTrip ? '' : normalizeText(rawPlan.issueBankRef);
         const cashGiven = normalizeCurrencyNumber(rawPlan.cashGiven ?? 0);
         const requestedTaripBorongan = normalizeCurrencyNumber(rawPlan.taripBorongan ?? rawPlan.tripFee ?? 0);
         const date = normalizeOptionalText(rawPlan.date) || getBusinessDateValue();
@@ -196,17 +207,19 @@ export async function normalizeOrderTripPlansInput(
         if (pickupStopKeys.length === 0) {
             throw new Error(`Minimal 1 titik pickup wajib dipilih pada trip ${index + 1}`);
         }
-        if (!vehicleRef) {
-            throw new Error(`Kendaraan wajib dipilih pada trip ${index + 1}`);
-        }
-        if (!driverRef) {
-            throw new Error(`Supir wajib dipilih pada trip ${index + 1}`);
-        }
-        if (!issueBankRef) {
-            throw new Error(`Rekening atau kas sumber wajib dipilih pada trip ${index + 1}`);
-        }
-        if (!Number.isFinite(cashGiven) || cashGiven <= 0) {
-            throw new Error(`Nominal uang jalan awal wajib diisi pada trip ${index + 1}`);
+        if (!isMitraTrip) {
+            if (!vehicleRef) {
+                throw new Error(`Kendaraan wajib dipilih pada trip ${index + 1}`);
+            }
+            if (!driverRef) {
+                throw new Error(`Supir wajib dipilih pada trip ${index + 1}`);
+            }
+            if (!issueBankRef) {
+                throw new Error(`Rekening atau kas sumber wajib dipilih pada trip ${index + 1}`);
+            }
+            if (!Number.isFinite(cashGiven) || cashGiven <= 0) {
+                throw new Error(`Nominal uang jalan awal wajib diisi pada trip ${index + 1}`);
+            }
         }
         if (!Number.isFinite(requestedTaripBorongan) || requestedTaripBorongan < 0) {
             throw new Error(`Upah trip pada trip ${index + 1} tidak valid`);
@@ -214,39 +227,51 @@ export async function normalizeOrderTripPlansInput(
         assertIsoDate(date, `Tanggal trip ${index + 1}`);
 
         const [vehicle, driver, issueBank] = await Promise.all([
-            getDocumentById<{
-                _id: string;
-                plateNumber?: string;
-                status?: string;
-                serviceRef?: string;
-                serviceName?: string;
-            }>(vehicleRef, 'vehicle'),
-            getDocumentById<{ _id: string; name?: string; active?: boolean }>(driverRef, 'driver'),
-            getDocumentById<{ _id: string; bankName?: string; accountNumber?: string; active?: boolean }>(issueBankRef, 'bankAccount'),
+            vehicleRef
+                ? getDocumentById<{
+                    _id: string;
+                    plateNumber?: string;
+                    status?: string;
+                    serviceRef?: string;
+                    serviceName?: string;
+                }>(vehicleRef, 'vehicle')
+                : Promise.resolve(null),
+            driverRef
+                ? getDocumentById<{ _id: string; name?: string; active?: boolean }>(driverRef, 'driver')
+                : Promise.resolve(null),
+            issueBankRef
+                ? getDocumentById<{ _id: string; bankName?: string; accountNumber?: string; active?: boolean }>(issueBankRef, 'bankAccount')
+                : Promise.resolve(null),
         ]);
 
-        if (!vehicle) {
-            throw new Error(`Kendaraan pada trip ${index + 1} tidak ditemukan`);
+        if (vehicleRef) {
+            if (!vehicle) {
+                throw new Error(`Kendaraan pada trip ${index + 1} tidak ditemukan`);
+            }
+            if (vehicle.status === 'SOLD' || vehicle.status === 'OUT_OF_SERVICE') {
+                throw new Error(`Kendaraan pada trip ${index + 1} tidak bisa dipakai`);
+            }
         }
-        if (vehicle.status === 'SOLD' || vehicle.status === 'OUT_OF_SERVICE') {
-            throw new Error(`Kendaraan pada trip ${index + 1} tidak bisa dipakai`);
+        if (driverRef) {
+            if (!driver) {
+                throw new Error(`Supir pada trip ${index + 1} tidak ditemukan`);
+            }
+            if (driver.active === false) {
+                throw new Error(`Supir pada trip ${index + 1} tidak aktif`);
+            }
         }
-        if (!driver) {
-            throw new Error(`Supir pada trip ${index + 1} tidak ditemukan`);
-        }
-        if (driver.active === false) {
-            throw new Error(`Supir pada trip ${index + 1} tidak aktif`);
-        }
-        if (!issueBank) {
-            throw new Error(`Rekening atau kas sumber pada trip ${index + 1} tidak ditemukan`);
-        }
-        if (issueBank.active === false) {
-            throw new Error(`Rekening atau kas sumber pada trip ${index + 1} tidak aktif`);
+        if (issueBankRef) {
+            if (!issueBank) {
+                throw new Error(`Rekening atau kas sumber pada trip ${index + 1} tidak ditemukan`);
+            }
+            if (issueBank.active === false) {
+                throw new Error(`Rekening atau kas sumber pada trip ${index + 1} tidak aktif`);
+            }
         }
 
-        const vehicleServiceRef = extractRefId(vehicle.serviceRef) || undefined;
+        const vehicleServiceRef = vehicle ? extractRefId(vehicle.serviceRef) || undefined : undefined;
         const vehicleCategoryOverrideReason = normalizeOptionalText(rawPlan.vehicleCategoryOverrideReason);
-        if (serviceRef && vehicleServiceRef !== serviceRef && !vehicleCategoryOverrideReason) {
+        if (!isMitraTrip && serviceRef && vehicleServiceRef !== serviceRef && !vehicleCategoryOverrideReason) {
             throw new Error(`Alasan override armada wajib diisi pada trip ${index + 1}`);
         }
         const effectiveRouteServiceRef = serviceRef || vehicleServiceRef;
@@ -261,34 +286,42 @@ export async function normalizeOrderTripPlansInput(
         }
         const matchedTripRouteRateFee = normalizeCurrencyNumber(tripRouteSelection.matchedTripRouteRate?.rate ?? 0);
         if (
+            !isMitraTrip &&
             matchedTripRouteRateFee > 0 &&
             requestedTaripBorongan > 0 &&
             Math.abs(requestedTaripBorongan - matchedTripRouteRateFee) > 0.01
         ) {
             throw new Error(`Upah trip pada trip ${index + 1} mengikuti master biaya rute trip yang dipilih`);
         }
-        const taripBorongan = matchedTripRouteRateFee > 0 ? matchedTripRouteRateFee : requestedTaripBorongan;
-        if (!Number.isFinite(taripBorongan) || taripBorongan <= 0) {
+        const taripBorongan = isMitraTrip
+            ? 0
+            : matchedTripRouteRateFee > 0
+                ? matchedTripRouteRateFee
+                : requestedTaripBorongan;
+        if (!isMitraTrip && (!Number.isFinite(taripBorongan) || taripBorongan <= 0)) {
             throw new Error(`Upah trip wajib diisi pada trip ${index + 1}`);
         }
 
         plans.push({
             _key: normalizeOptionalText(rawPlan._key) || crypto.randomUUID(),
             sequence: index + 1,
+            tripOwnership,
             pickupStopKeys,
             vehicleRef,
-            vehiclePlate: vehicle.plateNumber,
+            vehiclePlate: vehicle?.plateNumber,
             vehicleServiceRef,
-            vehicleServiceName: vehicle.serviceName,
+            vehicleServiceName: vehicle?.serviceName,
             vehicleCategoryOverrideReason,
             driverRef,
-            driverName: driver.name,
+            driverName: driver?.name,
             tripRouteRateRef: tripRouteSelection.tripRouteRateRef,
             tripOriginArea: tripRouteSelection.tripOriginArea,
             tripDestinationArea: tripRouteSelection.tripDestinationArea,
             taripBorongan,
             issueBankRef,
-            issueBankName: [issueBank.bankName, issueBank.accountNumber].filter(Boolean).join(' - ') || issueBank.bankName,
+            issueBankName: issueBank
+                ? [issueBank.bankName, issueBank.accountNumber].filter(Boolean).join(' - ') || issueBank.bankName
+                : undefined,
             cashGiven,
             date,
             notes: normalizeOptionalText(rawPlan.notes),

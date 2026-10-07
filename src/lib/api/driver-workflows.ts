@@ -19,6 +19,7 @@ import {
     updateDocument,
 } from '@/lib/repositories/document-store';
 import type { CompanyProfile, DriverVoucher, Expense } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 
 import {
     assertIsoDate,
@@ -942,10 +943,17 @@ export async function handleDriverVoucherCreate(
         tripOriginArea?: string;
         tripDestinationArea?: string;
         taripBorongan?: number;
+        tripOwnership?: string;
         orderRef?: unknown;
     }>(deliveryOrderRef, 'deliveryOrder');
     if (!deliveryOrder) {
         return NextResponse.json({ error: 'Surat jalan bon tidak ditemukan' }, { status: 404 });
+    }
+    if (normalizeTripOwnership(deliveryOrder.tripOwnership) === 'MITRA') {
+        return NextResponse.json(
+            { error: 'Trip mitra tidak memakai uang jalan trip internal.' },
+            { status: 409 }
+        );
     }
     if (deliveryOrder.status && !['CREATED', 'ON_DELIVERY', 'ARRIVED', 'DELIVERED'].includes(deliveryOrder.status)) {
         return NextResponse.json(

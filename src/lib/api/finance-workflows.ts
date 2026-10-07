@@ -25,9 +25,10 @@ import {
     getDocumentById,
     getNextNumber,
     listDocumentsByFilter,
+    peekNextNumber,
     updateDocument,
 } from '@/lib/repositories/document-store';
-import { buildFreightNotaDisplayNumberFromParts } from '@/lib/nota-numbering';
+import { resolveFreightNotaDisplayNumber } from '@/lib/nota-numbering';
 import { findMatchingCustomerBillingRate } from '@/lib/customer-billing-rates';
 import { buildFreightNotaCoverageRowKeys, buildNotaRowsFromDeliveryOrder } from '@/lib/invoice-create-page-support';
 import { DEFAULT_PPH23_RATE_PERCENT, normalizePph23BaseMode, normalizePph23Enabled, normalizePph23RatePercent } from '@/lib/pph23';
@@ -69,6 +70,7 @@ import {
     type BankAccountSummary,
 } from './data-helpers';
 import { recomputeBankLedgerBalancesForAccounts, bankTransactionOrderKey } from './bank-balance-helpers';
+import { findNotaRowBilledToDifferentCustomer } from './order-workflow-support';
 import {
     INVOICE_ADJUSTMENT_KIND_SET,
     buildReceivablePatch,
@@ -2686,6 +2688,29 @@ export async function handleExpenseCreate(
     }
 }
 
+/**
+ * Read-only preview for the create-invoice form: the next internal number plus the series
+ * code, so the client can show both "No. Invoice Internal" and the derived "No. Cetak Invoice"
+ * without consuming the numbering counter.
+ */
+export async function handleFreightNotaPeekNumber(data: Record<string, unknown>) {
+    const issueDate = normalizeText(data.issueDate) || getBusinessDateValue();
+    const notaNumber = await peekNextNumber('nota', issueDate);
+    const { notaSeriesCode } = await loadFreightNotaDocumentSettings();
+
+    return NextResponse.json({
+        data: {
+            notaNumber,
+            notaSeriesCode: notaSeriesCode || null,
+            notaDisplayNumber: resolveFreightNotaDisplayNumber({
+                notaNumber,
+                issueDate,
+                notaSeriesCode,
+            }),
+        },
+    });
+}
+
 export async function handleFreightNotaCreate(
     session: ApiSession,
     data: Record<string, unknown>,
@@ -2816,6 +2841,7 @@ export async function handleFreightNotaCreate(
             doNumber?: string;
             customerDoNumber?: string;
             customerRef?: unknown;
+            customerRefs?: string[];
             customerName?: string;
             vehiclePlate?: string;
             serviceRef?: string;
@@ -2962,6 +2988,24 @@ export async function handleFreightNotaCreate(
             deliveryOrder: deliveryOrder as DeliveryOrder,
             builtRows: builtNotaRowsByDoRef.get(row.doRef) || [],
         });
+
+        // A trip that serves more than one customer must have an explicit billing customer on the
+        // row: a scalar fallback would silently bill the other customer's cargo to the primary.
+        if ((deliveryOrder.customerRefs || []).length > 1) {
+            const rowCustomerSource: 'drop' | 'reference' | 'scalar' = matchedBuiltRow?.customerSource
+                || ((deliveryOrder.shipperReferences || []).some(reference =>
+                    normalizeOptionalText(reference.referenceNumber) === resolvedNoSj
+                    && normalizeOptionalText(reference.billingCustomerRef)
+                ) ? 'reference' : 'scalar');
+            if (rowCustomerSource === 'scalar') {
+                return NextResponse.json(
+                    {
+                        error: `Trip ${deliveryOrder.doNumber || row.doRef} melayani lebih dari satu customer. Tentukan Customer Invoice untuk SJ ${resolvedNoSj || row.noSJ || '-'} dulu sebelum ditagihkan.`,
+                    },
+                    { status: 409 }
+                );
+            }
+        }
 
         if (deliveryOrder.status !== 'DELIVERED' && !hasActualDropPoints) {
             return NextResponse.json(
@@ -3331,6 +3375,20 @@ export async function handleFreightNotaCreate(
         }
     }
 
+    // Rule 4: an SJ is billed once, by one customer. The existing coverage rules already stop the same
+    // cargo being billed twice for the same customer; this stops the *other* customer from billing an
+    // SJ that another customer already billed. Voiding the nota releases its SJs, so a wrong customer
+    // can still be corrected.
+    const crossCustomerSJBilling = await findNotaRowBilledToDifferentCustomer(rows);
+    if (crossCustomerSJBilling) {
+        return NextResponse.json(
+            {
+                error: `SJ ${crossCustomerSJBilling.noSJ} sudah ditagihkan ke customer lain pada DO ${crossCustomerSJBilling.doRef}. Batalkan atau revisi invoice itu dulu kalau customer-nya salah.`,
+            },
+            { status: 409 }
+        );
+    }
+
     const inferredCustomerRefs = [...new Set(
         rows
             .map(row => normalizeOptionalText(row.customerRef))
@@ -3479,7 +3537,24 @@ export async function handleFreightNotaCreate(
     );
 
     const notaId = crypto.randomUUID();
-    const notaNumber = await getNextNumber('nota', issueDate);
+    // The internal number is either typed by the operator or consumed from the configured counter.
+    const requestedNotaNumber = normalizeOptionalText(data.notaNumber) || '';
+    const notaNumberManual = requestedNotaNumber.length > 0;
+    let notaNumber = requestedNotaNumber;
+    if (notaNumberManual) {
+        const conflictingNota = (await listDocumentsByFilter<{ _id?: string; notaNumber?: string }>(
+            'freightNota',
+            { notaNumber }
+        )).find(row => normalizeOptionalText(row.notaNumber) === notaNumber);
+        if (conflictingNota) {
+            return NextResponse.json(
+                { error: `No. Invoice ${notaNumber} sudah dipakai invoice lain. Pakai nomor lain atau kosongkan untuk nomor otomatis.` },
+                { status: 409 }
+            );
+        }
+    } else {
+        notaNumber = await getNextNumber('nota', issueDate);
+    }
     const {
         instructionAccounts,
         notaSeriesCode,
@@ -3493,11 +3568,28 @@ export async function handleFreightNotaCreate(
         issuerCompanySignatureName,
         issuerCompanyNpwp,
     } = await loadFreightNotaDocumentSettings();
-    const notaDisplayNumber = buildFreightNotaDisplayNumberFromParts(
+    // "No. Cetak Invoice" is independent from the internal number: stored verbatim when the
+    // operator sets it, otherwise derived from the internal number.
+    const requestedDisplayNumber = normalizeOptionalText(data.notaDisplayNumber) || '';
+    const notaDisplayNumberManual = requestedDisplayNumber.length > 0;
+    if (notaDisplayNumberManual) {
+        const conflictingDisplayNota = (await listDocumentsByFilter<{ _id?: string; notaDisplayNumber?: string }>(
+            'freightNota',
+            { notaDisplayNumber: requestedDisplayNumber }
+        )).find(row => normalizeOptionalText(row.notaDisplayNumber) === requestedDisplayNumber);
+        if (conflictingDisplayNota) {
+            return NextResponse.json(
+                { error: `No. Cetak Invoice ${requestedDisplayNumber} sudah dipakai invoice lain. Pakai nomor lain atau kosongkan untuk nomor otomatis.` },
+                { status: 409 }
+            );
+        }
+    }
+    const notaDisplayNumber = resolveFreightNotaDisplayNumber({
         notaNumber,
         issueDate,
         notaSeriesCode,
-    );
+        manualDisplayNumber: requestedDisplayNumber,
+    });
     let resolvedDueDate = normalizeOptionalText(data.dueDate);
     if (resolvedDueDate) {
         const dueDateError = validateIsoDateOrResponse(
@@ -3565,6 +3657,8 @@ export async function handleFreightNotaCreate(
         footerNote,
         notes: normalizeOptionalText(data.notes),
         notaNumber,
+        notaNumberManual: notaNumberManual ? true : undefined,
+        notaDisplayNumberManual: notaDisplayNumberManual ? true : undefined,
     };
 
     await createDocument(notaDoc);
@@ -3759,6 +3853,7 @@ export async function handleFreightNotaUpdate(
             doNumber?: string;
             customerDoNumber?: string;
             customerRef?: unknown;
+            customerRefs?: string[];
             customerName?: string;
             vehiclePlate?: string;
             serviceRef?: string;
@@ -3895,6 +3990,24 @@ export async function handleFreightNotaUpdate(
             deliveryOrder: deliveryOrder as DeliveryOrder,
             builtRows: builtNotaRowsByDoRef.get(row.doRef) || [],
         });
+
+        // Same rule as create: a multi-customer trip needs an explicit billing customer per row.
+        if ((deliveryOrder.customerRefs || []).length > 1) {
+            const rowCustomerSource: 'drop' | 'reference' | 'scalar' = matchedBuiltRow?.customerSource
+                || ((deliveryOrder.shipperReferences || []).some(reference =>
+                    normalizeOptionalText(reference.referenceNumber) === resolvedNoSj
+                    && normalizeOptionalText(reference.billingCustomerRef)
+                ) ? 'reference' : 'scalar');
+            if (rowCustomerSource === 'scalar') {
+                return NextResponse.json(
+                    {
+                        error: `Trip ${deliveryOrder.doNumber || row.doRef} melayani lebih dari satu customer. Tentukan Customer Invoice untuk SJ ${resolvedNoSj || row.noSJ || '-'} dulu sebelum ditagihkan.`,
+                    },
+                    { status: 409 }
+                );
+            }
+        }
+
         if (deliveryOrder.status !== 'DELIVERED' && !hasActualDropPoints) {
             return NextResponse.json(
                 {
@@ -4135,6 +4248,20 @@ export async function handleFreightNotaUpdate(
         }
     }
 
+    // Rule 4: an SJ is billed once, by one customer. The existing coverage rules already stop the same
+    // cargo being billed twice for the same customer; this stops the *other* customer from billing an
+    // SJ that another customer already billed. Voiding the nota releases its SJs, so a wrong customer
+    // can still be corrected.
+    const crossCustomerSJBilling = await findNotaRowBilledToDifferentCustomer(rows);
+    if (crossCustomerSJBilling) {
+        return NextResponse.json(
+            {
+                error: `SJ ${crossCustomerSJBilling.noSJ} sudah ditagihkan ke customer lain pada DO ${crossCustomerSJBilling.doRef}. Batalkan atau revisi invoice itu dulu kalau customer-nya salah.`,
+            },
+            { status: 409 }
+        );
+    }
+
     const inferredCustomerRefs = [...new Set(
         rows
             .map(row => normalizeOptionalText(row.customerRef))
@@ -4310,7 +4437,16 @@ export async function handleFreightNotaUpdate(
         issuerCompanyNpwp,
     } = await loadFreightNotaDocumentSettings();
     const notaNumber = normalizeText(snapshot.doc.notaNumber) || notaId;
-    const notaDisplayNumber = buildFreightNotaDisplayNumberFromParts(notaNumber, issueDate, notaSeriesCode);
+    // Revision never changes either number. A manually set printed number stays verbatim;
+    // otherwise the printed number is re-derived from the stored internal number.
+    const notaDisplayNumber = resolveFreightNotaDisplayNumber({
+        notaNumber,
+        issueDate,
+        notaSeriesCode,
+        manualDisplayNumber: snapshot.doc.notaDisplayNumberManual === true
+            ? normalizeText(snapshot.doc.notaDisplayNumber)
+            : undefined,
+    });
 
     const existingNotaItems = await listDocumentsByFilter<Array<{ _id: string; status?: string }>[number]>(
         'freightNotaItem',

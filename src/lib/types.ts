@@ -238,9 +238,26 @@ export interface OrderPickupStop {
   notes?: string;
 }
 
+export type TripOwnership = 'INTERNAL' | 'MITRA';
+
+export const TRIP_OWNERSHIP_LABELS: Record<TripOwnership, string> = {
+  INTERNAL: 'Internal',
+  MITRA: 'Mitra',
+};
+
+export const TRIP_OWNERSHIP_OPTIONS: Array<{ value: TripOwnership; label: string }> = (
+    Object.keys(TRIP_OWNERSHIP_LABELS) as TripOwnership[]
+).map(value => ({ value, label: TRIP_OWNERSHIP_LABELS[value] }));
+
+export function normalizeTripOwnership(value: unknown): TripOwnership {
+    const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+    return normalized === 'MITRA' ? 'MITRA' : 'INTERNAL';
+}
+
 export interface OrderTripPlan {
   _key?: string;
   sequence: number;
+  tripOwnership?: TripOwnership;
   pickupStopKeys?: string[];
   vehicleRef: string;
   vehiclePlate?: string;
@@ -643,6 +660,12 @@ export interface Order {
   cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
   customerRef: string;
   customerName?: string;
+  /**
+   * Additional customers this order/trip serves; the primary `customerRef` is always first.
+   * Declared for display, billing selection, export and the driver app — actual billing stays
+   * per-SJ via `billingCustomerRef`. Absent or a single entry = single-customer order.
+   */
+  customerRefs?: string[];
   customerRecipientRef?: string;
   customerPickupRef?: string;
   receiverName?: string;
@@ -762,6 +785,8 @@ export interface DeliveryOrder {
   orderRef: string;
   masterResi?: string;
   customerRef?: string;
+  /** Additional customers this trip serves; the primary `customerRef` is always first. */
+  customerRefs?: string[];
   vehicleRef?: string;
   vehiclePlate?: string;
   driverRef?: string;
@@ -783,6 +808,7 @@ export interface DeliveryOrder {
   shipperReferences?: DeliveryOrderShipperReference[];
   serviceRef?: string;
   serviceName?: string;
+  tripOwnership?: TripOwnership;
   vehicleServiceRef?: string;
   vehicleServiceName?: string;
   vehicleCategoryOverrideReason?: string;
@@ -804,6 +830,7 @@ export interface DeliveryOrder {
   overtonaseDriverRatePerKg?: number;
   overtonaseDriverAmount?: number;
   vehicleCapacityExceededKg?: number;
+  manualTripFeeDeductionAmount?: number;
   trackingState?: 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED';
   trackingStartedAt?: string;
   trackingStoppedAt?: string;
@@ -925,6 +952,10 @@ export interface FreightNota {
   _type: 'freightNota';
   notaNumber: string;
   notaDisplayNumber?: string;
+  /** True when the operator typed the internal invoice number instead of using the counter. */
+  notaNumberManual?: boolean;
+  /** True when the operator typed the printed number ("No. Cetak Invoice") themselves. */
+  notaDisplayNumberManual?: boolean;
   issuerCompanyName?: string;
   issuerCompanyAddress?: string;
   issuerCompanyPhone?: string;

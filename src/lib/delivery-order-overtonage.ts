@@ -7,6 +7,7 @@ export type DeliveryOrderOvertonageResult = {
     overtonaseDriverRatePerKg?: number;
     overtonaseDriverAmount?: number;
     vehicleCapacityExceededKg?: number;
+    manualTripFeeDeductionAmount?: number;
     effectiveTripFee: number;
 };
 
@@ -34,6 +35,7 @@ export function computeDeliveryOrderOvertonage(params: {
     baseTripFee?: unknown;
     overtonaseDriverRatePerKg?: unknown;
     manualOvertonaseWeightKg?: unknown;
+    manualTripFeeDeductionAmount?: unknown;
 }): DeliveryOrderOvertonageResult {
     const actualTotalWeightKg = roundQuantity(normalizeNonNegative(params.actualTotalWeightKg));
     const serviceMaxPayloadKg = roundQuantity(normalizeNonNegative(params.serviceMaxPayloadKg));
@@ -41,6 +43,7 @@ export function computeDeliveryOrderOvertonage(params: {
     const baseTripFee = Math.round(normalizeNonNegative(params.baseTripFee));
     const overtonaseDriverRatePerKg = Math.round(normalizeNonNegative(params.overtonaseDriverRatePerKg));
     const manualOvertonaseWeightKg = roundQuantity(normalizeNonNegative(params.manualOvertonaseWeightKg));
+    const manualTripFeeDeductionAmount = Math.round(normalizeNonNegative(params.manualTripFeeDeductionAmount));
     const effectivePayloadLimitKg = serviceMaxPayloadKg > 0 ? serviceMaxPayloadKg : 0;
 
     const automaticOvertonaseWeightKg =
@@ -69,6 +72,7 @@ export function computeDeliveryOrderOvertonage(params: {
         overtonaseDriverRatePerKg: overtonaseDriverRatePerKg > 0 ? overtonaseDriverRatePerKg : undefined,
         overtonaseDriverAmount: overtonaseDriverAmount > 0 ? overtonaseDriverAmount : undefined,
         vehicleCapacityExceededKg: vehicleCapacityExceededKg > 0 ? vehicleCapacityExceededKg : undefined,
-        effectiveTripFee: baseTripFee + overtonaseDriverAmount,
+        manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : undefined,
+        effectiveTripFee: Math.max(baseTripFee + overtonaseDriverAmount - manualTripFeeDeductionAmount, 0),
     };
 }

@@ -66,6 +66,7 @@ export async function computeTripOvertonageAdjustment(params: {
                 ? normalizeCurrencyNumber(deliveryOrder.overtonaseDriverRatePerKg ?? 0)
                 : getTripRouteOvertonaseRatePerKg(tripRouteRate),
         manualOvertonaseWeightKg: deliveryOrder.manualOvertonaseWeightKg,
+        manualTripFeeDeductionAmount: deliveryOrder.manualTripFeeDeductionAmount,
     });
 
     let linkedVoucherPatch:

@@ -12,12 +12,16 @@ import { formatCreditLimitCurrency, formatCustomerCreditBlockMessage, summarizeC
 import { buildServiceCapacityRangeMap, formatUnitCapacityLabel } from '@/lib/service-capacity-support';
 import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel } from '@/lib/trip-route-rate-support';
 import { buildTripResourceAssignments, tripDriverAssignments, tripVehicleAssignments } from '@/lib/trip-resource-lock-support';
-import type { BankAccount, Customer, CustomerPickupLocation, DeliveryOrder, Driver, FreightNota, Order, Service, TripRouteRate, Vehicle } from '@/lib/types';
+import type { BankAccount, Customer, CustomerPickupLocation, DeliveryOrder, Driver, FreightNota, Order, Service, TripOwnership, TripRouteRate, Vehicle } from '@/lib/types';
 import {
+    applyCustomerPickupMasterSelection,
     applyCustomerPickupToStop,
     createDefaultPickupStopForm,
     findDefaultCustomerPickup,
     getDraftPickupStops,
+    getPickupStopMasterValue,
+    MANUAL_PICKUP_MASTER_LABEL,
+    MANUAL_PICKUP_MASTER_VALUE,
     sortCustomerPickups,
     summarizePickupStopList,
     type PickupStopForm,
@@ -25,9 +29,11 @@ import {
 import { useToast } from '../../layout';
 import Combobox from '@/components/Combobox';
 import { TripAssignmentDropdownMeta, TripResourceAssignmentBadges } from '@/components/TripResourceAssignmentBadges';
+import { TripOwnershipSwitch } from '@/components/TripOwnershipSwitch';
 
 type TripDraftForm = {
     id: string;
+    tripOwnership: TripOwnership;
     pickupStopKeys: string[];
     vehicleRef: string;
     driverRef: string;
@@ -45,6 +51,7 @@ type TripDraftForm = {
 function createDefaultTripDraftForm(pickupStopKeys: string[] = []): TripDraftForm {
     return {
         id: crypto.randomUUID(),
+        tripOwnership: 'INTERNAL',
         pickupStopKeys,
         vehicleRef: '',
         driverRef: '',
@@ -78,6 +85,8 @@ export default function NewOrderPage() {
     const [loading, setLoading] = useState(false);
 
     const [customerRef, setCustomerRef] = useState('');
+    /** Additional customers this order/trip serves; the primary stays `customerRef` above. */
+    const [additionalCustomerRefs, setAdditionalCustomerRefs] = useState<string[]>([]);
     const [serviceRef, setServiceRef] = useState('');
     const [pickupStops, setPickupStops] = useState<PickupStopForm[]>([createDefaultPickupStopForm()]);
     const [tripDrafts, setTripDrafts] = useState<TripDraftForm[]>([]);
@@ -85,6 +94,14 @@ export default function NewOrderPage() {
     const [notes, setNotes] = useState('');
 
     const selectedCustomer = customers.find(customer => customer._id === customerRef) || null;
+    // The primary always comes first; extras follow. Only sent to the server when there is more
+    // than one, so single-customer orders keep their existing payload shape.
+    const orderCustomerRefs = customerRef ? [customerRef, ...additionalCustomerRefs] : [...additionalCustomerRefs];
+    const additionalCustomerOptions = customers
+        .filter(customer => customer.active !== false
+            && customer._id !== customerRef
+            && !additionalCustomerRefs.includes(customer._id))
+        .map(customer => ({ value: customer._id, label: customer.name }));
     const customerCreditUsage = summarizeCustomerCreditUsage(selectedCustomer, customerCreditNotas);
     const selectedService = services.find(service => service._id === serviceRef) || null;
     const sortedCustomerPickups = sortCustomerPickups(customerPickups);
@@ -135,7 +152,8 @@ export default function NewOrderPage() {
     }, [addToast]);
 
     useEffect(() => {
-        if (!customerRef) {
+        const scopedCustomerRefs = [customerRef, ...additionalCustomerRefs].filter(Boolean);
+        if (scopedCustomerRefs.length === 0) {
             setCustomerPickups([]);
             setCustomerScopedMastersLoaded(false);
             return;
@@ -145,12 +163,22 @@ export default function NewOrderPage() {
         setCustomerScopedMastersLoaded(false);
         const loadCustomerScopedMasters = async () => {
             try {
-                const pickupRows = await fetchAdminCollectionData<CustomerPickupLocation[]>(
-                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef, active: true }))}`,
-                    'Gagal memuat master customer'
+                // One request per customer keeps us on the proven single-value filter path.
+                const rowsPerCustomer = await Promise.all(scopedCustomerRefs.map(ref =>
+                    fetchAdminCollectionData<CustomerPickupLocation[]>(
+                        `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
+                        'Gagal memuat master customer'
+                    )
+                ));
+                const mergedPickups = Array.from(
+                    new Map(
+                        rowsPerCustomer
+                            .flatMap(rows => rows || [])
+                            .map(pickup => [pickup._id, pickup])
+                    ).values()
                 );
                 if (!cancelled) {
-                    setCustomerPickups(pickupRows || []);
+                    setCustomerPickups(mergedPickups);
                     setCustomerScopedMastersLoaded(true);
                 }
             } catch (error) {
@@ -166,7 +194,7 @@ export default function NewOrderPage() {
         return () => {
             cancelled = true;
         };
-    }, [addToast, customerRef]);
+    }, [addToast, customerRef, additionalCustomerRefs]);
 
     useEffect(() => {
         if (!customerRef) {
@@ -208,7 +236,10 @@ export default function NewOrderPage() {
         if (!customerScopedMastersLoaded || !shouldAutoApplyDefaultPickup || !customerRef || pickupStops.length === 0) {
             return;
         }
-        const defaultPickup = findDefaultCustomerPickup(customerPickups);
+        // Only the primary customer's default pickup may seed the trip's first stop.
+        const defaultPickup = findDefaultCustomerPickup(
+            customerPickups.filter(pickup => pickup.customerRef === customerRef)
+        );
         if (!defaultPickup) {
             setShouldAutoApplyDefaultPickup(false);
             return;
@@ -223,9 +254,24 @@ export default function NewOrderPage() {
         const nextCustomer = customers.find(customer => customer._id === nextCustomerRef);
         const defaultStop = createDefaultPickupStopForm(nextCustomer?.address || '');
         setCustomerRef(nextCustomerRef);
+        // The customer just promoted to primary cannot also stay in the extras list.
+        setAdditionalCustomerRefs(previous => previous.filter(ref => ref !== nextCustomerRef));
         setPickupStops([defaultStop]);
         setTripDrafts([]);
         setShouldAutoApplyDefaultPickup(Boolean(nextCustomerRef));
+    };
+
+    const addAdditionalCustomer = (nextCustomerRef: string) => {
+        if (!nextCustomerRef || nextCustomerRef === customerRef) {
+            return;
+        }
+        setAdditionalCustomerRefs(previous => (
+            previous.includes(nextCustomerRef) ? previous : [...previous, nextCustomerRef]
+        ));
+    };
+
+    const removeAdditionalCustomer = (targetCustomerRef: string) => {
+        setAdditionalCustomerRefs(previous => previous.filter(ref => ref !== targetCustomerRef));
     };
 
     const updatePickupStop = <K extends keyof PickupStopForm>(index: number, field: K, value: PickupStopForm[K]) => {
@@ -235,16 +281,9 @@ export default function NewOrderPage() {
     };
 
     const handlePickupStopMasterChange = (index: number, nextPickupRef: string) => {
-        const selectedPickup = customerPickups.find(item => item._id === nextPickupRef);
         setPickupStops(previous => previous.map((stop, stopIndex) => (
             stopIndex === index
-                ? applyCustomerPickupToStop(
-                    {
-                        ...stop,
-                        customerPickupRef: nextPickupRef,
-                    },
-                    selectedPickup
-                )
+                ? applyCustomerPickupMasterSelection(stop, nextPickupRef, customerPickups)
                 : stop
         )));
     };
@@ -358,6 +397,14 @@ export default function NewOrderPage() {
             addToast('error', formatCustomerCreditBlockMessage(selectedCustomer?.name, customerCreditUsage));
             return;
         }
+        // Wajib untuk semua order, termasuk yang trip-nya MITRA. Kolom
+        // `orders.service_ref` NOT NULL di DB, dan untuk trip MITRA tidak ada
+        // `vehicleRef` internal yang bisa dipakai sebagai fallback lookup tarif
+        // rute (lihat getTripRouteServiceRef).
+        if (!serviceRef) {
+            addToast('error', 'Kategori Truk / Armada wajib dipilih');
+            return;
+        }
 
         const draftPickupStops = getDraftPickupStops(pickupStops);
         if (draftPickupStops.length === 0) {
@@ -378,40 +425,44 @@ export default function NewOrderPage() {
                 notes: stop.notes.trim() || undefined,
             }));
             const tripPayloads = tripDrafts.map((trip, index) => {
+                const isMitraTrip = trip.tripOwnership === 'MITRA';
                 const selectedTripVehicle = vehicles.find(vehicle => vehicle._id === trip.vehicleRef) || null;
-                const requiresOverrideReason = Boolean(serviceRef && selectedTripVehicle && (!selectedTripVehicle.serviceRef || selectedTripVehicle.serviceRef !== serviceRef));
+                const requiresOverrideReason = Boolean(!isMitraTrip && serviceRef && selectedTripVehicle && (!selectedTripVehicle.serviceRef || selectedTripVehicle.serviceRef !== serviceRef));
                 if (trip.pickupStopKeys.length === 0) {
                     throw new Error(`Minimal 1 titik pickup wajib dipilih pada trip ${index + 1}`);
                 }
-                if (!trip.vehicleRef) {
-                    throw new Error(`Kendaraan wajib dipilih pada trip ${index + 1}`);
-                }
-                if (!trip.driverRef) {
-                    throw new Error(`Supir wajib dipilih pada trip ${index + 1}`);
-                }
-                if (!trip.issueBankRef) {
-                    throw new Error(`Rekening atau kas sumber wajib dipilih pada trip ${index + 1}`);
-                }
-                if (!trip.cashGiven || trip.cashGiven <= 0) {
-                    throw new Error(`Nominal uang jalan awal wajib diisi pada trip ${index + 1}`);
-                }
-                if (!trip.tripFee || trip.tripFee <= 0) {
-                    throw new Error(`Upah trip wajib diisi pada trip ${index + 1}`);
-                }
-                if (requiresOverrideReason && !trip.vehicleOverrideReason.trim()) {
-                    throw new Error(`Alasan override armada wajib diisi pada trip ${index + 1}`);
+                if (!isMitraTrip) {
+                    if (!trip.vehicleRef) {
+                        throw new Error(`Kendaraan wajib dipilih pada trip ${index + 1}`);
+                    }
+                    if (!trip.driverRef) {
+                        throw new Error(`Supir wajib dipilih pada trip ${index + 1}`);
+                    }
+                    if (!trip.issueBankRef) {
+                        throw new Error(`Rekening atau kas sumber wajib dipilih pada trip ${index + 1}`);
+                    }
+                    if (!trip.cashGiven || trip.cashGiven <= 0) {
+                        throw new Error(`Nominal uang jalan awal wajib diisi pada trip ${index + 1}`);
+                    }
+                    if (!trip.tripFee || trip.tripFee <= 0) {
+                        throw new Error(`Upah trip wajib diisi pada trip ${index + 1}`);
+                    }
+                    if (requiresOverrideReason && !trip.vehicleOverrideReason.trim()) {
+                        throw new Error(`Alasan override armada wajib diisi pada trip ${index + 1}`);
+                    }
                 }
                 return {
+                    tripOwnership: trip.tripOwnership,
                     pickupStopKeys: trip.pickupStopKeys,
-                    vehicleRef: trip.vehicleRef,
-                    driverRef: trip.driverRef,
-                    tripRouteRateRef: trip.tripRouteRateRef || undefined,
+                    vehicleRef: isMitraTrip ? '' : trip.vehicleRef,
+                    driverRef: isMitraTrip ? '' : trip.driverRef,
+                    tripRouteRateRef: isMitraTrip ? undefined : (trip.tripRouteRateRef || undefined),
                     tripOriginArea: trip.tripOriginArea || undefined,
                     tripDestinationArea: trip.tripDestinationArea || undefined,
-                    taripBorongan: trip.tripFee,
-                    vehicleCategoryOverrideReason: trip.vehicleOverrideReason.trim() || undefined,
-                    issueBankRef: trip.issueBankRef,
-                    cashGiven: trip.cashGiven,
+                    taripBorongan: isMitraTrip ? 0 : trip.tripFee,
+                    vehicleCategoryOverrideReason: isMitraTrip ? undefined : (trip.vehicleOverrideReason.trim() || undefined),
+                    issueBankRef: isMitraTrip ? '' : trip.issueBankRef,
+                    cashGiven: isMitraTrip ? 0 : trip.cashGiven,
                     notes: trip.notes.trim() || undefined,
                     date: trip.date,
                 };
@@ -426,6 +477,7 @@ export default function NewOrderPage() {
                     data: {
                         customerRef,
                         customerName: selectedCustomerRow?.name || '',
+                        customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
                         customerPickupRef: payloadPickupStops[0]?.customerPickupRef,
                         pickupAddress: payloadPickupStops[0]?.pickupAddress || '',
                         pickupStops: payloadPickupStops,
@@ -515,6 +567,43 @@ export default function NewOrderPage() {
                                     required
                                 />
                             </div>
+                            <div className="form-group">
+                                <label className="form-label">Customer Tambahan (opsional)</label>
+                                <Combobox
+                                    value=""
+                                    onChange={(v: string) => addAdditionalCustomer(v)}
+                                    options={additionalCustomerOptions}
+                                    placeholder={additionalCustomerOptions.length > 0
+                                        ? 'Tambah customer lain'
+                                        : 'Tidak ada customer lain yang bisa ditambahkan'}
+                                    className="form-select"
+                                    disabled={additionalCustomerOptions.length === 0}
+                                />
+                                {additionalCustomerRefs.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                        {additionalCustomerRefs.map(ref => {
+                                            const additionalCustomer = customers.find(item => item._id === ref);
+                                            return (
+                                                <span key={ref} className="badge badge-info">
+                                                    {additionalCustomer?.name || ref}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeAdditionalCustomer(ref)}
+                                                        aria-label={`Hapus customer ${additionalCustomer?.name || ref}`}
+                                                        style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700, lineHeight: 1 }}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                    Customer pertama tetap customer utama: pickup, barang, dan limit piutang mengikuti customer pertama.
+                                    Tambahan hanya menandai trip ini melayani customer lain — penagihan tetap per SJ. Maksimal 5 customer.
+                                </div>
+                            </div>
                             {selectedCustomer && customerCreditUsage.isLimited && (
                                 <div
                                     style={{
@@ -537,7 +626,7 @@ export default function NewOrderPage() {
                                 </div>
                             )}
                             <div className="form-group">
-                                <label className="form-label">Kategori Truk / Armada</label>
+                                <label className="form-label">Kategori Truk / Armada <span className="required">*</span></label>
                                                                 <Combobox
                                     value={serviceRef}
                                     onChange={(v: string) => {
@@ -602,12 +691,22 @@ export default function NewOrderPage() {
                                         <div className="form-group" style={{ marginBottom: 0 }}>
                                             <label className="form-label">Master Pickup Customer</label>
                                                                                         <Combobox
-                                                value={stop.customerPickupRef}
+                                                value={getPickupStopMasterValue(stop)}
                                                 onChange={(v: string) => handlePickupStopMasterChange(index, v)}
-                                                options={sortedCustomerPickups.map(pickup => (
-                                                    { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
-                                                ))}
-                                                placeholder={customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup customer'}
+                                                options={[
+                                                    { value: MANUAL_PICKUP_MASTER_VALUE, label: MANUAL_PICKUP_MASTER_LABEL },
+                                                    ...sortedCustomerPickups.map(pickup => (
+                                                        {
+                                                            value: pickup._id,
+                                                            // With several customers on one order, name the owner so two
+                                                            // "Gudang Utama" entries stay distinguishable.
+                                                            label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}${orderCustomerRefs.length > 1
+                                                                ? ` — ${customers.find(customer => customer._id === pickup.customerRef)?.name || 'Customer lain'}`
+                                                                : ''}`,
+                                                        }
+                                                    )),
+                                                ]}
+                                                placeholder={customerPickups.length > 0 ? 'Pilih master pickup, atau tulis manual' : 'Tulis manual di bawah'}
                                                 className="form-select"
                                             />
                                         </div>
@@ -653,6 +752,7 @@ export default function NewOrderPage() {
                             </div>
                         )}
                         {tripDrafts.map((trip, index) => {
+                            const isMitraTrip = trip.tripOwnership === 'MITRA';
                             const availableTripVehicles = vehicles
                                 .slice()
                                 .sort((left, right) => {
@@ -665,7 +765,7 @@ export default function NewOrderPage() {
                                 });
                             const availableTripDrivers = drivers;
                             const selectedTripVehicle = vehicles.find(vehicle => vehicle._id === trip.vehicleRef) || null;
-                            const requiresOverrideReason = Boolean(serviceRef && selectedTripVehicle && (!selectedTripVehicle.serviceRef || selectedTripVehicle.serviceRef !== serviceRef));
+                            const requiresOverrideReason = Boolean(!isMitraTrip && serviceRef && selectedTripVehicle && (!selectedTripVehicle.serviceRef || selectedTripVehicle.serviceRef !== serviceRef));
                             const tripRouteServiceRef = serviceRef || selectedTripVehicle?.serviceRef || '';
                             const tripOriginAreaOptions = buildTripRateAreaOptions(tripRouteRates, 'originArea', { serviceRef: tripRouteServiceRef });
                             const tripDestinationAreaOptions = buildTripRateAreaOptions(tripRouteRates, 'destinationArea', { originArea: trip.tripOriginArea, serviceRef: tripRouteServiceRef });
@@ -689,13 +789,21 @@ export default function NewOrderPage() {
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                        <div style={{ fontWeight: 600 }}>Trip {index + 1}</div>
+                                        <span style={{ fontWeight: 600 }}>Trip {index + 1}</span>
                                         {tripDrafts.length > 1 && (
                                             <button type="button" className="btn btn-ghost btn-icon-only" onClick={() => removeTripDraft(index)} title="Hapus trip">
                                                 <X size={16} />
                                             </button>
                                         )}
                                     </div>
+
+                                    {/* Baris sendiri, bukan sibling flex: lebar kotak ikut kolom
+                                        form, bukan ikut panjang teks penjelasan. */}
+                                    <TripOwnershipSwitch
+                                        value={trip.tripOwnership}
+                                        disabled={loading}
+                                        onChange={value => updateTripDraft(index, 'tripOwnership', value)}
+                                    />
 
                                     <div className="form-group" style={{ marginBottom: 0 }}>
                                         <label className="form-label">Pickup untuk Trip Ini <span className="required">*</span></label>
@@ -728,6 +836,7 @@ export default function NewOrderPage() {
                                         </div>
                                     </div>
 
+                                    {!isMitraTrip && (
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Kendaraan <span className="required">*</span></label>
@@ -777,6 +886,7 @@ export default function NewOrderPage() {
                                             />
                                         </div>
                                     </div>
+                                    )}
 
                                     {requiresOverrideReason && (
                                         <div className="form-group" style={{ marginBottom: 0 }}>
@@ -792,6 +902,7 @@ export default function NewOrderPage() {
                                         </div>
                                     )}
 
+                                    {!isMitraTrip && (
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Asal Area Trip</label>
@@ -816,14 +927,16 @@ export default function NewOrderPage() {
                                             />
                                         </div>
                                     </div>
+                                    )}
 
-                                    {matchedTripRate && (
+                                    {!isMitraTrip && matchedTripRate && (
                                         <div style={{ fontSize: '0.8rem', color: 'var(--color-primary-700)', background: 'var(--color-primary-50)', border: '1px solid var(--color-primary-100)', padding: '0.75rem 0.9rem', borderRadius: '0.75rem' }}>
                                             Tarif master: {formatTripRouteRateLabel(matchedTripRate)} | {matchedTripRate.rate.toLocaleString('id-ID')}
                                         </div>
                                     )}
 
                                     <div className="form-row">
+                                        {!isMitraTrip && (
                                         <div className="form-group">
                                             <label className="form-label">Upah Trip <span className="required">*</span></label>
                                             <FormattedNumberInput allowDecimal={false}
@@ -833,6 +946,7 @@ export default function NewOrderPage() {
                                                 disabled={loading || isTripFeeLockedToMaster}
                                             />
                                         </div>
+                                        )}
                                         <div className="form-group">
                                             <label className="form-label">Tanggal Trip</label>
                                             <input
@@ -845,6 +959,7 @@ export default function NewOrderPage() {
                                         </div>
                                     </div>
 
+                                    {!isMitraTrip && (
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label className="form-label">Kas / Bank Uang Jalan <span className="required">*</span></label>
@@ -869,6 +984,7 @@ export default function NewOrderPage() {
                                             />
                                         </div>
                                     </div>
+                                    )}
 
                                     <div className="form-group" style={{ marginBottom: 0 }}>
                                         <label className="form-label">Catatan Trip</label>

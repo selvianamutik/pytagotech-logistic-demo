@@ -702,7 +702,11 @@ export async function getProjectedDocumentRead(params: ProjectedListParams) {
                     : [],
                 customerProducts: permissions?.canEditDeliveryCargo && deliveryOrder.customerRef
                     ? allCustomerProducts
-                        .filter(product => product.customerRef === deliveryOrder.customerRef && product.active !== false)
+                        .filter(product =>
+                            product.active !== false
+                            && (product.customerRef === deliveryOrder.customerRef
+                                || (deliveryOrder.customerRefs || []).includes(product.customerRef))
+                        )
                         .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'id'))
                     : [],
                 customerRecipients: (permissions?.canEditDeliveryTarget || permissions?.canEditShipperReference)

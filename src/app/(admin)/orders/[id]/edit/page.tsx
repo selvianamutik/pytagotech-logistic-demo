@@ -17,12 +17,16 @@ import {
     type WeightInputUnit,
 } from '@/lib/measurement';
 import {
+    applyCustomerPickupMasterSelection,
     applyCustomerPickupToStop,
     applyOrderItemAutoWeightFromQty,
     createDefaultOrderItemForm,
     createDefaultPickupStopForm,
     findDefaultCustomerPickup,
     getDraftPickupStops,
+    getPickupStopMasterValue,
+    MANUAL_PICKUP_MASTER_LABEL,
+    MANUAL_PICKUP_MASTER_VALUE,
     sortCustomerPickups,
     summarizePickupStopList,
     applyOrderItemPickerSelection,
@@ -116,7 +120,8 @@ export default function OrderEditPage() {
     }, [addToast, orderId]);
 
     useEffect(() => {
-        if (!form.customerRef) {
+        const scopedCustomerRefs = [form.customerRef, ...form.additionalCustomerRefs].filter(Boolean);
+        if (scopedCustomerRefs.length === 0) {
             setCustomerProducts([]);
             setCustomerPickups([]);
             setCustomerScopedMastersLoaded(false);
@@ -127,19 +132,32 @@ export default function OrderEditPage() {
         setCustomerScopedMastersLoaded(false);
         const loadCustomerScopedMasters = async () => {
             try {
-                const [products, pickups] = await Promise.all([
-                    fetchAdminCollectionData<CustomerProduct[]>(
-                        `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: form.customerRef, active: true }))}`,
-                        'Gagal memuat master customer'
-                    ),
-                    fetchAdminCollectionData<CustomerPickupLocation[]>(
-                        `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: form.customerRef, active: true }))}`,
-                        'Gagal memuat master customer'
-                    ),
+                // Masters are loaded per customer so items and pickups remain selectable for every
+                // customer on the order, then merged and deduped.
+                const [productsPerCustomer, pickupsPerCustomer] = await Promise.all([
+                    Promise.all(scopedCustomerRefs.map(ref =>
+                        fetchAdminCollectionData<CustomerProduct[]>(
+                            `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
+                            'Gagal memuat master customer'
+                        )
+                    )),
+                    Promise.all(scopedCustomerRefs.map(ref =>
+                        fetchAdminCollectionData<CustomerPickupLocation[]>(
+                            `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
+                            'Gagal memuat master customer'
+                        )
+                    )),
                 ]);
+                const mergeById = <T extends { _id: string }>(rowsPerCustomer: Array<T[] | null | undefined>) => Array.from(
+                    new Map(
+                        rowsPerCustomer
+                            .flatMap(rows => rows || [])
+                            .map(row => [row._id, row])
+                    ).values()
+                );
                 if (!cancelled) {
-                    setCustomerProducts(products || []);
-                    setCustomerPickups(pickups || []);
+                    setCustomerProducts(mergeById(productsPerCustomer));
+                    setCustomerPickups(mergeById(pickupsPerCustomer));
                     setCustomerScopedMastersLoaded(true);
                 }
             } catch (error) {
@@ -156,14 +174,17 @@ export default function OrderEditPage() {
         return () => {
             cancelled = true;
         };
-    }, [addToast, form.customerRef]);
+    }, [addToast, form.customerRef, form.additionalCustomerRefs]);
 
     useEffect(() => {
         const firstPickupStop = form.pickupStops[0];
         if (!customerScopedMastersLoaded || !shouldAutoApplyDefaultPickup || !form.customerRef || firstPickupStop?.customerPickupRef) {
             return;
         }
-        const defaultPickup = findDefaultCustomerPickup(customerPickups);
+        // Only the primary customer's default pickup may seed the trip's first stop.
+        const defaultPickup = findDefaultCustomerPickup(
+            customerPickups.filter(pickup => pickup.customerRef === form.customerRef)
+        );
         if (!defaultPickup) {
             setShouldAutoApplyDefaultPickup(false);
             return;
@@ -233,6 +254,8 @@ export default function OrderEditPage() {
             })()),
             customerRef: nextCustomerRef,
             customerName: nextCustomer?.name || '',
+            // The customer just promoted to primary cannot also stay in the extras list.
+            additionalCustomerRefs: prev.additionalCustomerRefs.filter(ref => ref !== nextCustomerRef),
             savePickupToMaster: false,
             savePickupAsDefault: false,
             pickupMasterLabel: '',
@@ -242,6 +265,31 @@ export default function OrderEditPage() {
             ...item,
             customerProductRef: '',
         })));
+    };
+
+    const addAdditionalCustomer = (nextCustomerRef: string) => {
+        if (!nextCustomerRef || nextCustomerRef === form.customerRef) {
+            return;
+        }
+        setForm(prev => (
+            prev.additionalCustomerRefs.includes(nextCustomerRef)
+                ? prev
+                : { ...prev, additionalCustomerRefs: [...prev.additionalCustomerRefs, nextCustomerRef] }
+        ));
+    };
+
+    const removeAdditionalCustomer = (targetCustomerRef: string) => {
+        setForm(prev => ({
+            ...prev,
+            additionalCustomerRefs: prev.additionalCustomerRefs.filter(ref => ref !== targetCustomerRef),
+        }));
+        // Items sourced from the removed customer must not keep a product that is now out of scope.
+        setItems(prev => prev.map(item => {
+            const product = customerProducts.find(candidate => candidate._id === item.customerProductRef);
+            return product && product.customerRef === targetCustomerRef
+                ? { ...item, customerProductRef: '' }
+                : item;
+        }));
     };
 
     const updatePickupStop = <K extends keyof PickupStopForm>(index: number, field: K, value: PickupStopForm[K]) => {
@@ -256,11 +304,10 @@ export default function OrderEditPage() {
 
     const handleCustomerPickupChange = (index: number, nextPickupRef: string) => {
         setShouldAutoApplyDefaultPickup(false);
-        const pickup = customerPickups.find(item => item._id === nextPickupRef);
         setForm(prev => {
             const nextStops = prev.pickupStops.map((stop, stopIndex) => (
                 stopIndex === index
-                    ? applyCustomerPickupToStop({ ...stop, customerPickupRef: nextPickupRef }, pickup)
+                    ? applyCustomerPickupMasterSelection(stop, nextPickupRef, customerPickups)
                     : stop
             ));
             return syncPickupFields({
@@ -408,6 +455,7 @@ export default function OrderEditPage() {
                 : {
                     customerRef: form.customerRef,
                     customerName: form.customerName,
+                    customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
                     customerPickupRef: pickupStopsForSubmit[0]?.customerPickupRef,
                     pickupAddress: pickupStopsForSubmit[0]?.pickupAddress || form.pickupAddress,
                     pickupStops: pickupStopsForSubmit,
@@ -471,6 +519,15 @@ export default function OrderEditPage() {
     const isHeaderOnlyOrder = usesDeliveryOrderCargoMode;
     const targetCargo = summarizeOrderEditTargetCargo(items);
     const selectedCustomer = customers.find(customer => customer._id === form.customerRef) || null;
+    // The primary always comes first; extras follow. Sent only when there is more than one.
+    const orderCustomerRefs = form.customerRef
+        ? [form.customerRef, ...form.additionalCustomerRefs]
+        : [...form.additionalCustomerRefs];
+    const additionalCustomerOptions = customers
+        .filter(customer => customer.active !== false
+            && customer._id !== form.customerRef
+            && !form.additionalCustomerRefs.includes(customer._id))
+        .map(customer => ({ value: customer._id, label: customer.name }));
     const selectedService = services.find(service => service._id === form.serviceRef) || null;
     const sortedCustomerPickups = sortCustomerPickups(customerPickups);
     const pickupSummary = summarizePickupStopList(form.pickupStops);
@@ -542,6 +599,45 @@ export default function OrderEditPage() {
                                 />
                             </div>
                             <div className="form-group">
+                                <label className="form-label">Customer Tambahan (opsional)</label>
+                                <Combobox
+                                    value=""
+                                    onChange={(v: string) => addAdditionalCustomer(v)}
+                                    options={additionalCustomerOptions}
+                                    placeholder={additionalCustomerOptions.length > 0
+                                        ? 'Tambah customer lain'
+                                        : 'Tidak ada customer lain yang bisa ditambahkan'}
+                                    disabled={isRevisionMode || headerFieldsLocked || additionalCustomerOptions.length === 0}
+                                    className="form-select"
+                                />
+                                {form.additionalCustomerRefs.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                        {form.additionalCustomerRefs.map(ref => {
+                                            const additionalCustomer = customers.find(item => item._id === ref);
+                                            return (
+                                                <span key={ref} className="badge badge-info">
+                                                    {additionalCustomer?.name || ref}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeAdditionalCustomer(ref)}
+                                                        aria-label={`Hapus customer ${additionalCustomer?.name || ref}`}
+                                                        disabled={isRevisionMode || headerFieldsLocked}
+                                                        style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700, lineHeight: 1 }}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                    {headerFieldsLocked || isRevisionMode
+                                        ? 'Customer terkunci karena order ini sudah punya Surat Jalan.'
+                                        : 'Customer pertama tetap customer utama: pickup, barang, dan limit piutang mengikuti customer pertama. Maksimal 5 customer.'}
+                                </div>
+                            </div>
+                            <div className="form-group">
                                 <label className="form-label">Kategori Truk / Armada</label>
                                                                 <Combobox
                                     value={form.serviceRef}
@@ -586,14 +682,22 @@ export default function OrderEditPage() {
                                                 )}
                                             </div>
                                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                                <label className="form-label">Master Pickup Customer</label>
-                                                                                                <Combobox
-                                                    value={stop.customerPickupRef}
+<label className="form-label">Master Pickup Customer</label>
+                                                                                            <Combobox
+                                                    value={getPickupStopMasterValue(stop)}
                                                     onChange={(v: string) => handleCustomerPickupChange(index, v)}
-                                                    options={sortedCustomerPickups.map(pickup => (
-                                                        { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
-                                                    ))}
-                                                    placeholder={form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup' : 'Belum ada master pickup') : 'Pilih customer dulu'}
+                                                    options={[
+                                                        { value: MANUAL_PICKUP_MASTER_VALUE, label: MANUAL_PICKUP_MASTER_LABEL },
+                                                        ...sortedCustomerPickups.map(pickup => (
+                                                            {
+                                                                value: pickup._id,
+                                                                label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}${orderCustomerRefs.length > 1
+                                                                    ? ` — ${customers.find(customer => customer._id === pickup.customerRef)?.name || 'Customer lain'}`
+                                                                    : ''}`,
+                                                            }
+                                                        )),
+                                                    ]}
+                                                    placeholder={form.customerRef ? (customerPickups.length > 0 ? 'Pilih master pickup, atau tulis manual' : 'Tulis manual di bawah') : 'Pilih customer dulu'}
                                                     disabled={isRevisionMode || headerFieldsLocked || !form.customerRef}
                                                     className="form-select"
                                                 />
@@ -741,7 +845,13 @@ export default function OrderEditPage() {
                                                     value={getOrderItemPickerValue(item)}
                                                     onChange={(v: string) => applyCustomerProductSelection(idx, v)}
                                                     options={[{ value: MANUAL_ITEM_OPTION_VALUE, label: "Tambah manual" }, ...(customerProducts.map(product => (
-                                                        { value: product._id, label: `${product.code ? `${product.code} - ` : ''}${product.name}` }
+                                                        {
+                                                            value: product._id,
+                                                            // Name the owning customer so identical product names stay distinct.
+                                                            label: `${product.code ? `${product.code} - ` : ''}${product.name}${orderCustomerRefs.length > 1
+                                                                ? ` — ${customers.find(customer => customer._id === product.customerRef)?.name || 'Customer lain'}`
+                                                                : ''}`,
+                                                        }
                                                     )))]}
                                                     placeholder={form.customerRef ? 'Pilih dari master barang customer (opsional)' : 'Pilih customer dulu'}
                                                     disabled={!form.customerRef}

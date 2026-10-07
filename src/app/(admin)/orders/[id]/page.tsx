@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '../../layout';
-import { Truck, FileText, Edit, Eye, Plus, Trash2, X, Pause, Play } from 'lucide-react';
+import { Truck, FileText, Edit, Eye, Plus, Trash2, X, Pause, Play, Info, ArrowRight } from 'lucide-react';
 import FormattedNumberInput from '@/components/FormattedNumberInput';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import { fetchAdminCollectionData, fetchAdminData, fetchOptionalAdminCollectionData, fetchOptionalAdminData } from '@/lib/api/admin-client';
@@ -88,13 +88,15 @@ import {
 } from '@/lib/invoice-create-page-support';
 import { buildServiceCapacityRangeMap, formatUnitCapacityLabel } from '@/lib/service-capacity-support';
 import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel } from '@/lib/trip-route-rate-support';
-import type { BankAccount, Customer, CustomerPickupLocation, CustomerProduct, Driver, Order, OrderItem, DeliveryOrder, DeliveryOrderItem, ExpenseCategory, FreightNota, FreightNotaItem, Service, TripRouteRate, Vehicle } from '@/lib/types';
+import type { BankAccount, Customer, CustomerPickupLocation, CustomerProduct, Driver, Order, OrderItem, DeliveryOrder, DeliveryOrderItem, ExpenseCategory, FreightNota, FreightNotaItem, Service, TripOwnership, TripRouteRate, Vehicle } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 import PageBackButton from '@/components/PageBackButton';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { useApp } from '../../layout';
 import AuditTrailCard from '../../_components/AuditTrailCard';
 import Combobox from '@/components/Combobox';
 import { TripAssignmentDropdownMeta, TripResourceAssignmentBadges } from '@/components/TripResourceAssignmentBadges';
+import { TripOwnershipSwitch } from '@/components/TripOwnershipSwitch';
 import { tripDriverAssignments, tripVehicleAssignments, type TripResourceAssignmentIndex } from '@/lib/trip-resource-lock-support';
 
 type TripPlanModalMode = 'create' | 'edit' | 'delete';
@@ -120,11 +122,17 @@ export default function OrderDetailPage() {
     const [orderService, setOrderService] = useState<Service | null>(null);
     const [customerProducts, setCustomerProducts] = useState<CustomerProduct[]>([]);
     const [customerPickups, setCustomerPickups] = useState<CustomerPickupLocation[]>([]);
+    /** Resolved names of the non-primary customers on this order, for display. */
+    const [additionalCustomers, setAdditionalCustomers] = useState<Array<Pick<Customer, '_id' | 'name'>>>([]);
     // DO form
     const [doDate, setDoDate] = useState(getBusinessDateValue());
     const [doCustomerDoNumber, setDoCustomerDoNumber] = useState('');
     const [doVehicle, setDoVehicle] = useState('');
     const [doVehicleOverrideReason, setDoVehicleOverrideReason] = useState('');
+    // Hanya dipakai saat DO dibuat tanpa rencana trip, jadi operator yang
+    // menentukan jenis tripnya sendiri. Kalau ada rencana, ownership ikut
+    // dari rencana dan state ini diabaikan.
+    const [doTripOwnership, setDoTripOwnership] = useState<TripOwnership>('INTERNAL');
     const [doNotes, setDoNotes] = useState('');
     const [selectedPickupStopKeys, setSelectedPickupStopKeys] = useState<string[]>([]);
     const [shipperReferenceFormat, setShipperReferenceFormat] = useState('SJ');
@@ -173,6 +181,7 @@ export default function OrderDetailPage() {
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
+    const canOpenTripsPage = user ? hasPageAccess(user, 'trips') : false;
     const hasOpenModal = showDOModal || showAddTripModal || showTripPlanActionModal || showCancelTripModal || showCancelOrderModal || showHoldModal;
     const currentPath = pathname || `/orders/${orderId}`;
     const withReturnTo = (href: string) => `${href}${href.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(currentPath)}`;
@@ -195,36 +204,53 @@ export default function OrderDetailPage() {
 
     const loadOrderReferenceData = useCallback(async (orderData: Order | null) => {
         const optionalFetchOptions = { onError: (message: string) => addToast('error', message), silentAccessDenied: true };
-        const [customerData, serviceData, customerProductData, customerPickupData] = await Promise.all([
+        // Every customer this order serves, primary first — masters and display follow the same list.
+        const scopedCustomerRefs = [orderData?.customerRef, ...(orderData?.customerRefs || [])]
+            .filter((ref, index, all): ref is string => Boolean(ref) && all.indexOf(ref) === index);
+        const [customerData, serviceData, customerProductsPerCustomer, customerPickupsPerCustomer, additionalCustomerRows] = await Promise.all([
             orderData?.customerRef
                 ? fetchOptionalAdminData<Pick<Customer, 'deliveryOrderPrefix'> | null>(`/api/data?entity=customers&id=${orderData.customerRef}`, 'Gagal memuat detail order', optionalFetchOptions)
                 : Promise.resolve(null),
             orderData?.serviceRef
                 ? fetchOptionalAdminData<Service | null>(`/api/data?entity=services&id=${orderData.serviceRef}`, 'Gagal memuat detail order', optionalFetchOptions)
                 : Promise.resolve(null),
-            orderData?.customerRef
-                ? fetchOptionalAdminCollectionData<CustomerProduct>(
-                    `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: orderData.customerRef, active: true }))}`,
+            Promise.all(scopedCustomerRefs.map(ref =>
+                fetchOptionalAdminCollectionData<CustomerProduct>(
+                    `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
                     'Gagal memuat detail order',
                     undefined,
                     optionalFetchOptions
                 )
-                : Promise.resolve([] as CustomerProduct[]),
-            orderData?.customerRef
-                ? fetchOptionalAdminCollectionData<CustomerPickupLocation>(
-                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: orderData.customerRef, active: true }))}&sortField=label&sortDir=asc`,
+            )),
+            Promise.all(scopedCustomerRefs.map(ref =>
+                fetchOptionalAdminCollectionData<CustomerPickupLocation>(
+                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}&sortField=label&sortDir=asc`,
                     'Gagal memuat master pickup customer',
                     undefined,
                     optionalFetchOptions
                 )
-                : Promise.resolve([] as CustomerPickupLocation[]),
+            )),
+            Promise.all(scopedCustomerRefs
+                .filter(ref => ref !== orderData?.customerRef)
+                .map(ref => fetchOptionalAdminData<Pick<Customer, '_id' | 'name'> | null>(
+                    `/api/data?entity=customers&id=${ref}`,
+                    'Gagal memuat detail order',
+                    optionalFetchOptions
+                ))),
         ]);
+
+        const mergeById = <T extends { _id: string }>(rowsPerCustomer: Array<T[] | null | undefined>) => Array.from(
+            new Map(rowsPerCustomer.flatMap(rows => rows || []).map(row => [row._id, row])).values()
+        );
 
         setShipperReferenceFormat((customerData?.deliveryOrderPrefix || 'SJ').toUpperCase());
         setOrderService(serviceData || null);
-        setCustomerProducts((customerProductData || []).filter(product => product.active !== false));
-        setCustomerPickups((customerPickupData || []).filter(pickup => pickup.active !== false));
-        loadedReferenceSignatureRef.current = `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+        setCustomerProducts(mergeById(customerProductsPerCustomer).filter(product => product.active !== false));
+        setCustomerPickups(mergeById(customerPickupsPerCustomer).filter(pickup => pickup.active !== false));
+        setAdditionalCustomers(
+            additionalCustomerRows.filter((row): row is Pick<Customer, '_id' | 'name'> => Boolean(row))
+        );
+        loadedReferenceSignatureRef.current = `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
     }, [addToast]);
 
     const refreshOrderCoreState = useCallback(async (fallbackMessage: string = 'Gagal memuat ulang detail order') => {
@@ -307,7 +333,7 @@ export default function OrderDetailPage() {
                 setNotas([...(orderNotas || [])].sort((a, b) => `${b.issueDate || ''}-${b._id}`.localeCompare(`${a.issueDate || ''}-${a._id}`)));
             }
 
-            const shouldReloadReferences = loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+            const shouldReloadReferences = loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
             if (shouldReloadReferences) {
                 await loadOrderReferenceData(orderData);
             }
@@ -408,7 +434,7 @@ export default function OrderDetailPage() {
             }
             const shouldReloadReferences =
                 mode === 'initial' ||
-                loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+                loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
             if (shouldReloadReferences) {
                 await loadOrderReferenceData(orderData);
             }
@@ -665,6 +691,7 @@ export default function OrderDetailPage() {
     const populateTripDraftFromTripPlan = (tripPlan: NonNullable<Order['tripPlans']>[number]) => {
         setTripDraft({
             id: tripPlan._key || crypto.randomUUID(),
+            tripOwnership: normalizeTripOwnership(tripPlan.tripOwnership),
             pickupStopKeys: Array.isArray(tripPlan.pickupStopKeys) ? tripPlan.pickupStopKeys.filter(Boolean) : [],
             vehicleRef: tripPlan.vehicleRef || '',
             driverRef: tripPlan.driverRef || '',
@@ -945,6 +972,9 @@ export default function OrderDetailPage() {
         setDoDate(tripPlan?.date || getBusinessDateValue());
         setDoVehicle(tripPlan?.vehicleRef || '');
         setDoVehicleOverrideReason(tripPlan?.vehicleCategoryOverrideReason || '');
+        // Seed dari rencana supaya form tetap sinkron kalau rencana-nya diganti;
+        // tanpa rencana selalu mulai dari INTERNAL.
+        setDoTripOwnership(normalizeTripOwnership(tripPlan?.tripOwnership));
         setDoNotes(tripPlan?.notes || '');
         setSelectedOrderTripPlanKey(tripPlan?._key || '');
         setDoCustomerDoNumber('');
@@ -1017,14 +1047,26 @@ export default function OrderDetailPage() {
             sequence: plan.sequence || index + 1,
             pickupStopKeys: Array.isArray(plan.pickupStopKeys) ? plan.pickupStopKeys.filter(Boolean) : [],
         }))
-        .filter(plan => plan.vehicleRef && plan.driverRef && plan.issueBankRef && Number(plan.cashGiven || 0) > 0)
+        // Rencana MITRA sengaja tidak punya kendaraan/supir/bank/kas, jadi
+        // tidak boleh disaring pakai syarat armada internal — kalau tidak
+        // Filter ini diam-diam membuang seluruh rencana MITRA (order terlihat
+        // seperti tanpa rencana, lalu form SJ fallback ke mode "tanpa rencana"
+        // yang minta kendaraan).
+        .filter(plan => {
+            if (normalizeTripOwnership(plan.tripOwnership) === 'MITRA') {
+                return plan.pickupStopKeys.length > 0;
+            }
+            return Boolean(plan.vehicleRef && plan.driverRef && plan.issueBankRef && Number(plan.cashGiven || 0) > 0);
+        })
         .sort((left, right) => left.sequence - right.sequence);
     const editableOrderTripPlans = orderTripPlans.filter(plan => !plan.linkedDeliveryOrderRef);
     const selectedTripPlanForAction = editableOrderTripPlans.find(plan => plan._key === selectedTripPlanActionKey) || null;
     const availableTripDraftVehicles = sortedVehicles;
     const availableTripDraftDrivers = drivers.filter(driver => driver.active !== false);
+    const isMitraTripDraft = tripDraft.tripOwnership === 'MITRA';
     const selectedTripDraftVehicle = vehicles.find(vehicle => vehicle._id === tripDraft.vehicleRef) || null;
     const requiresTripDraftOverrideReason = Boolean(
+        !isMitraTripDraft &&
         order?.serviceRef &&
         selectedTripDraftVehicle &&
         (!selectedTripDraftVehicle.serviceRef || selectedTripDraftVehicle.serviceRef !== order.serviceRef)
@@ -1043,12 +1085,19 @@ export default function OrderDetailPage() {
     });
     const isTripDraftFeeLockedToMaster = Boolean(matchedTripDraftRate);
     const selectedOrderTripPlan = orderTripPlans.find(plan => plan._key === selectedOrderTripPlanKey) || null;
+    // Kalau DO dibuat dari rencana, ownershipnya ikut rencana. Kalau tidak ada
+    // rencana, operator memilih sendiri lewat switch di modal SJ.
+    const isMitraDO = selectedOrderTripPlan
+        ? normalizeTripOwnership(selectedOrderTripPlan.tripOwnership) === 'MITRA'
+        : doTripOwnership === 'MITRA';
     const effectiveDoVehicleRef = selectedOrderTripPlan?.vehicleRef || doVehicle;
     const selectedVehicleData = vehicles.find(vehicle => vehicle._id === effectiveDoVehicleRef);
     const selectedVehicleCapacityLabel = selectedVehicleData
         ? formatUnitCapacityLabel(selectedVehicleData)
         : 'Belum dipilih';
-    const requiresVehicleOverrideReason = !selectedOrderTripPlan && shouldRequireVehicleOverrideReason(order, selectedVehicleData);
+    const requiresVehicleOverrideReason = !isMitraDO
+        && !selectedOrderTripPlan
+        && shouldRequireVehicleOverrideReason(order, selectedVehicleData);
     const deliveryOrderById = new Map(dos.map(deliveryOrder => [deliveryOrder._id, deliveryOrder]));
     const hasPlannedTrips = orderTripPlans.length > 0;
     const linkedTripDoIds = new Set(
@@ -1115,21 +1164,17 @@ export default function OrderDetailPage() {
         }
     }, [requiresTripDraftOverrideReason, tripDraft.vehicleOverrideReason]);
 
+    useEffect(() => {
+        if (!order) return;
+        const hash = window.location.hash;
+        if (!hash) return;
+        const target = document.querySelector(hash);
+        if (target instanceof HTMLElement) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [order, hasPlannedTrips]);
+
     const usesExistingItemsForDeliveryOrder = !isHeaderOnlyOrder;
-    const canCreateDeliveryOrder =
-        !orderIsCancelled &&
-        (
-            isHeaderOnlyOrder ||
-            (!usesExistingItemsForDeliveryOrder || (availableItems.length > 0 && nonCancelledDos.length === 0))
-        );
-    const primaryDeliveryOrderButtonLabel =
-        isHeaderOnlyOrder && nonCancelledDos.length > 0
-            ? 'Tambah Surat Jalan'
-            : 'Buat Surat Jalan';
-    const canShowPrimaryDeliveryOrderButton =
-        !orderIsCancelled &&
-        !hasPlannedTrips &&
-        (isHeaderOnlyOrder || nonCancelledDos.length === 0);
     const flattenedDirectCargoItems = flattenDirectCargoGroups(directCargoGroups);
     const draftDirectCargoItems = getDraftOrderItems(flattenedDirectCargoItems);
     const draftDirectCargoGroups = directCargoGroups
@@ -1141,7 +1186,10 @@ export default function OrderDetailPage() {
     const directCargoSummary = summarizeDraftOrderCargo(flattenedDirectCargoItems);
     const selectedTripPickupStops = selectablePickupStops.filter(stop => selectedPickupStopKeys.includes(stop._key));
     const selectedTripDraftPickupStops = selectablePickupStops.filter(stop => tripDraft.pickupStopKeys.includes(stop._key));
-    const availableTripDraftPickupStops = selectablePickupStops.filter(stop => !tripDraft.pickupStopKeys.includes(stop._key));
+    // Trip plans may only reference pickups chosen on the order itself.
+    // Master-customer extras stay available in the SJ flow (selectablePickupStops)
+    // but must never be attachable to a trip plan here.
+    const availableTripDraftPickupStops = resolvedOrderPickupStops.filter(stop => !tripDraft.pickupStopKeys.includes(stop._key));
     const headerOnlyManifestByDo = isHeaderOnlyOrder
         ? nonCancelledDos.map(deliveryOrder => {
             const pickupMap = new Map(
@@ -1244,29 +1292,32 @@ export default function OrderDetailPage() {
             addToast('error', 'Pilih minimal 1 titik pickup untuk trip ini');
             return;
         }
-        if (!tripDraft.vehicleRef) {
-            addToast('error', 'Kendaraan wajib dipilih');
-            return;
-        }
-        if (!tripDraft.driverRef) {
-            addToast('error', 'Supir wajib dipilih');
-            return;
-        }
-        if (!tripDraft.issueBankRef) {
-            addToast('error', 'Rekening atau kas sumber wajib dipilih');
-            return;
-        }
-        if (!tripDraft.cashGiven || tripDraft.cashGiven <= 0) {
-            addToast('error', 'Nominal uang jalan awal wajib diisi');
-            return;
-        }
-        if (!tripDraft.tripFee || tripDraft.tripFee <= 0) {
-            addToast('error', 'Upah trip wajib diisi');
-            return;
-        }
-        if (requiresTripDraftOverrideReason && !tripDraft.vehicleOverrideReason.trim()) {
-            addToast('error', 'Isi alasan override armada jika trip ini memakai kendaraan dengan kategori berbeda');
-            return;
+        const isMitraTripDraft = tripDraft.tripOwnership === 'MITRA';
+        if (!isMitraTripDraft) {
+            if (!tripDraft.vehicleRef) {
+                addToast('error', 'Kendaraan wajib dipilih');
+                return;
+            }
+            if (!tripDraft.driverRef) {
+                addToast('error', 'Supir wajib dipilih');
+                return;
+            }
+            if (!tripDraft.issueBankRef) {
+                addToast('error', 'Rekening atau kas sumber wajib dipilih');
+                return;
+            }
+            if (!tripDraft.cashGiven || tripDraft.cashGiven <= 0) {
+                addToast('error', 'Nominal uang jalan awal wajib diisi');
+                return;
+            }
+            if (!tripDraft.tripFee || tripDraft.tripFee <= 0) {
+                addToast('error', 'Upah trip wajib diisi');
+                return;
+            }
+            if (requiresTripDraftOverrideReason && !tripDraft.vehicleOverrideReason.trim()) {
+                addToast('error', 'Isi alasan override armada jika trip ini memakai kendaraan dengan kategori berbeda');
+                return;
+            }
         }
 
         setSavingTripPlan(true);
@@ -1284,17 +1335,18 @@ export default function OrderDetailPage() {
                         id: order._id,
                         tripPlanKey: editingTripPlanKey || undefined,
                         customerRef: order.customerRef,
+                        tripOwnership: tripDraft.tripOwnership,
                         pickupStopKeys: tripDraft.pickupStopKeys,
                         extraPickupRefs,
-                        vehicleRef: tripDraft.vehicleRef,
-                        driverRef: tripDraft.driverRef,
-                        tripRouteRateRef: tripDraft.tripRouteRateRef || undefined,
+                        vehicleRef: isMitraTripDraft ? '' : tripDraft.vehicleRef,
+                        driverRef: isMitraTripDraft ? '' : tripDraft.driverRef,
+                        tripRouteRateRef: isMitraTripDraft ? undefined : (tripDraft.tripRouteRateRef || undefined),
                         tripOriginArea: tripDraft.tripOriginArea || undefined,
                         tripDestinationArea: tripDraft.tripDestinationArea || undefined,
-                        taripBorongan: tripDraft.tripFee,
-                        vehicleCategoryOverrideReason: requiresTripDraftOverrideReason ? tripDraft.vehicleOverrideReason.trim() : undefined,
-                        issueBankRef: tripDraft.issueBankRef,
-                        cashGiven: tripDraft.cashGiven,
+                        taripBorongan: isMitraTripDraft ? 0 : tripDraft.tripFee,
+                        vehicleCategoryOverrideReason: isMitraTripDraft ? undefined : (requiresTripDraftOverrideReason ? tripDraft.vehicleOverrideReason.trim() : undefined),
+                        issueBankRef: isMitraTripDraft ? '' : tripDraft.issueBankRef,
+                        cashGiven: isMitraTripDraft ? 0 : tripDraft.cashGiven,
                         notes: tripDraft.notes.trim() || undefined,
                         date: tripDraft.date,
                     },
@@ -1325,11 +1377,11 @@ export default function OrderDetailPage() {
             )
             : [];
 
-        if (!effectiveDoVehicleRef) {
+        if (!isMitraDO && !effectiveDoVehicleRef) {
             addToast('error', 'Pilih kendaraan sebelum membuat surat jalan');
             return;
         }
-        if (selectablePickupStops.length > 0 && selectedPickupStopKeys.length === 0) {
+        if (resolvedOrderPickupStops.length > 0 && selectedPickupStopKeys.length === 0) {
             addToast('error', 'Pilih minimal 1 titik pickup untuk trip ini');
             return;
         }
@@ -1345,7 +1397,7 @@ export default function OrderDetailPage() {
             }
             const invalidPickupGroup = draftDirectCargoGroups.findIndex(group => {
                 const resolvedPickupStopKey = group.pickupStopKey || (selectedTripPickupStops.length === 1 ? selectedTripPickupStops[0]._key : '');
-                return selectablePickupStops.length > 0 && !resolvedPickupStopKey;
+                return resolvedOrderPickupStops.length > 0 && !resolvedPickupStopKey;
             });
             if (invalidPickupGroup >= 0) {
                 addToast('error', `Titik pickup wajib dipilih pada SJ ${invalidPickupGroup + 1}`);
@@ -1439,6 +1491,21 @@ export default function OrderDetailPage() {
             deliveryOrderPayload.issueBankRef = selectedOrderTripPlan.issueBankRef;
             deliveryOrderPayload.cashGiven = selectedOrderTripPlan.cashGiven;
             deliveryOrderPayload.vehicleCategoryOverrideReason = selectedOrderTripPlan.vehicleCategoryOverrideReason || undefined;
+        }
+
+        // Tanpa rencana trip ownership tidak ada di server, jadi harus dikirim.
+        // Server tetap menormalkan ulang (handleDeliveryOrderCreate), tapi di sini
+        // field internal juga dibuang supaya tidak pernah terkirim untuk trip MITRA.
+        deliveryOrderPayload.tripOwnership = isMitraDO ? 'MITRA' : 'INTERNAL';
+        if (isMitraDO) {
+            delete deliveryOrderPayload.vehicleRef;
+            delete deliveryOrderPayload.vehiclePlate;
+            delete deliveryOrderPayload.driverRef;
+            delete deliveryOrderPayload.vehicleCategoryOverrideReason;
+            delete deliveryOrderPayload.taripBorongan;
+            delete deliveryOrderPayload.tripRouteRateRef;
+            delete deliveryOrderPayload.issueBankRef;
+            delete deliveryOrderPayload.cashGiven;
         }
 
         setCreatingDO(true);
@@ -1599,11 +1666,6 @@ export default function OrderDetailPage() {
                     </div>
                 </div>
                 <div className="page-actions">
-                    {canShowPrimaryDeliveryOrderButton && (
-                        <button className="btn btn-primary" onClick={() => openCreateDOModal()} disabled={!canCreateDeliveryOrder}>
-                            <Truck size={16} /> {primaryDeliveryOrderButtonLabel}
-                        </button>
-                    )}
                     {canCreateInvoice && (
                         <button
                             className="btn btn-secondary"
@@ -1755,7 +1817,21 @@ export default function OrderDetailPage() {
                             <div className="detail-item"><div className="detail-label">Tanggal</div><div className="detail-value">{formatDate(order.createdAt)}</div></div>
                         </div>
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Customer / Pengirim / Penagih</div><div className="detail-value">{canOpenCustomerPage && order.customerRef ? <Link href={withReturnTo(`/customers/${order.customerRef}`)}>{order.customerName}</Link> : order.customerName}</div></div>
+                            <div className="detail-item">
+                                <div className="detail-label">Customer / Pengirim / Penagih</div>
+                                <div className="detail-value">
+                                    {canOpenCustomerPage && order.customerRef ? <Link href={withReturnTo(`/customers/${order.customerRef}`)}>{order.customerName}</Link> : order.customerName}
+                                    {additionalCustomers.length > 0 && (
+                                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.35rem', marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+                                            {additionalCustomers.map(customer => (
+                                                <span key={customer._id} className="badge badge-info" title="Customer tambahan pada order ini">
+                                                    {customer.name}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                             <div className="detail-item"><div className="detail-label">Kategori Truk / Armada</div><div className="detail-value">{order.serviceName || '-'}</div></div>
                         </div>
                         <div className="mt-2">
@@ -1824,6 +1900,7 @@ export default function OrderDetailPage() {
                     <div className="card-body" style={{ display: 'grid', gap: '1rem' }}>
                         {orderTripPlans.map(tripPlan => {
                             const linkedDeliveryOrder = tripPlan.linkedDeliveryOrderRef ? deliveryOrderById.get(tripPlan.linkedDeliveryOrderRef) : undefined;
+                            const isMitraTripPlan = normalizeTripOwnership(tripPlan.tripOwnership) === 'MITRA';
                             const tripPlanPickupStops = resolvedOrderPickupStops.filter(stop => tripPlan.pickupStopKeys.includes(stop._key));
                             const linkedShipperReferenceItems = linkedDeliveryOrder ? doItems.filter(item => item.deliveryOrderRef === linkedDeliveryOrder._id) : [];
                             const linkedShipperReferenceCount = linkedDeliveryOrder ? getDeliveryOrderShipperReferenceNumbers(linkedDeliveryOrder, linkedShipperReferenceItems).length : 0;
@@ -1845,7 +1922,18 @@ export default function OrderDetailPage() {
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        <div style={{ fontWeight: 700 }}>Trip {tripPlan.sequence}</div>
+                                        {linkedDeliveryOrder && canOpenTripsPage ? (
+                                            <Link
+                                                href={withReturnTo(`/delivery-orders/${linkedDeliveryOrder._id}`)}
+                                                style={{ fontWeight: 700, color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                                title={`Buka detail Trip ${tripPlan.sequence}`}
+                                            >
+                                                Trip {tripPlan.sequence}
+                                                <ArrowRight size={14} aria-hidden="true" />
+                                            </Link>
+                                        ) : (
+                                            <div style={{ fontWeight: 700 }}>Trip {tripPlan.sequence}</div>
+                                        )}
                                         {linkedDeliveryOrder ? (
                                             <span className={`badge badge-${DO_STATUS_MAP[linkedDeliveryOrder.status]?.color || 'gray'}`}>
                                                 <span className="badge-dot" /> {linkedDeliveryOrder.status === 'CANCELLED' ? 'Dibatalkan' : `Sudah jadi DO ${formatInternalDeliveryOrderNumber(linkedDeliveryOrder)}`}
@@ -1854,6 +1942,12 @@ export default function OrderDetailPage() {
                                             <span className="badge badge-blue"><span className="badge-dot" /> Siap input Surat Jalan</span>
                                         )}
                                     </div>
+                                    {isMitraTripPlan ? (
+                                        <div className="trip-ownership-hint" style={{ maxWidth: 'none' }}>
+                                            <Info size={14} aria-hidden="true" />
+                                            <span>Trip mitra — tanpa kendaraan, supir, dan uang jalan internal.</span>
+                                        </div>
+                                    ) : (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div>
                                             <div className="detail-label">Kendaraan</div>
@@ -1872,6 +1966,7 @@ export default function OrderDetailPage() {
                                             <div className="detail-value">{formatCurrency(tripPlan.cashGiven || 0)}</div>
                                         </div>
                                     </div>
+                                    )}
                                     {linkedDeliveryOrder && (
                                         <div style={{ padding: '0.8rem 0.9rem', borderRadius: '0.75rem', background: 'var(--color-white)', border: '1px solid var(--color-gray-200)' }}>
                                             <div className="detail-label">SJ Pengirim</div>
@@ -2421,12 +2516,13 @@ export default function OrderDetailPage() {
                                                 </div>
                                                 <button
                                                     type="button"
-                                                    className="btn btn-ghost btn-icon-only"
+                                                    className="btn btn-secondary btn-sm"
                                                     onClick={() => toggleTripDraftPickupStop(pickupStop._key, false)}
                                                     disabled={savingTripPlan}
                                                     title="Hapus pickup dari rencana trip"
+                                                    aria-label="Hapus pickup dari rencana trip"
                                                 >
-                                                    <X size={16} />
+                                                    <Trash2 size={14} /> Hapus
                                                 </button>
                                             </div>
                                         ))
@@ -2456,6 +2552,13 @@ export default function OrderDetailPage() {
                                 </div>
                             </div>
 
+                            <TripOwnershipSwitch
+                                value={tripDraft.tripOwnership}
+                                disabled={savingTripPlan}
+                                onChange={value => updateTripDraftField('tripOwnership', value)}
+                            />
+
+                            {!isMitraTripDraft && (
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kendaraan <span className="required">*</span></label>
@@ -2505,6 +2608,7 @@ export default function OrderDetailPage() {
                                     />
                                 </div>
                             </div>
+                            )}
 
                             {requiresTripDraftOverrideReason && (
                                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -2520,6 +2624,7 @@ export default function OrderDetailPage() {
                                 </div>
                             )}
 
+                            {!isMitraTripDraft && (
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Asal Area Trip</label>
@@ -2544,14 +2649,16 @@ export default function OrderDetailPage() {
                                     />
                                 </div>
                             </div>
+                            )}
 
-                            {matchedTripDraftRate && (
+                            {!isMitraTripDraft && matchedTripDraftRate && (
                                 <div style={{ fontSize: '0.8rem', color: 'var(--color-primary-700)', background: 'var(--color-primary-50)', border: '1px solid var(--color-primary-100)', padding: '0.75rem 0.9rem', borderRadius: '0.75rem' }}>
                                     Tarif master: {formatTripRouteRateLabel(matchedTripDraftRate)} | {matchedTripDraftRate.rate.toLocaleString('id-ID')}
                                 </div>
                             )}
 
                             <div className="form-row">
+                                {!isMitraTripDraft && (
                                 <div className="form-group">
                                     <label className="form-label">Upah Trip <span className="required">*</span></label>
                                     <FormattedNumberInput
@@ -2562,6 +2669,7 @@ export default function OrderDetailPage() {
                                         disabled={savingTripPlan || isTripDraftFeeLockedToMaster}
                                     />
                                 </div>
+                                )}
                                 <div className="form-group">
                                     <label className="form-label">Tanggal Trip</label>
                                     <input
@@ -2574,6 +2682,7 @@ export default function OrderDetailPage() {
                                 </div>
                             </div>
 
+                            {!isMitraTripDraft && (
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Kas / Bank Uang Jalan <span className="required">*</span></label>
@@ -2599,6 +2708,7 @@ export default function OrderDetailPage() {
                                     />
                                 </div>
                             </div>
+                            )}
 
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Catatan Trip</label>
@@ -2625,27 +2735,47 @@ export default function OrderDetailPage() {
 
             {showTripPlanActionModal && (
                 <div className="modal-overlay" onClick={() => { if (!deletingTripPlanKey) closeTripPlanActionModal(); }}>
-                    <div className="modal" onClick={e => e.stopPropagation()}>
+<div className="modal modal-lg" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3 className="modal-title">{tripPlanModalMode === 'delete' ? 'Pilih Trip untuk Dihapus' : 'Pilih Trip untuk Diedit'}</h3>
                             <button className="modal-close" onClick={closeTripPlanActionModal} disabled={Boolean(deletingTripPlanKey)}>&times;</button>
                         </div>
                         <div className="modal-body" style={{ display: 'grid', gap: '1rem' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
+<div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Rencana Trip <span className="required">*</span></label>
-                                                                <Combobox
-                                    value={selectedTripPlanActionKey}
-                                    onChange={(v: string) => selectTripPlanForModalAction(v)}
-                                    options={editableOrderTripPlans.map(tripPlan => (
-                                        { value: tripPlan._key, label: `Trip ${tripPlan.sequence} - ${tripPlan.vehiclePlate || 'Tanpa kendaraan'} / ${tripPlan.driverName || 'Tanpa supir'}` }
-                                    ))}
-                                    placeholder="Pilih rencana trip yang belum punya SJ"
-                                    disabled={Boolean(deletingTripPlanKey)}
-                                    className="form-select"
-                                />
-                                {editableOrderTripPlans.length === 0 && (
+                                {editableOrderTripPlans.length === 0 ? (
                                     <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                                         Tidak ada rencana trip yang bisa diedit atau dihapus karena semuanya sudah memiliki SJ.
+                                    </div>
+                                ) : (
+                                    <div className="trip-plan-picker" role="radiogroup" aria-label="Rencana Trip">
+                                        {editableOrderTripPlans.map(tripPlan => {
+                                            const isSelected = tripPlan._key === selectedTripPlanActionKey;
+                                            const isMitra = normalizeTripOwnership(tripPlan.tripOwnership) === 'MITRA';
+                                            return (
+                                                <label
+                                                    key={tripPlan._key}
+                                                    className={`trip-plan-option ${isSelected ? 'active' : ''}`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="trip-plan-action"
+                                                        checked={isSelected}
+                                                        disabled={Boolean(deletingTripPlanKey)}
+                                                        onChange={() => selectTripPlanForModalAction(tripPlan._key)}
+                                                    />
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div className="trip-plan-option-title">Trip {tripPlan.sequence}</div>
+                                                        <div className="trip-plan-option-meta">
+                                                            {isMitra
+                                                                ? 'Mitra — tanpa kendaraan, supir, dan uang jalan internal'
+                                                                : `${tripPlan.vehiclePlate || 'Tanpa kendaraan'} / ${tripPlan.driverName || 'Tanpa supir'}`}
+                                                            {tripPlan.date ? ` · ${formatDate(tripPlan.date)}` : ''}
+                                                        </div>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -2851,7 +2981,15 @@ export default function OrderDetailPage() {
                                     </div>
                                 )}
                             </div>
-                            {selectedOrderTripPlan && (
+                            {selectedOrderTripPlan && isMitraDO && (
+                                <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
+                                    <div className="trip-ownership-hint" style={{ maxWidth: 'none' }}>
+                                        <Info size={14} aria-hidden="true" />
+                                        <span>Trip mitra: tidak memakai kendaraan, supir, dan uang jalan internal.</span>
+                                    </div>
+                                </div>
+                            )}
+                            {selectedOrderTripPlan && !isMitraDO && (
                                 <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                                         <div style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
@@ -2888,13 +3026,13 @@ export default function OrderDetailPage() {
                                                     previous.includes(nextKey) ? previous : [...previous, nextKey]
                                                 ));
                                             }}
-                                            options={selectablePickupStops
+                                            options={resolvedOrderPickupStops
                                                 .filter(pickupStop => !selectedPickupStopKeys.includes(pickupStop._key))
                                                 .map((pickupStop, index) => (
-                                                    { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}${'fromMaster' in pickupStop && pickupStop.fromMaster ? ' (Master)' : ''} - ${pickupStop.pickupAddress}` }
+                                                    { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''} - ${pickupStop.pickupAddress}` }
                                                 ))}
-                                            placeholder="Tambah titik pickup dari master..."
-                                            disabled={creatingDO || selectablePickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
+                                            placeholder="Pilih titik pickup order..."
+                                            disabled={creatingDO || resolvedOrderPickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
                                             className="form-select"
                                         />
                                         {selectedTripPickupStops.length === 0 ? (
@@ -2925,12 +3063,13 @@ export default function OrderDetailPage() {
                                                         </div>
                                                         <button
                                                             type="button"
-                                                            className="btn btn-ghost btn-icon-only"
+                                                            className="btn btn-secondary btn-sm"
                                                             onClick={() => setSelectedPickupStopKeys(previous => previous.filter(value => value !== pickupStop._key))}
                                                             disabled={creatingDO}
                                                             title="Hapus pickup dari trip ini"
+                                                            aria-label="Hapus pickup dari trip ini"
                                                         >
-                                                            <X size={16} />
+                                                            <Trash2 size={14} /> Hapus
                                                         </button>
                                                     </div>
                                                 ))}
@@ -2975,6 +3114,13 @@ export default function OrderDetailPage() {
                                 </div>
                             )}
                             {!selectedOrderTripPlan && (
+                                <TripOwnershipSwitch
+                                    value={doTripOwnership}
+                                    disabled={creatingDO}
+                                    onChange={value => setDoTripOwnership(value)}
+                                />
+                            )}
+                            {!selectedOrderTripPlan && !isMitraDO && (
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Kendaraan</label>
@@ -3168,7 +3314,7 @@ export default function OrderDetailPage() {
                                                                                     : entry
                                                                             )))}
                                                                                 options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                                                                disabled={creatingDO || shouldLockOrderItemVolume(item)}
+                                                                                disabled={creatingDO}
                                                                                 className="form-select"
                                                                             />
                                                                         </div>
@@ -3182,7 +3328,7 @@ export default function OrderDetailPage() {
                                                                             maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                                             value={item.volumeInputValue}
                                                                             onValueChange={value => updateDirectCargoGroupItem(group.id, itemIndex, 'volumeInputValue', value)}
-                                                                            disabled={creatingDO}
+                                                                            disabled={creatingDO || shouldLockOrderItemVolume(item)}
                                                                         />
                                                                                                                                                 <div className="cargo-item-unit">
                                                                             <Combobox
@@ -3206,9 +3352,28 @@ export default function OrderDetailPage() {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                {group.items.length > 1 && (
-                                                                    <button type="button" className="btn btn-ghost btn-icon-only" onClick={() => removeDirectCargoGroupItem(group.id, itemIndex)} disabled={creatingDO} style={{ marginBottom: 4 }}>
-                                                                        <X size={18} />
+                                                                {group.items.length > 1 ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-danger-outline btn-sm"
+                                                                        onClick={() => removeDirectCargoGroupItem(group.id, itemIndex)}
+                                                                        disabled={creatingDO}
+                                                                        title={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                        aria-label={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                        style={{ marginBottom: 4 }}
+                                                                    >
+                                                                        <Trash2 size={14} /> Hapus Barang
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-secondary btn-sm"
+                                                                        disabled
+                                                                        title="Minimal 1 barang per SJ"
+                                                                        aria-label="Minimal 1 barang per SJ"
+                                                                        style={{ marginBottom: 4 }}
+                                                                    >
+                                                                        <Trash2 size={14} /> Hapus Barang
                                                                     </button>
                                                                 )}
                                                             </div>

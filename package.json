@@ -9,6 +9,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "node scripts/typecheck.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report",
     "audit:admin-data-route-flow": "node scripts/audit-admin-data-route-flow.mjs",
     "audit:settings-document-format": "npx tsx scripts/audit-settings-document-format.ts",
     "audit:password-hashes": "node scripts/audit-password-hashes.mjs",
@@ -46,11 +49,16 @@
     "audit:driver-trip-closure-flow": "node scripts/audit-driver-trip-closure-flow.mjs",
     "audit:master-data-import": "npx tsx --conditions react-server scripts/audit-master-data-import.ts",
     "audit:freight-nota-revision-flow": "npx tsx scripts/audit-freight-nota-revision-flow.ts",
+    "audit:manual-nota-number": "npx tsx scripts/audit-manual-nota-number.ts",
+    "audit:multi-customer-trip": "npx tsx --conditions react-server scripts/audit-multi-customer-trip.ts",
     "audit:order-to-nota-e2e": "npx tsx scripts/audit-order-to-nota-e2e.ts",
     "audit:order-status-consistency": "npx tsx scripts/audit-order-status-consistency.ts",
     "audit:hold-continuation-origin": "npx tsx scripts/audit-hold-continuation-origin.ts",
     "audit:overtonase-driver-trip": "npx tsx scripts/audit-overtonase-driver-trip.ts",
+    "audit:trip-underload-deduction": "npx tsx scripts/audit-trip-underload-deduction.ts",
     "audit:trip-resource-locks": "npx tsx scripts/audit-trip-resource-locks.ts",
+    "audit:mitra-trip-flow": "npx tsx --conditions react-server scripts/audit-mitra-trip-flow.ts",
+    "audit:mitra-status-progression": "npx tsx --conditions react-server scripts/audit-mitra-status-progression.ts",
     "audit:reseed-test-coverage": "node scripts/audit-reseed-test-coverage.mjs",
     "audit:supabase": "node scripts/audit-supabase-migration.mjs",
     "backfill:accounting": "npx tsx --conditions react-server scripts/backfill-accounting-journals.ts",
@@ -71,7 +79,8 @@
     "repair:supabase:bank-ledgers": "node scripts/repair-supabase-bank-ledgers.mjs",
     "reseed:supabase:safe-workflow": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:safe-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
     "reseed:supabase:trip-surat-jalan": "npm run reset:supabase -- --all-managed-data --preserve-users --preserve-trip-rates && npm run ensure:supabase:trip-rates && npm run seed:supabase:clean-workflow && npm run repair:supabase:bank-ledgers && npm run backfill:accounting",
-    "seed:invoice-test": "npx tsx --conditions react-server scripts/seed-invoice-test.ts"
+    "seed:invoice-test": "npx tsx --conditions react-server scripts/seed-invoice-test.ts",
+    "seed:underload-test": "npx tsx --conditions react-server scripts/seed-underload-test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -91,6 +100,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

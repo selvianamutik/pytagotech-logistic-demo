@@ -539,6 +539,7 @@ class DeliveryOrderService {
       allowsDirectCargoInput: json['allowsDirectCargoInput'] != false,
       orderRef: _readRefId(json['orderRef']),
       customerRef: _readRefId(json['customerRef']),
+      customerRefs: _readRefIdList(json['customerRefs']),
       receiverName: receiverName?.isNotEmpty == true ? receiverName : null,
       receiverAddress: receiverAddress?.isNotEmpty == true
           ? receiverAddress
@@ -625,6 +626,7 @@ class DeliveryOrderService {
       orderRef: (json['orderRef'] as String?)?.trim() ?? '',
       masterResi: (json['masterResi'] as String?)?.trim(),
       customerRef: _readRefId(json['customerRef']),
+      customerRefs: _readRefIdList(json['customerRefs']),
       customerName: (json['customerName'] as String?)?.trim(),
       serviceName: (json['serviceName'] as String?)?.trim(),
       tripPlanKey: (json['tripPlanKey'] as String?)?.trim() ?? '',
@@ -1152,6 +1154,22 @@ class DeliveryOrderService {
       return ref != null && ref.isNotEmpty ? ref : null;
     }
     return null;
+  }
+
+  /// Reads a list of customer refs. Multi-customer trips return more than one; older payloads
+  /// simply return an empty list and callers fall back to the single `customerRef`.
+  List<String> _readRefIdList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    final refs = <String>[];
+    for (final entry in value) {
+      final ref = _readRefId(entry);
+      if (ref != null && !refs.contains(ref)) {
+        refs.add(ref);
+      }
+    }
+    return refs;
   }
 }
 

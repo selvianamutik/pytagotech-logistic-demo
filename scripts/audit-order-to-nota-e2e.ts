@@ -1557,13 +1557,29 @@ async function main() {
         );
 
         auditStep('tambah SJ baru setelah trip terkirim harus mulai dari CREATED');
+        // Endpoint ini menulis ulang SELURUH array shipperReferences, dan penjaga SJ final
+        // (order-workflows.ts) membandingkan tiap field dengan nilai tersimpan. SJ final yang
+        // tidak diubah harus dikirim apa adanya (echo), karena `pickupStopKey` akan
+        // dinormalisasi ulang dari pickupStops milik DO dan bisa jadi undefined kalau kita
+        // mengirim key level order — itu membuat SJ yang tidak disentuh terlihat "berubah".
+        const doSplitStateBeforeAdd = await requestJson<{ data: DeliveryOrder }>(
+            `/api/data?entity=delivery-orders&id=${encodeURIComponent(doSplitId)}`,
+            cookieHeader
+        );
+        const existingSplitReference = (doSplitStateBeforeAdd.data.shipperReferences || []).find(
+            reference => normalizeText(reference.referenceNumber).toUpperCase() === sjSplit.toUpperCase()
+        );
+        assert(
+            existingSplitReference,
+            `Referensi SJ ${sjSplit} harus ditemukan sebelum menambah SJ baru.`
+        );
         await postData(cookieHeader, {
             entity: 'delivery-orders',
             action: 'update-shipper-reference',
             data: {
                 id: doSplitId,
                 shipperReferences: [
-                    { referenceNumber: sjSplit, pickupStopKey: pickupTwoKey },
+                    { ...existingSplitReference },
                     { referenceNumber: sjAfterDelivered, pickupStopKey: pickupTwoKey },
                 ],
             },

@@ -12,6 +12,17 @@ import {
 
 export const MANUAL_ITEM_OPTION_VALUE = '__manual__';
 
+// Sentinel for "Titik Pickup" on the Surat Jalan cargo modal. Selecting it means
+// the address is typed by hand instead of pointing at an order pickup stop, so
+// the value is stored in pickupAddress and pickupStopKey is left empty.
+export const MANUAL_PICKUP_OPTION_VALUE = '__manual_pickup__';
+
+// Sentinel for "Master Pickup Customer" on the order create/edit forms. Same idea
+// as MANUAL_PICKUP_OPTION_VALUE but one level up: the stop stops pointing at a
+// master pickup record and the address below becomes the only source of truth.
+export const MANUAL_PICKUP_MASTER_VALUE = '__manual_pickup_master__';
+export const MANUAL_PICKUP_MASTER_LABEL = 'Tulis manual (di luar Master Pickup)';
+
 export type OrderItemForm = {
     id?: string;
     manualEntry?: boolean;
@@ -362,6 +373,41 @@ export function applyCustomerPickupToStop(stop: PickupStopForm, selectedPickup: 
         pickupLabel: snapshot.pickupLabel,
         pickupAddress: snapshot.pickupAddress,
     };
+}
+
+export function getPickupStopMasterValue(
+    stop: Pick<PickupStopForm, 'customerPickupRef' | 'pickupLabel' | 'pickupAddress'>
+): string {
+    if (stop.customerPickupRef) {
+        return stop.customerPickupRef;
+    }
+    if (stop.pickupLabel.trim() || stop.pickupAddress.trim()) {
+        return MANUAL_PICKUP_MASTER_VALUE;
+    }
+    return '';
+}
+
+export function applyCustomerPickupMasterSelection(
+    stop: PickupStopForm,
+    nextValue: string,
+    customerPickups: CustomerPickupLocation[]
+): PickupStopForm {
+    // Menulis manual: lepas master ref, lalu kosongkan alamat yang disalin dari
+    // master supaya isian "Alamat Pickup" jadi satu-satunya sumber. Stop yang
+    // sudah manual sejak awal tetap menyimpan alamat ketikan tangannya.
+    if (nextValue === MANUAL_PICKUP_MASTER_VALUE) {
+        return {
+            ...stop,
+            customerPickupRef: '',
+            pickupLabel: '',
+            pickupAddress: stop.customerPickupRef ? '' : stop.pickupAddress,
+        };
+    }
+    // Tombol clear: kembali ke kosong tanpa menyentuh alamat yang diketik manual.
+    if (nextValue === '') {
+        return { ...stop, customerPickupRef: '' };
+    }
+    return applyCustomerPickupToStop(stop, customerPickups.find(pickup => pickup._id === nextValue));
 }
 
 export function sortCustomerPickups(pickups: CustomerPickupLocation[]) {

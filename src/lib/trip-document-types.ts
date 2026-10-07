@@ -8,6 +8,7 @@ import type {
     DOStatus,
     DriverVoucher,
     Order,
+    TripOwnership,
     TripRouteRate,
 } from './types';
 
@@ -51,6 +52,7 @@ export interface Trip {
     receiverCompany?: string;
     serviceRef?: string;
     serviceName?: string;
+    tripOwnership?: TripOwnership;
     vehicleServiceRef?: string;
     vehicleServiceName?: string;
     vehicleCategoryOverrideReason?: string;
@@ -99,6 +101,7 @@ export interface TripRecord {
     receiverCompany?: string;
     serviceRef?: string;
     serviceName?: string;
+    tripOwnership?: TripOwnership;
     vehicleServiceRef?: string;
     vehicleServiceName?: string;
     vehicleCategoryOverrideReason?: string;

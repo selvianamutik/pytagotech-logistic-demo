@@ -3,6 +3,7 @@ import {
     createDefaultOrderItemForm,
     type OrderItemForm,
 } from '@/lib/order-create-page-support';
+import type { TripOwnership } from '@/lib/types';
 
 export type DirectCargoGroupItem = Omit<OrderItemForm, 'pickupStopKey' | 'shipperReferenceNumber'>;
 
@@ -15,6 +16,7 @@ export type DirectCargoGroup = {
 
 export type TripDraftForm = {
     id: string;
+    tripOwnership: TripOwnership;
     pickupStopKeys: string[];
     vehicleRef: string;
     driverRef: string;
@@ -61,6 +63,7 @@ export function createDefaultDirectCargoGroup(pickupStopKey = ''): DirectCargoGr
 export function createDefaultTripDraftForm(pickupStopKeys: string[] = []): TripDraftForm {
     return {
         id: crypto.randomUUID(),
+        tripOwnership: 'INTERNAL',
         pickupStopKeys,
         vehicleRef: '',
         driverRef: '',

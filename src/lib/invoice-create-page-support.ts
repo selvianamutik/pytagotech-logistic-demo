@@ -19,6 +19,12 @@ export interface NotaItemRow {
     actualDropPointKey?: string;
     customerRef?: string;
     customerName?: string;
+    /**
+     * Where this row's customer came from. `scalar` means neither the drop nor the SJ overrode it,
+     * so the row silently inherits the order/DO customer — which must not be billed on a trip that
+     * serves more than one customer.
+     */
+    customerSource?: 'drop' | 'reference' | 'scalar';
     doNumber: string;
     vehiclePlate: string;
     date: string;
@@ -292,6 +298,8 @@ export function buildNotaRowsFromDeliveryOrder(params: {
         doRef: deliveryOrder._id,
         customerRef: relatedOrder?.customerRef || deliveryOrder.customerRef || '',
         customerName: relatedOrder?.customerName || deliveryOrder.customerName || '',
+        // Overridden per row below once a drop or an SJ supplies an explicit billing customer.
+        customerSource: 'scalar' as const,
         doNumber: deliveryOrder.doNumber || '',
         vehiclePlate: deliveryOrder.vehiclePlate || '',
         date: deliveryOrder.date || getBusinessDateValue(),
@@ -310,6 +318,19 @@ export function buildNotaRowsFromDeliveryOrder(params: {
 
     const hasCargo = (cargo: { qtyKoli: number; weightKg: number; volumeM3: number }) =>
         cargo.qtyKoli > 0 || cargo.weightKg > 0 || cargo.volumeM3 > 0;
+
+    /**
+     * Classifies where a row's billing customer came from. The explicit return type matters: without
+     * it the ternary widens to `string` and the row builders no longer satisfy `NotaItemRow`.
+     */
+    const resolveRowCustomerSource = (
+        dropBillingCustomerRef?: string | null,
+        referenceBillingCustomerRef?: string | null
+    ): NotaItemRow['customerSource'] => (
+        (dropBillingCustomerRef || '').trim()
+            ? 'drop'
+            : (referenceBillingCustomerRef || '').trim() ? 'reference' : 'scalar'
+    );
 
     const getItemActualOrPlannedCargo = (item: DeliveryOrderItem) => ({
         qtyKoli: parseFormattedNumberish(item.actualQtyKoli ?? item.orderItemQtyKoli ?? 0),
@@ -474,6 +495,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
             deliveryOrderItemRefs: billableItems.map(item => item._id).filter(Boolean),
             customerRef: actualDropBilling.customerRef || matchedReference?.billingCustomerRef || baseRow.customerRef,
             customerName: actualDropBilling.customerName || matchedReference?.billingCustomerName || baseRow.customerName,
+            customerSource: resolveRowCustomerSource(actualDropBilling.customerRef, matchedReference?.billingCustomerRef),
             noSJ: shipperReferenceNumber,
             dari: matchedReference?.pickupAddress || baseRow.dari,
             tujuan:
@@ -526,6 +548,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
             deliveryOrderItemRefs: [item._id],
             customerRef: actualDropBilling.customerRef || matchedReference?.billingCustomerRef || baseRow.customerRef,
             customerName: actualDropBilling.customerName || matchedReference?.billingCustomerName || baseRow.customerName,
+            customerSource: resolveRowCustomerSource(actualDropBilling.customerRef, matchedReference?.billingCustomerRef),
             noSJ: shipperReferenceNumber,
             dari: matchedReference?.pickupAddress || baseRow.dari,
             tujuan:
@@ -557,6 +580,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
             actualDropPointKey: point._key || `${point.sequence ?? pointIndex}`,
             customerRef: point.billingCustomerRef || matchedReference?.billingCustomerRef || baseRow.customerRef,
             customerName: point.billingCustomerName || matchedReference?.billingCustomerName || baseRow.customerName,
+            customerSource: resolveRowCustomerSource(point.billingCustomerRef, matchedReference?.billingCustomerRef),
             noSJ: shipperReferenceNumber,
             dari: getActualDropOrigin(point, pointIndex, shipperReferenceNumber, item._id) || matchedReference?.pickupAddress || baseRow.dari,
             tujuan:
@@ -584,6 +608,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
                     ...baseRow,
                     customerRef: actualDropBilling.customerRef || reference.billingCustomerRef || baseRow.customerRef,
                     customerName: actualDropBilling.customerName || reference.billingCustomerName || baseRow.customerName,
+                    customerSource: resolveRowCustomerSource(actualDropBilling.customerRef, reference.billingCustomerRef),
                     noSJ: reference.referenceNumber,
                     dari: reference.pickupAddress || baseRow.dari,
                     tujuan:
@@ -615,6 +640,30 @@ export function buildNotaRowsFromDeliveryOrder(params: {
     const rows: NotaItemRow[] = [];
     const emittedReferences = new Set<string>();
 
+    // Item-anchored fallback: a billable DROP point without its own SJ tag still
+    // proves delivery when it names items of this SJ. Without it, a combined
+    // drop covering several SJs matches no reference scope and every SJ is
+    // skipped even though per-item attribution data fully exists. Each item
+    // belongs to exactly one SJ, so rows stay partitioned (no double billing).
+    const hasItemAnchoredBillableCargo = (items: DeliveryOrderItem[]) => items.some(item => {
+        const itemActual = getItemActualOrPlannedCargo(item);
+        if (!hasCargo({ qtyKoli: itemActual.qtyKoli, weightKg: itemActual.weightKg, volumeM3: itemActual.volumeM3 })) {
+            return false;
+        }
+        return actualDropPoints.some(point => {
+            if (!['DROP', 'EXTRA_DROP'].includes(point.stopType || '')) {
+                return false;
+            }
+            if ((point.shipperReferenceNumber || '').trim()) {
+                return false;
+            }
+            if (!hasCargo(getActualDropCargoSummary(point))) {
+                return false;
+            }
+            return getActualDropPointItemRefs(point).includes(item._id);
+        });
+    });
+
     for (const reference of shipperReferences) {
         const shipperReferenceNumber = reference.referenceNumber;
         emittedReferences.add(shipperReferenceNumber);
@@ -624,7 +673,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
         const nonBillableCargo = getReferenceNonBillableCargo(shipperReferenceNumber);
         const hasNonBillableOutcome = hasActualDropPoints && hasCargo(nonBillableCargo);
 
-        if (hasActualDropPoints && !hasCargo(referenceBillableCargo)) {
+        if (hasActualDropPoints && !hasCargo(referenceBillableCargo) && !hasItemAnchoredBillableCargo(itemsForReference)) {
             continue;
         }
 
@@ -665,7 +714,7 @@ export function buildNotaRowsFromDeliveryOrder(params: {
         const nonBillableCargo = getReferenceNonBillableCargo(shipperReferenceNumber);
         const hasNonBillableOutcome = hasActualDropPoints && hasCargo(nonBillableCargo);
 
-        if (hasActualDropPoints && !hasCargo(referenceBillableCargo)) {
+        if (hasActualDropPoints && !hasCargo(referenceBillableCargo) && !hasItemAnchoredBillableCargo(items)) {
             continue;
         }
 

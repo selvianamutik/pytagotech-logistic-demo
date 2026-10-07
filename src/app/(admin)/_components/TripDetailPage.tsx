@@ -31,6 +31,7 @@ import {
     shouldLockActualCargoVolume,
     getAssignableTripDrivers,
     getAssignableTripVehicles,
+    canTripAdvanceToStatus,
     getNextDeliveryOrderStatuses,
     getTripResourceActionLabel,
     shouldRequireTripVehicleOverrideReason,
@@ -125,7 +126,7 @@ import {
     inferDriverVoucherDisbursementCount,
     sortDriverVoucherDisbursements,
 } from '@/lib/driver-voucher-detail-support';
-import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPTION_VALUE, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
+import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPTION_VALUE, MANUAL_PICKUP_OPTION_VALUE, applyOrderItemAutoWeightFromQty, shouldLockOrderItemVolume, shouldLockOrderItemWeight, summarizeDraftOrderCargo, updateOrderItemVolumeUnit, updateOrderItemWeightUnit } from '@/lib/order-create-page-support';
 import { generateDOPdf } from '@/lib/pdf/doTemplate';
 import { hasPageAccess, hasPermission, normalizeUserRole } from '@/lib/rbac';
 import { getSuratJalanActualDropDestinations } from '@/lib/surat-jalan-destination';
@@ -133,6 +134,7 @@ import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRat
 import { roundToPrecision } from '@/lib/number-precision';
 import type { SuratJalanDocument, Trip, TripCashLinkSummary, TripDetailReferencesSnapshot, TripDetailSnapshot, TripTrackingEvent } from '@/lib/trip-document-types';
 import type { BankAccount, Customer, CustomerProduct, CustomerRecipient, DeliveryOrder, DeliveryOrderItem, CompanyProfile, FreightNota, FreightNotaItem, Order, OrderItem, Driver, DriverVoucher, DriverVoucherDisbursement, ExpenseCategory, PendingDriverStatusRequest, Service, TireEvent, TripRouteRate, Vehicle } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 
 const BATCH_SURAT_JALAN_STATUS_OPTIONS = ['ON_DELIVERY', 'ARRIVED', 'DELIVERED'] as const;
 
@@ -399,6 +401,7 @@ export default function TripDetailPage() {
     const [actualCargoStepBlockMessages, setActualCargoStepBlockMessages] = useState<ActualCargoStepBlockMessage[]>([]);
     const [showSuratJalanActualEditModal, setShowSuratJalanActualEditModal] = useState(false);
     const [manualOvertonaseReviewMode, setManualOvertonaseReviewMode] = useState<'manual' | 'automatic' | null>(null);
+    const [manualWageDeductionOpen, setManualWageDeductionOpen] = useState(false);
     const [selectedSuratJalanActualEditDocument, setSelectedSuratJalanActualEditDocument] = useState<SuratJalanDocument | null>(null);
     const [selectedSuratJalanActualEditItemRef, setSelectedSuratJalanActualEditItemRef] = useState('');
     const statusModalBodyRef = useRef<HTMLDivElement | null>(null);
@@ -445,6 +448,7 @@ export default function TripDetailPage() {
     const [keteranganBorongan, setKeteranganBorongan] = useState('');
     const [manualOvertonaseWeightInputValue, setManualOvertonaseWeightInputValue] = useState(0);
     const [manualOvertonaseWeightInputUnit, setManualOvertonaseWeightInputUnit] = useState<WeightInputUnit>('KG');
+    const [manualWageDeductionInputValue, setManualWageDeductionInputValue] = useState(0);
     const [tripRouteRates, setTripRouteRates] = useState<TripRouteRate[]>([]);
     const [tripRouteRateRef, setTripRouteRateRef] = useState('');
     const [tripOriginArea, setTripOriginArea] = useState('');
@@ -458,6 +462,7 @@ export default function TripDetailPage() {
     const [updatingStatus, setUpdatingStatus] = useState(false);
     const [savingTarip, setSavingTarip] = useState(false);
     const [savingManualOvertonase, setSavingManualOvertonase] = useState(false);
+    const [savingManualWageDeduction, setSavingManualWageDeduction] = useState(false);
     const [loadingTripCashOptions, setLoadingTripCashOptions] = useState(false);
     const [issuingTripCash, setIssuingTripCash] = useState(false);
     const [toppingUpTripCash, setToppingUpTripCash] = useState(false);
@@ -575,6 +580,7 @@ export default function TripDetailPage() {
         actualCargoStepBlockMessages.length > 0 ||
         showSuratJalanActualEditModal ||
         manualOvertonaseReviewMode !== null ||
+        manualWageDeductionOpen ||
         pendingTripClosure !== null;
     const tripOriginAreaOptions = buildTripRateAreaOptions(tripRouteRates, 'originArea', {
         serviceRef: doData?.serviceRef,
@@ -1146,8 +1152,8 @@ export default function TripDetailPage() {
                 pickupStopKey: '',
                 pickupAddress: doData?.pickupAddress || '',
                 selectedRecipientId: '',
-                billingCustomerRef: doData?.customerRef || '',
-                billingCustomerName: doData?.customerName || '',
+                billingCustomerRef: isMultiCustomerTrip ? '' : (doData?.customerRef || ''),
+                billingCustomerName: isMultiCustomerTrip ? '' : (doData?.customerName || ''),
                 receiverName: '',
                 receiverPhone: '',
                 receiverAddress: '',
@@ -1164,8 +1170,8 @@ export default function TripDetailPage() {
                     pickupStopKey: defaultShipperReferencePickupOption?.key || '',
                     pickupAddress: defaultShipperReferencePickupOption?.address || '',
                     selectedRecipientId: '',
-                    billingCustomerRef: doData?.customerRef || '',
-                    billingCustomerName: doData?.customerName || '',
+                    billingCustomerRef: isMultiCustomerTrip ? '' : (doData?.customerRef || ''),
+                    billingCustomerName: isMultiCustomerTrip ? '' : (doData?.customerName || ''),
                     receiverName: '',
                     receiverPhone: '',
                     receiverAddress: '',
@@ -1328,6 +1334,102 @@ export default function TripDetailPage() {
             ...previous,
             [selectedShipperReferenceDraft.draftKey]: (previous[selectedShipperReferenceDraft.draftKey] || []).filter((_, currentIndex) => currentIndex !== itemIndex),
         }));
+    };
+
+    const renderNewShipperReferenceItemCard = (item: DeliveryOrderCargoDraftItem, itemIndex: number) => {
+        return (
+            <div style={{ display: 'grid', gap: 12, padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => removeSelectedShipperReferenceItemDraft(itemIndex)}
+                    disabled={savingShipperReference}
+                    title="Hapus barang ini dari Surat Jalan (disimpan saat klik Simpan)"
+                >
+                    <Trash2 size={14} /> Hapus Barang
+                </button>
+            </div>
+                <div className="form-stack">
+                    <div>
+                        <label className="form-label">Barang Customer</label>
+                    <Combobox
+                        value={getOrderItemPickerValue(item)}
+                        onChange={(v: string) => applySelectedShipperReferenceItemProduct(itemIndex, v)}
+                        options={[
+                            { value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' },
+                            ...deliveryOrderCustomerProducts.map(product => ({
+                                value: product._id,
+                                label: `${product.code ? `${product.code} - ` : ''}${product.name}`,
+                            })),
+                        ]}
+                        placeholder={deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}
+                        disabled={savingShipperReference || !doData?.customerRef}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Deskripsi Barang</label>
+                    <input
+                        className="form-input"
+                        value={item.description}
+                        onChange={e => updateSelectedShipperReferenceItemDraft(itemIndex, 'description', e.target.value)}
+                        placeholder="Mis. Oli Diesel 10W-40 / Beras 50 kg / Keramik"
+                        disabled={savingShipperReference}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Koli</label>
+                    <FormattedNumberInput
+                        min={0}
+                        allowDecimal={false}
+                        value={item.qtyKoli}
+                        onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'qtyKoli', value)}
+                        disabled={savingShipperReference}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Berat</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <FormattedNumberInput
+                            min={0}
+                            maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
+                            value={item.weightInputValue}
+                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
+                            disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
+                        />
+                        <div style={{ width: 92 }}>
+                        <Combobox
+                            value={item.weightInputUnit}
+                            onChange={(v: string) => updateSelectedShipperReferenceItemWeightUnit(itemIndex, v as DeliveryOrderCargoDraftItem['weightInputUnit'])}
+                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                            disabled={savingShipperReference}
+                        />
+                    </div>
+                    </div>
+                </div>
+                <div>
+                    <label className="form-label">Volume</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <FormattedNumberInput
+                            min={0}
+                            maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
+                            value={item.volumeInputValue}
+                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
+                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
+                        />
+                        <div style={{ width: 92 }}>
+                        <Combobox
+                            value={item.volumeInputUnit}
+                            onChange={(v: string) => updateSelectedShipperReferenceItemVolumeUnit(itemIndex, v as DeliveryOrderCargoDraftItem['volumeInputUnit'])}
+                            options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                            disabled={savingShipperReference}
+                        />
+                    </div>
+                    </div>
+                </div>
+                </div>
+                </div>
+        );
     };
 
     const applySelectedShipperReferenceItemProduct = (itemIndex: number, nextProductRef: string) => {
@@ -1495,7 +1597,7 @@ export default function TripDetailPage() {
         setCargoDraftGroups([createDefaultDeliveryOrderCargoDraftGroup(getDefaultCargoDraftPickupKey())]);
     };
 
-    const updateCargoDraftGroup = <K extends keyof Pick<DeliveryOrderCargoDraftGroup, 'pickupStopKey' | 'shipperReferenceNumber'>>(
+    const updateCargoDraftGroup = <K extends keyof Pick<DeliveryOrderCargoDraftGroup, 'pickupStopKey' | 'pickupAddress' | 'shipperReferenceNumber'>>(
         groupId: string,
         field: K,
         value: DeliveryOrderCargoDraftGroup[K]
@@ -1769,8 +1871,8 @@ export default function TripDetailPage() {
                     ? pendingDriverStatusSuratJalanRefs
                     : suratJalanDocuments
                     .filter(document =>
-                        getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusModalDOData?.status || doData?.status || ''))
-                            .filter(status => status === 'CREATED' || status === 'CANCELLED' || hasTripResourcesAssigned)
+getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusModalDOData?.status || doData?.status || ''))
+   .filter(status => canAdvanceTripStatus(status))
                             .includes(requestedStatus)
                     )
                     .map(document => document._id)
@@ -1892,6 +1994,7 @@ export default function TripDetailPage() {
         const normalizedGroups = cargoDraftGroupsWithItems.map(group => ({
             ...group,
             resolvedPickupStopKey: group.pickupStopKey || (pickupStopList.length === 1 ? pickupStopList[0]._key : ''),
+            resolvedPickupAddress: group.pickupAddress.trim(),
             resolvedShipperReferenceNumber: group.shipperReferenceNumber.trim().toUpperCase(),
         }));
         const invalidReferenceIndex = normalizedGroups.findIndex(group => group.draftItems.length > 0 && !group.resolvedShipperReferenceNumber);
@@ -1899,9 +2002,21 @@ export default function TripDetailPage() {
             addToast('error', `No. SJ pengirim wajib diisi pada SJ ${invalidReferenceIndex + 1}`);
             return;
         }
-        const invalidPickupIndex = normalizedGroups.findIndex(group => pickupStopList.length > 0 && !group.resolvedPickupStopKey);
+        // Tanpa stop yang dipilih, alamat manual wajib ada. Stop yang sudah tidak
+        // ada di order juga ditolak di sini supaya user tidak diam-diam menyimpan
+        // key yang tidak resolve (dulu jatuh ke fallback alamat pickup lain).
+        const missingManualPickupIndex = normalizedGroups.findIndex(group => (
+            !group.resolvedPickupStopKey && !group.resolvedPickupAddress
+        ));
+        if (missingManualPickupIndex >= 0) {
+            addToast('error', `Titik pickup wajib dipilih atau alamatnya diisi manual pada SJ ${missingManualPickupIndex + 1}`);
+            return;
+        }
+        const invalidPickupIndex = normalizedGroups.findIndex(group => (
+            Boolean(group.pickupStopKey) && !pickupStopMap.has(group.pickupStopKey)
+        ));
         if (invalidPickupIndex >= 0) {
-            addToast('error', `Titik pickup wajib dipilih pada SJ ${invalidPickupIndex + 1}`);
+            addToast('error', `Titik pickup pada SJ ${invalidPickupIndex + 1} tidak lagi ada di order. Pilih ulang titik pickupnya.`);
             return;
         }
         const duplicateGroupReferenceNumber = (() => {
@@ -1940,7 +2055,9 @@ export default function TripDetailPage() {
                 .filter(group => !existingReferenceNumbers.has(group.resolvedShipperReferenceNumber))
                 .map(group => ({
                     referenceNumber: group.resolvedShipperReferenceNumber,
+                    // Hanya salah satu yang terisi: stop yang dipilih, atau alamat ketik manual.
                     pickupStopKey: group.resolvedPickupStopKey || undefined,
+                    pickupAddress: group.resolvedPickupStopKey ? undefined : (group.resolvedPickupAddress || undefined),
                 }));
             const payloadData = editingCargoItemId
                 ? {
@@ -1950,6 +2067,7 @@ export default function TripDetailPage() {
                         ...normalizedGroups[0].draftItems[0],
                         shipperReferenceNumber: normalizedGroups[0].resolvedShipperReferenceNumber,
                         pickupStopKey: normalizedGroups[0].resolvedPickupStopKey || undefined,
+                        pickupAddress: normalizedGroups[0].resolvedPickupStopKey ? undefined : (normalizedGroups[0].resolvedPickupAddress || undefined),
                     },
                 }
                 : {
@@ -1963,6 +2081,7 @@ export default function TripDetailPage() {
                             ...item,
                             shipperReferenceNumber: group.resolvedShipperReferenceNumber,
                             pickupStopKey: group.resolvedPickupStopKey || undefined,
+                            pickupAddress: group.resolvedPickupStopKey ? undefined : (group.resolvedPickupAddress || undefined),
                         }))
                     ),
                 };
@@ -2002,6 +2121,14 @@ export default function TripDetailPage() {
         const nextClosed = !isTripClosedByAdmin;
         setPendingTripClosure(nextClosed);
         if (!nextClosed) {
+            setTripClosureTires([]);
+            return;
+        }
+        // Trip Mitra tidak punya armada sendiri: tidak ada odometer, servis oli,
+        // atau ban unit yang perlu dikonfirmasi. Lewati semua pengambilan data
+        // itu supaya tutup trip langsung jadi konfirmasi biasa.
+        if (isMitraTrip) {
+            setTripClosureOdometer(0);
             setTripClosureTires([]);
             return;
         }
@@ -2070,7 +2197,7 @@ export default function TripDetailPage() {
                     data: {
                         id: doData._id,
                         closed: nextClosed,
-                        newOdometer: nextClosed ? tripClosureOdometer : undefined,
+                        newOdometer: nextClosed && !isMitraTrip ? tripClosureOdometer : undefined,
                         pendingDriverRequestId: reviewingDriverRequestId || undefined,
                     },
                 }),
@@ -3879,7 +4006,11 @@ export default function TripDetailPage() {
             if (!issuerCompany) {
                 throw new Error('Profil perusahaan tidak tersedia');
             }
-            generateDOPdf(doData!, doItems, issuerCompany);
+            generateDOPdf(doData!, doItems, issuerCompany, {
+                additionalCustomerNames: tripAdditionalCustomerRefs.map(ref =>
+                    billingCustomers.find(customer => customer._id === ref)?.name || ref
+                ),
+            });
             addToast('success', 'PDF Surat Jalan berhasil di-download');
         } catch (err) {
             console.error('PDF Export Error:', err);
@@ -4021,6 +4152,77 @@ export default function TripDetailPage() {
             addToast('error', 'Gagal menyimpan overtonase manual');
         } finally {
             setSavingManualOvertonase(false);
+        }
+    };
+
+    const getManualWageDeductionPreview = () => {
+        if (!doData) {
+            return null;
+        }
+        const inputDeduction = Math.round(parseFormattedNumberish(manualWageDeductionInputValue || 0, { maxFractionDigits: 0 }));
+        const nextDeductionAmount = inputDeduction > 0 ? inputDeduction : 0;
+        const baseFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
+        const currentOvertonaseAmount = doData.overtonaseDriverAmount || 0;
+        const systemTripFee = (baseFee > 0 ? baseFee : 0) + currentOvertonaseAmount;
+        const nextTripFee = Math.max(systemTripFee - nextDeductionAmount, 0);
+
+        return {
+            nextDeductionAmount,
+            currentDeductionAmount: doData.manualTripFeeDeductionAmount || 0,
+            baseFee,
+            currentOvertonaseAmount,
+            systemTripFee,
+            currentTripFee: doData.taripBorongan || 0,
+            nextTripFee,
+        };
+    };
+
+    const openManualWageDeductionReview = () => {
+        if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
+        setManualWageDeductionInputValue(doData.manualTripFeeDeductionAmount || 0);
+        setManualWageDeductionOpen(true);
+    };
+
+    const saveManualWageDeduction = async () => {
+        if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
+        const deductionAmount = Math.round(manualWageDeductionInputValue || 0);
+        if (deductionAmount < 0) {
+            addToast('error', 'Nominal pengurangan tidak valid.');
+            return;
+        }
+        setSavingManualWageDeduction(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'delivery-orders',
+                    action: 'update-manual-wage-deduction',
+                    data: {
+                        id: doData._id,
+                        deductionAmount,
+                    },
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                addToast('error', result.error || 'Gagal menyimpan pengurangan upah');
+                return;
+            }
+            setManualWageDeductionOpen(false);
+            await refreshTripDetail();
+            const warning = result.data?.settledVoucherOvertonageWarning;
+            if (warning) {
+                addToast('warning', warning);
+            } else if (result.data?.linkedVoucherAdjustmentSummary) {
+                addToast('success', `Pengurangan disimpan, ${result.data.linkedVoucherAdjustmentSummary}`);
+            } else {
+                addToast('success', deductionAmount > 0 ? 'Pengurangan upah disimpan' : 'Pengurangan direset ke upah sistem');
+            }
+        } catch {
+            addToast('error', 'Gagal menyimpan pengurangan upah');
+        } finally {
+            setSavingManualWageDeduction(false);
         }
     };
 
@@ -4557,7 +4759,9 @@ export default function TripDetailPage() {
                             id: doData?._id,
                             deliveryOrderItemId: item.deliveryOrderItemId,
                             cargoItem: {
-                                customerProductRef: item.customerProductRef || undefined,
+                                // Explicit null clears a previously linked master product.
+                                // (undefined would be dropped by JSON and the old link would survive.)
+                                customerProductRef: item.customerProductRef || null,
                                 description: item.description,
                                 qtyKoli: item.qtyKoli,
                                 weightInputValue: item.weightInputValue,
@@ -4626,7 +4830,7 @@ export default function TripDetailPage() {
     if (loading) return <div><div className="skeleton skeleton-title" /><div className="skeleton skeleton-card" style={{ height: 200 }} /></div>;
     if (!doData) return <div className="empty-state"><div className="empty-state-title">{loadNotice?.title || 'Trip tidak ditemukan'}</div>{loadNotice?.text && <div className="empty-state-text">{loadNotice.text}</div>}</div>;
 
-    const hasTripResourcesAssigned = Boolean(doData.vehicleRef && doData.driverRef);
+    const canAdvanceTripStatus = (status: string) => canTripAdvanceToStatus(status, doData);
     const displayTripStatus = tripData?.status || doData.status;
     const tripResourceActionLabel = getTripResourceActionLabel(doData);
     const tripResourceAssignments = buildTripResourceAssignmentIndex({
@@ -5172,8 +5376,13 @@ export default function TripDetailPage() {
             .map(item => item.customerProductRef.trim())
             .filter(Boolean)
     );
+    // Products are offered for every customer this trip serves, not just the primary one.
+    const deliveryOrderCustomerProductRefs = new Set<string>(
+        [doData.customerRef, ...(doData.customerRefs || [])]
+            .filter((ref): ref is string => Boolean(ref))
+    );
     const deliveryOrderCustomerProducts = customerProducts.filter(product =>
-        product.customerRef === doData.customerRef ||
+        (product.customerRef ? deliveryOrderCustomerProductRefs.has(product.customerRef) : false) ||
         cargoDraftSelectedProductRefs.has(product._id)
     );
     const isEditingCargoItem = Boolean(editingCargoItemId);
@@ -5228,6 +5437,19 @@ export default function TripDetailPage() {
             SETTLED: { label: 'Selesai', cls: 'badge-success' },
         }[linkedTripCashStatus || 'DRAFT'])
         : null;
+    const isMitraTrip = normalizeTripOwnership(doData.tripOwnership) === 'MITRA';
+    // A trip that serves more than one customer must not silently default billing to the primary.
+    const tripCustomerRefs = doData.customerRefs || [];
+    const isMultiCustomerTrip = tripCustomerRefs.length > 1;
+    const tripAdditionalCustomerRefs = tripCustomerRefs.filter(ref => ref !== doData.customerRef);
+    const orderedBillingCustomers = isMultiCustomerTrip
+        ? [
+            ...tripCustomerRefs
+                .map(ref => billingCustomers.find(customer => customer._id === ref))
+                .filter((customer): customer is (typeof billingCustomers)[number] => Boolean(customer)),
+            ...billingCustomers.filter(customer => !tripCustomerRefs.includes(customer._id)),
+        ]
+        : billingCustomers;
     const baseTripFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
     const overtonaseDriverAmount = doData.overtonaseDriverAmount || 0;
     const totalTripFee = doData.taripBorongan || 0;
@@ -5236,6 +5458,11 @@ export default function TripDetailPage() {
     const payableOvertonaseTon = Math.floor((doData.overtonaseWeightKg || 0) / 1000);
     const manualOvertonasePendingPreview = manualOvertonaseReviewMode
         ? getManualOvertonasePreview(manualOvertonaseReviewMode === 'automatic')
+        : null;
+    const wageDeductionAmount = doData.manualTripFeeDeductionAmount || 0;
+    const hasWageDeduction = wageDeductionAmount > 0;
+    const manualWageDeductionPreview = manualWageDeductionOpen
+        ? getManualWageDeductionPreview()
         : null;
     const exceedsVehicleCapacity = (doData.vehicleCapacityExceededKg || 0) > 0;
     const effectiveOvertonaseLimitKg = doData.serviceMaxPayloadKg || 0;
@@ -5256,7 +5483,7 @@ export default function TripDetailPage() {
         textAlign: 'right',
         fontVariantNumeric: 'tabular-nums',
     } as const;
-    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || exceedsVehicleCapacity;
+    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || hasWageDeduction || exceedsVehicleCapacity;
     const settledVoucherNeedsManualAdjustment = Boolean(
         linkedVoucher?.status === 'SETTLED' &&
         totalTripFee > 0 &&
@@ -5273,6 +5500,7 @@ export default function TripDetailPage() {
         !doData.taripBorongan || doData.taripBorongan <= 0 ? 'upah borongan bisa diisi saat terbit bon' : null,
     ].filter((value): value is string => Boolean(value));
     const canIssueVoucherFromDo =
+        !isMitraTrip &&
         canCreateTripCash &&
         !hasLinkedTripCash &&
         voucherIssueBlockingReasons.length === 0;
@@ -5301,11 +5529,9 @@ export default function TripDetailPage() {
     const displayTripNumber = tripData?.tripNumber || formatInternalDeliveryOrderNumber(doData);
     const suratJalanStatusOptions = suratJalanDocuments.filter(document => document.itemCount > 0);
     const getEligibleStatusesForSuratJalan = (document: SuratJalanDocument) =>
-        getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKey).status).filter(status =>
-            status === 'CREATED' ||
-            status === 'CANCELLED' ||
-            hasTripResourcesAssigned
-        );
+getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKey).status).filter(status =>
+   canAdvanceTripStatus(status)
+   );
     const availableBatchStatuses = BATCH_SURAT_JALAN_STATUS_OPTIONS.filter(status =>
         suratJalanStatusOptions.some(document => getEligibleStatusesForSuratJalan(document).includes(status))
     );
@@ -5678,16 +5904,9 @@ export default function TripDetailPage() {
                 point.volumeInputUnit
             ),
         }), { qtyKoli: 0, weightKg: 0, volumeM3: 0 });
-    const selectedActualDropMismatchMessage =
-        reviewingDriverRequest
-            ? null
-            : selectedActualCargoTotals.qtyKoli > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.qtyKoli - selectedActualCargoTotals.qtyKoli) > 0.01
-            ? 'Total qty titik DROP harus sama dengan qty aktual barang SJ.'
-            : selectedActualCargoTotals.weightKg > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.weightKg - selectedActualCargoTotals.weightKg) > 0.01
-                ? 'Total berat titik DROP harus sama dengan berat aktual barang SJ.'
-                : selectedActualCargoTotals.volumeM3 > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.volumeM3 - selectedActualCargoTotals.volumeM3) > 0.001
-                    ? 'Total volume titik DROP harus sama dengan volume aktual barang SJ.'
-                    : null;
+    // Aktual barang SJ is flexible input: actual weight/volume per item may be
+    // lower, higher, or equal, so drop allocation is not required to match it.
+    const selectedActualDropMismatchMessage: string | null = null;
     const selectedPhysicalActualDropPoints = showAdvancedDropEditor ? selectedActualDropPoints : selectedEffectiveActualDropPoints;
     const selectedBillableDropCount = selectedPhysicalActualDropPoints.filter(point => isDeliveryOrderBillableDropType(point.stopType)).length;
     const selectedHoldDropCount = selectedPhysicalActualDropPoints.filter(point => isDeliveryOrderHoldDropType(point.stopType)).length;
@@ -6113,7 +6332,6 @@ export default function TripDetailPage() {
         );
     });
     const selectedActualDropReady =
-        !selectedActualDropMismatchMessage &&
         !selectedActualDropAmbiguityMessage &&
         selectedEffectiveActualDropPoints.length > 0 &&
         selectedEffectiveActualDropPoints.every(item => {
@@ -6632,6 +6850,7 @@ export default function TripDetailPage() {
                             <span className={`badge badge-${displayStatusMeta.color}`}>
                                 <span className="badge-dot" /> {displayStatusMeta.label}
                             </span>
+                            {isMitraTrip && <span className="badge badge-info">Trip Mitra</span>}
                         </h1>
                         <div className="text-muted text-sm" style={{ marginTop: '0.35rem' }}>
                             Status trip ini dibaca otomatis dari progres seluruh Surat Jalan di bawahnya.
@@ -6662,7 +6881,7 @@ export default function TripDetailPage() {
                 </div>
             </div>
 
-            {doData.status === 'CREATED' && (!doData.vehicleRef || !doData.driverRef) && (
+            {!isMitraTrip && doData.status === 'CREATED' && (!doData.vehicleRef || !doData.driverRef) && (
                 <div className="card" style={{ marginBottom: 'var(--space-4)', border: '1px solid var(--color-warning-light)', background: 'var(--color-warning-soft)' }}>
                     <div className="card-body">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
@@ -6789,7 +7008,7 @@ export default function TripDetailPage() {
                                 : 'Trip masih terbuka. Admin masih bisa menambah SJ baru walaupun seluruh SJ sebelumnya sudah selesai.'}
                         </div>
                         <div className="detail-action-group" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            {doData.status === 'CREATED' && canAssignTripResources && !hasLinkedTripCash && (
+                            {doData.status === 'CREATED' && canAssignTripResources && !hasLinkedTripCash && !isMitraTrip && (
                                 <button className="btn btn-secondary btn-sm" onClick={() => void openTripResourcesModal()}>
                                     <Truck size={14} /> Edit Trip / Armada
                                 </button>
@@ -6816,7 +7035,7 @@ export default function TripDetailPage() {
                                             : 'Tutup Trip'}
                                 </button>
                             )}
-                            {canManageTripFee && !hasLinkedTripCash && !editingTarip && (
+                            {canManageTripFee && !isMitraTrip && !hasLinkedTripCash && !editingTarip && (
                                 <button className="btn btn-secondary btn-sm" onClick={openTripFeeEditor}>
                                     <Edit size={14} /> {doData.taripBorongan ? 'Edit Upah Trip' : 'Isi Upah Trip'}
                                 </button>
@@ -6836,7 +7055,7 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {(canViewTripCash || canCreateTripCash || hasLinkedTripCash) && (
+            {!isMitraTrip && (canViewTripCash || canCreateTripCash || hasLinkedTripCash) && (
                 <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <span className="card-header-title">Uang Jalan Trip</span>
@@ -7003,12 +7222,34 @@ export default function TripDetailPage() {
                             <div className="detail-item"><div className="detail-label">No. Trip Internal</div><div className="detail-value font-mono"><Link href={`/trips/${doData._id}`}>{displayTripNumber}</Link></div></div>
                             <div className="detail-item"><div className="detail-label">Tanggal Trip</div><div className="detail-value">{formatDate(doData.date)}</div></div>
                         </div>
+                        {!isMitraTrip && (
+                            <div className="detail-row">
+                                <div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{canOpenVehiclePage && doData.vehicleRef ? <Link href={withReturnTo(`/fleet/vehicles/${doData.vehicleRef}`)}>{doData.vehiclePlate || '-'}</Link> : (doData.vehiclePlate || '-')}</div></div>
+                                <div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{canOpenDriverPage && doData.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${doData.driverRef}`)}>{doData.driverName || '-'}</Link> : (doData.driverName || '-')}</div></div>
+                            </div>
+                        )}
+                        {isMitraTrip && (
+                            <div className="detail-row">
+                                <div className="detail-item"><div className="detail-label">Jenis Trip</div><div className="detail-value">Mitra (tanpa armada &amp; upah internal)</div></div>
+                                <div className="detail-item"><div className="detail-label">Armada / Driver</div><div className="detail-value">Dikelola Mitra</div></div>
+                            </div>
+                        )}
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Kendaraan</div><div className="detail-value">{canOpenVehiclePage && doData.vehicleRef ? <Link href={withReturnTo(`/fleet/vehicles/${doData.vehicleRef}`)}>{doData.vehiclePlate || '-'}</Link> : (doData.vehiclePlate || '-')}</div></div>
-                            <div className="detail-item"><div className="detail-label">Driver</div><div className="detail-value">{canOpenDriverPage && doData.driverRef ? <Link href={withReturnTo(`/fleet/drivers/${doData.driverRef}`)}>{doData.driverName || '-'}</Link> : (doData.driverName || '-')}</div></div>
-                        </div>
-                        <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Customer</div><div className="detail-value">{canOpenCustomerPage && doData.customerRef ? <Link href={withReturnTo(`/customers/${doData.customerRef}`)}>{doData.customerName || '-'}</Link> : (doData.customerName || '-')}</div></div>
+                            <div className="detail-item">
+                                <div className="detail-label">Customer</div>
+                                <div className="detail-value">
+                                    {canOpenCustomerPage && doData.customerRef ? <Link href={withReturnTo(`/customers/${doData.customerRef}`)}>{doData.customerName || '-'}</Link> : (doData.customerName || '-')}
+                                    {tripAdditionalCustomerRefs.length > 0 && (
+                                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.35rem', marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+                                            {tripAdditionalCustomerRefs.map(ref => (
+                                                <span key={ref} className="badge badge-info" title="Customer tambahan pada trip ini">
+                                                    {billingCustomers.find(customer => customer._id === ref)?.name || ref}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                             <div className="detail-item"><div className="detail-label">Master Resi</div><div className="detail-value">{canOpenSourceOrderPage ? <Link href={withReturnTo(`/orders/${doData.orderRef}`)}>{doData.masterResi}</Link> : doData.masterResi}</div></div>
                         </div>
                         {shipperReferenceDisplayList.length > 0 && (
@@ -7436,6 +7677,7 @@ export default function TripDetailPage() {
                     )}
             </CollapsibleCard>
 
+            {!isMitraTrip && (
             <div id="delivery-order-trip-fee-card">
             <CollapsibleCard
                 title="Trip Overtonase & Upah Driver"
@@ -7443,7 +7685,7 @@ export default function TripDetailPage() {
                 accent="success"
                 defaultOpen={shouldOpenTripFeeCard}
                 subtitle={totalTripFee
-                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}`
+                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}${hasWageDeduction ? ' (dikurangi pengurangan)' : ''}`
                     : 'Upah driver belum diisi'}
             >
                     {!editingTarip ? (
@@ -7456,9 +7698,11 @@ export default function TripDetailPage() {
                                     </div>
                                     <div className="text-muted text-sm" style={{ marginTop: '0.25rem' }}>
                                         {hasOvertonase
-                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase`
+                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase${hasWageDeduction ? ` - ${formatCurrency(wageDeductionAmount)} pengurangan` : ''}`
                                             : baseTripFee
-                                                ? 'Tidak ada tambahan overtonase'
+                                                ? hasWageDeduction
+                                                    ? `${formatCurrency(baseTripFee)} - ${formatCurrency(wageDeductionAmount)} pengurangan`
+                                                    : 'Tidak ada tambahan overtonase'
                                                 : 'Upah dasar belum diisi'}
                                     </div>
                                 </div>
@@ -7469,7 +7713,7 @@ export default function TripDetailPage() {
                                 )}
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem' }}>
+                            <div className="trip-fee-section-grid">
                                 <section>
                                     <div className="font-semibold" style={{ marginBottom: '0.35rem' }}>Kapasitas & Muatan</div>
                                     <div style={tripFeeRowStyle}>
@@ -7514,6 +7758,12 @@ export default function TripDetailPage() {
                                         <span className="text-muted text-sm">Tambahan overtonase</span>
                                         <strong style={{ ...tripFeeValueStyle, color: hasOvertonase ? 'var(--color-warning)' : 'var(--color-gray-500)' }}>
                                             {hasOvertonase ? formatCurrency(overtonaseDriverAmount) : '-'}
+                                        </strong>
+                                    </div>
+                                    <div style={tripFeeRowStyle}>
+                                        <span className="text-muted text-sm">Pengurangan</span>
+                                        <strong style={{ ...tripFeeValueStyle, color: hasWageDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>
+                                            {hasWageDeduction ? `-${formatCurrency(wageDeductionAmount)}` : '-'}
                                         </strong>
                                     </div>
                                     <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
@@ -7564,6 +7814,26 @@ export default function TripDetailPage() {
                                         disabled={savingManualOvertonase}
                                     >
                                         <Edit size={14} /> Atur Overtonase
+                                    </button>
+                                </div>
+                            )}
+                            {canManageTripFee && !isTripClosedByAdmin && (
+                                <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.5rem', background: 'var(--color-gray-50)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                    <div style={{ minWidth: 220 }}>
+                                        <div className="font-semibold">Manual Pengurangan</div>
+                                        <div className="text-muted text-sm">
+                                            {hasWageDeduction
+                                                ? `Aktif: -${formatCurrency(wageDeductionAmount)} dari upah sistem`
+                                                : 'Belum ada pengurangan manual'}
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm"
+                                        onClick={() => openManualWageDeductionReview()}
+                                        disabled={savingManualWageDeduction}
+                                    >
+                                        <Edit size={14} /> Atur Pengurangan
                                     </button>
                                 </div>
                             )}
@@ -7659,6 +7929,7 @@ export default function TripDetailPage() {
                     )}
             </CollapsibleCard>
             </div>
+            )}
 
             {/* Items */}
             <CollapsibleCard
@@ -7871,6 +8142,14 @@ export default function TripDetailPage() {
                                         Otomatis
                                     </button>
                                 </div>
+                                <div className="text-muted text-sm">
+                                    Nilai otomatis saat ini:{' '}
+                                    <strong>
+                                        {manualOvertonasePendingPreview.automaticOvertonaseWeightKg > 0
+                                            ? `${manualOvertonasePendingPreview.automaticOvertonaseWeightKg} kg (dibayar ${Math.floor(manualOvertonasePendingPreview.automaticOvertonaseWeightKg / 1000)} ton penuh)`
+                                            : '0 kg (muatan tidak melebihi batas)'}
+                                    </strong>
+                                </div>
                             </div>
 
                             <div className="detail-row">
@@ -7955,7 +8234,117 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {showTripCashIssueModal && (
+            {manualWageDeductionOpen && manualWageDeductionPreview && (
+                <div className="modal-overlay" onClick={() => { if (!savingManualWageDeduction) setManualWageDeductionOpen(false); }}>
+                    <div className="modal" style={{ maxWidth: 760 }} onClick={event => event.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h3 className="modal-title">Review Perubahan Pengurangan</h3>
+                                <div className="text-muted text-sm" style={{ marginTop: '0.2rem' }}>
+                                    Potong upah trip langsung tanpa mengubah master data
+                                </div>
+                            </div>
+                            <button className="modal-close" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>&times;</button>
+                        </div>
+                        <div className="modal-body">
+                            <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.65rem', marginBottom: '0.85rem' }}>
+                                <div>
+                                    <div className="font-semibold">Nominal Pengurangan</div>
+                                    <div className="text-muted text-sm">
+                                        Isi nominal rupiah yang dipotong dari upah sistem. Reset mengosongkan isian — Simpan untuk menerapkan.
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end', flexWrap: 'wrap' }}>
+                                    <div style={{ maxWidth: 280, flex: '1 1 200px' }}>
+                                        <label className="form-label">Pengurangan (Rp)</label>
+                                        <FormattedNumberInput
+                                            min={0}
+                                            allowDecimal={false}
+                                            value={manualWageDeductionInputValue}
+                                            onValueChange={value => setManualWageDeductionInputValue(value)}
+                                            disabled={savingManualWageDeduction}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    {manualWageDeductionInputValue > 0 && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            style={{ color: 'var(--color-danger)' }}
+                                            onClick={() => setManualWageDeductionInputValue(0)}
+                                            disabled={savingManualWageDeduction}
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="detail-row">
+                                <div className="detail-item">
+                                    <div className="detail-label">Upah Sistem</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.systemTripFee ? formatCurrency(manualWageDeductionPreview.systemTripFee) : '-'}</div>
+                                    <div className="text-muted text-sm">
+                                        Dasar {manualWageDeductionPreview.baseFee ? formatCurrency(manualWageDeductionPreview.baseFee) : '-'}
+                                        {manualWageDeductionPreview.currentOvertonaseAmount > 0 && ` + ${formatCurrency(manualWageDeductionPreview.currentOvertonaseAmount)} overtonase`}
+                                    </div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
+                                </div>
+                            </div>
+
+                            <div className="detail-row" style={{ marginTop: '0.75rem' }}>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Sekarang</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentDeductionAmount ? formatCurrency(manualWageDeductionPreview.currentDeductionAmount) : '-'}</div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
+                                </div>
+                            </div>
+
+                            <div className="detail-row" style={{ marginTop: '0.75rem' }}>
+                                <div className="detail-item">
+                                    <div className="detail-label">Total Upah Sekarang</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentTripFee ? formatCurrency(manualWageDeductionPreview.currentTripFee) : '-'}</div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Total Upah Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextTripFee ? formatCurrency(manualWageDeductionPreview.nextTripFee) : '-'}</div>
+                                    {manualWageDeductionPreview.nextDeductionAmount > manualWageDeductionPreview.systemTripFee && (
+                                        <div className="text-danger text-sm">Nominal melebihi upah sistem — kurangi nominalnya.</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {linkedVoucher?.status === 'SETTLED' ? (
+                                <div className="alert alert-warning" style={{ marginTop: '0.85rem' }}>
+                                    Uang Jalan Trip sudah selesai. Perubahan ini menyimpan pengurangan di trip, tapi penyelesaian uang jalan lama tidak otomatis berubah.
+                                </div>
+                            ) : linkedVoucher ? (
+                                <div className="alert alert-info" style={{ marginTop: '0.85rem' }}>
+                                    Uang Jalan Trip yang belum selesai akan disinkronkan ke total upah baru.
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>Batal</button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => void saveManualWageDeduction()}
+                                disabled={savingManualWageDeduction}
+                            >
+                                <Save size={16} /> {savingManualWageDeduction ? 'Menyimpan...' : 'Konfirmasi Simpan'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showTripCashIssueModal && !isMitraTrip && (
                 <div className="modal-overlay" onClick={() => { if (!issuingTripCash) setShowTripCashIssueModal(false); }}>
                     <div className="modal" style={{ maxWidth: 920 }} onClick={event => event.stopPropagation()}>
                         <div className="modal-header">
@@ -8370,7 +8759,7 @@ export default function TripDetailPage() {
                 </div>
             )}
 
-            {showTripResourcesModal && (
+            {showTripResourcesModal && !isMitraTrip && (
                 <div className="modal-overlay" onClick={() => { if (!savingTripResources) setShowTripResourcesModal(false); }}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
@@ -8716,12 +9105,23 @@ export default function TripDetailPage() {
                                                 value={selectedActualDropBillingCustomerRef}
                                                 onChange={(v: string) => updateSelectedActualDropBillingCustomer(v)}
                                                 options={[
-                                                    { value: doData?.customerRef || '', label: 'Ikuti customer order / resi' },
-                                                    ...billingCustomers.map(customer => ({ value: customer._id, label: customer.name })),
+                                                    {
+                                                        value: doData?.customerRef || '',
+                                                        label: isMultiCustomerTrip
+                                                            ? `Ikuti customer utama (${doData?.customerName || 'customer order'})`
+                                                            : 'Ikuti customer order / resi',
+                                                    },
+                                                    ...orderedBillingCustomers.map(customer => ({ value: customer._id, label: customer.name })),
                                                 ]}
                                                 placeholder="Pilih customer invoice"
                                                 disabled={updatingStatus}
                                             />
+                                            {isMultiCustomerTrip && !selectedActualDropBillingCustomerRef && (
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-warning-dark)', marginTop: '0.35rem' }}>
+                                                    Trip ini melayani {tripCustomerRefs.length} customer. Pilih customer invoice dulu —
+                                                    tanpa pilihan ini tagihan akan ikut customer utama.
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     <div className="form-group">
@@ -9541,6 +9941,9 @@ export default function TripDetailPage() {
                                             }}
                                         >
                                             <span>Item {index + 1}</span>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0 }}>
+                                                {item.description || '-'}
+                                            </span>
                                             <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.85 }}>
                                                 {tabHasValue ? tabValueSummary : 'Belum diisi'}
                                             </span>
@@ -10405,7 +10808,7 @@ export default function TripDetailPage() {
                                                                         maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
                                                                         value={item.weightInputValue}
                                                                         onValueChange={value => updateSelectedExistingShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
-                                                                        disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
+                                                                        disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
                                                                     />
                                                                     <div style={{ width: 92 }}>
                                                                         <Combobox
@@ -10425,7 +10828,7 @@ export default function TripDetailPage() {
                                                                         maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                                         value={item.volumeInputValue}
                                                                         onValueChange={value => updateSelectedExistingShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
-                                                                        disabled={savingShipperReference}
+                                                                        disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
                                                                     />
                                                                     <div style={{ width: 92 }}>
                                                                         <Combobox
@@ -10450,102 +10853,22 @@ export default function TripDetailPage() {
                                             </div>
                                         )}
 
-                                        {activeShipperReferenceItemFocus?.kind === 'new' && (() => {
+                                        {isCreatingNewShipperReference
+                                            ? (selectedShipperReferenceItemDrafts.length === 0
+                                                ? (
+                                                    <div style={{ border: '1px dashed var(--color-gray-300)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-gray-50)' }}>
+                                                        <div className="text-muted text-sm">Belum ada barang. Klik Tambah Item untuk menambahkan barang pertama.</div>
+                                                    </div>
+                                                )
+                                                : selectedShipperReferenceItemDrafts.map((item, itemIndex) => (
+                                                    <div key={`sj-new-item-${itemIndex}`} style={{ display: 'contents' }}>
+                                                        {renderNewShipperReferenceItemCard(item, itemIndex)}
+                                                    </div>
+                                                )))
+                                            : (activeShipperReferenceItemFocus?.kind === 'new' && (() => {
                                             const { item, index: itemIndex } = activeShipperReferenceItemFocus;
-                                            return (
-                                                <div style={{ display: 'grid', gap: 12, padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-danger btn-sm"
-                                                        onClick={() => removeSelectedShipperReferenceItemDraft(itemIndex)}
-                                                        disabled={savingShipperReference}
-                                                        title="Hapus barang ini dari Surat Jalan (disimpan saat klik Simpan)"
-                                                    >
-                                                        <Trash2 size={14} /> Hapus Barang
-                                                    </button>
-                                                </div>
-                                                <div className="form-stack">
-                                                    <div>
-                                                        <label className="form-label">Barang Customer</label>
-                                                    <Combobox
-                                                        value={getOrderItemPickerValue(item)}
-                                                        onChange={(v: string) => applySelectedShipperReferenceItemProduct(itemIndex, v)}
-                                                        options={[
-                                                            { value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' },
-                                                            ...deliveryOrderCustomerProducts.map(product => ({
-                                                                value: product._id,
-                                                                label: `${product.code ? `${product.code} - ` : ''}${product.name}`,
-                                                            })),
-                                                        ]}
-                                                        placeholder={deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}
-                                                        disabled={savingShipperReference || !doData?.customerRef}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Deskripsi Barang</label>
-                                                    <input
-                                                        className="form-input"
-                                                        value={item.description}
-                                                        onChange={e => updateSelectedShipperReferenceItemDraft(itemIndex, 'description', e.target.value)}
-                                                        placeholder="Mis. Oli Diesel 10W-40 / Beras 50 kg / Keramik"
-                                                        disabled={savingShipperReference}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Koli</label>
-                                                    <FormattedNumberInput
-                                                        min={0}
-                                                        allowDecimal={false}
-                                                        value={item.qtyKoli}
-                                                        onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'qtyKoli', value)}
-                                                        disabled={savingShipperReference}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Berat</label>
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        <FormattedNumberInput
-                                                            min={0}
-                                                            maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
-                                                            value={item.weightInputValue}
-                                                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
-                                                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
-                                                        />
-                                                        <div style={{ width: 92 }}>
-                                                        <Combobox
-                                                            value={item.weightInputUnit}
-                                                            onChange={(v: string) => updateSelectedShipperReferenceItemWeightUnit(itemIndex, v as DeliveryOrderCargoDraftItem['weightInputUnit'])}
-                                                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                                            disabled={savingShipperReference}
-                                                        />
-                                                    </div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Volume</label>
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        <FormattedNumberInput
-                                                            min={0}
-                                                            maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
-                                                            value={item.volumeInputValue}
-                                                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
-                                                            disabled={savingShipperReference}
-                                                        />
-                                                        <div style={{ width: 92 }}>
-                                                        <Combobox
-                                                            value={item.volumeInputUnit}
-                                                            onChange={(v: string) => updateSelectedShipperReferenceItemVolumeUnit(itemIndex, v as DeliveryOrderCargoDraftItem['volumeInputUnit'])}
-                                                            options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                                            disabled={savingShipperReference}
-                                                        />
-                                                    </div>
-                                                    </div>
-                                                </div>
-                                                </div>
-                                                </div>
-                                            );
-                                        })()}
+                                            return renderNewShipperReferenceItemCard(item, itemIndex);
+                                        })())}
                                     </div>
                                 </div>
                             )}
@@ -10594,7 +10917,7 @@ export default function TripDetailPage() {
                                     ? 'Setelah trip ditutup admin, tambah SJ dan edit muatan SJ akan dikunci sampai trip dibuka kembali.'
                                     : 'Setelah trip dibuka kembali, admin bisa menambah SJ baru dan mengubah muatan SJ lagi.'}
                             </div>
-                            {pendingTripClosure && (
+                            {pendingTripClosure && !isMitraTrip && (
                                 <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
                                     <div className="form-row">
                                         <div className="form-group">
@@ -10677,7 +11000,7 @@ export default function TripDetailPage() {
                             <button
                                 className={pendingTripClosure ? 'btn btn-danger' : 'btn btn-primary'}
                                 onClick={() => void confirmTripClosure()}
-                                disabled={togglingTripClosure || loadingTripClosureTires || tripClosureOdometerInvalid}
+                                disabled={togglingTripClosure || (!isMitraTrip && (loadingTripClosureTires || tripClosureOdometerInvalid))}
                             >
                                 {togglingTripClosure ? 'Menyimpan...' : (pendingTripClosure ? 'Tutup Trip' : 'Buka Kembali')}
                             </button>
@@ -10843,13 +11166,46 @@ export default function TripDetailPage() {
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label className="form-label">Titik Pickup</label>
                                                     <Combobox
-                                                        value={group.pickupStopKey}
-                                                        onChange={(v: string) => updateCargoDraftGroup(group.id, 'pickupStopKey', v)}
-                                                        options={pickupStopList.map(stop => ({
-                                                            value: stop._key,
-                                                            label: `Pickup ${stop.sequence}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}`,
-                                                        }))}
+                                                        value={group.pickupStopKey || (group.pickupAddress ? MANUAL_PICKUP_OPTION_VALUE : '')}
+                                                        onChange={(v: string) => {
+                                                            if (v === MANUAL_PICKUP_OPTION_VALUE) {
+                                                                updateCargoDraftGroup(group.id, 'pickupStopKey', '');
+                                                                return;
+                                                            }
+                                                            updateCargoDraftGroup(group.id, 'pickupStopKey', v);
+                                                            updateCargoDraftGroup(group.id, 'pickupAddress', '');
+                                                        }}
+                                                        options={[
+                                                            { value: MANUAL_PICKUP_OPTION_VALUE, label: 'Tambah manual' },
+                                                            ...pickupStopList.map(stop => ({
+                                                                value: stop._key,
+                                                                label: `Pickup ${stop.sequence}${stop.pickupLabel ? ` - ${stop.pickupLabel}` : ''}`,
+                                                            })),
+                                                        ]}
                                                         placeholder="Pilih titik pickup"
+                                                        disabled={savingCargo}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {pickupStopList.length === 0 && (
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label className="form-label">Titik Pickup</label>
+                                                    <div className="text-muted text-sm">Order ini belum punya titik pickup, jadi isi alamatnya manual.</div>
+                                                </div>
+                                            )}
+
+                                            {(group.pickupAddress || (!group.pickupStopKey && pickupStopList.length === 0)) && (
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label className="form-label">
+                                                        Alamat Pickup Manual <span className="required">*</span>
+                                                    </label>
+                                                    <textarea
+                                                        className="form-textarea"
+                                                        rows={2}
+                                                        value={group.pickupAddress}
+                                                        onChange={e => updateCargoDraftGroup(group.id, 'pickupAddress', e.target.value)}
+                                                        placeholder="Alamat lokasi pengambilan barang"
                                                         disabled={savingCargo}
                                                     />
                                                 </div>
@@ -10913,7 +11269,7 @@ export default function TripDetailPage() {
                                                                     maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
                                                                     value={item.weightInputValue}
                                                                     onValueChange={value => updateCargoDraftItem(group.id, itemIndex, 'weightInputValue', value)}
-                                                                    disabled={savingCargo || shouldLockOrderItemVolume(item)}
+                                                                    disabled={savingCargo || shouldLockOrderItemWeight(item)}
                                                                 />
                                                                 <div style={{ width: 92 }}>
                                                                     <Combobox
@@ -10948,7 +11304,7 @@ export default function TripDetailPage() {
                                                                     maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
                                                                     value={item.volumeInputValue}
                                                                     onValueChange={value => updateCargoDraftItem(group.id, itemIndex, 'volumeInputValue', value)}
-                                                                    disabled={savingCargo}
+                                                                    disabled={savingCargo || shouldLockOrderItemVolume(item)}
                                                                 />
 <div style={{ width: 92 }}>
                                                                     <Combobox
@@ -10975,10 +11331,31 @@ export default function TripDetailPage() {
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {!isEditingCargoItem && group.items.length > 1 && (
-                                                            <button type="button" className="btn btn-ghost btn-icon-only" onClick={() => removeCargoDraftItem(group.id, itemIndex)} disabled={savingCargo} style={{ marginBottom: 4 }}>
-                                                                <X size={18} />
-                                                            </button>
+                                                        {!isEditingCargoItem && (
+                                                            group.items.length > 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-danger-outline btn-sm"
+                                                                    onClick={() => removeCargoDraftItem(group.id, itemIndex)}
+                                                                    disabled={savingCargo}
+                                                                    title={`Hapus barang ${itemIndex + 1} dari SJ ini (tersimpan saat klik Simpan)`}
+                                                                    aria-label={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                    style={{ marginBottom: 4 }}
+                                                                >
+                                                                    <Trash2 size={14} /> Hapus Barang
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-secondary btn-sm"
+                                                                    disabled
+                                                                    title="Minimal 1 barang per SJ"
+                                                                    aria-label="Minimal 1 barang per SJ"
+                                                                    style={{ marginBottom: 4 }}
+                                                                >
+                                                                    <Trash2 size={14} /> Hapus Barang
+                                                                </button>
+                                                            )
                                                         )}
                                                     </div>
                                                 ))}

@@ -5,8 +5,10 @@ import type {
     Order,
     PendingDriverActualCargoItem,
     TrackingLog,
+    TripOwnership,
     Vehicle,
 } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 import { formatFormattedNumberValue, parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import {
     calculateVolumePortion,
@@ -855,6 +857,25 @@ export function getNextDeliveryOrderStatuses(current: string): string[] {
         DELIVERED: [],
     };
     return transitions[current] || [];
+}
+
+// Status yang butuh armada + supir internal sebelum boleh dip advancement.
+// Trip Mitra dikecualikan karena arms-nya milik Mitra, bukan armada kita.
+const STATUS_REQUIRING_TRIP_RESOURCES = new Set(['ON_DELIVERY', 'ARRIVED', 'DELIVERED']);
+
+/**
+ * Cerminan aturan yang sama di server (order-workflows.ts, set-status):
+ * maju ke ON_DELIVERY/ARRIVED/DELIVERED butuh kendaraan + supir, kecuali
+ * trip-nya MITRA. Dipakai client supaya tombol status tidak ikut hilang
+ * untuk trip Mitra yang memang tidak punya armada internal.
+ */
+export function canTripAdvanceToStatus(
+    status: string,
+    trip: { tripOwnership?: unknown; vehicleRef?: unknown; driverRef?: unknown }
+): boolean {
+    if (!STATUS_REQUIRING_TRIP_RESOURCES.has(status)) return true;
+    if (normalizeTripOwnership(trip.tripOwnership as TripOwnership | undefined) === 'MITRA') return true;
+    return Boolean(trip.vehicleRef) && Boolean(trip.driverRef);
 }
 
 export function buildTripResourceAssignmentIndex(params: {

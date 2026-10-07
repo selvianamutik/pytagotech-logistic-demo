@@ -202,7 +202,7 @@ export function areDeliveryOrderShipperReferencesEquivalent(
 }
 
 export function resolveDeliveryOrderCargoItemContext(
-    item: Pick<NormalizedOrderItemInput, 'pickupStopKey' | 'shipperReferenceNumber'>,
+    item: Pick<NormalizedOrderItemInput, 'pickupStopKey' | 'pickupAddress' | 'shipperReferenceNumber'>,
     deliveryOrder: {
         pickupStops?: Array<{
             _key?: string;
@@ -254,10 +254,15 @@ export function resolveDeliveryOrderCargoItemContext(
         );
 
     return {
-        pickupStopKey: normalizeOptionalText(matchedPickupStop?._key) || resolvedPickupStopKey,
+        // Key yang tidak match stop manapun dibuang, supaya tidak ada key yatim
+        // yang nanti jatuh ke fallback alamat pickup lain.
+        pickupStopKey: matchedPickupStop
+            ? normalizeOptionalText(matchedPickupStop._key) || resolvedPickupStopKey
+            : undefined,
         pickupAddress:
             normalizeOptionalText(matchedPickupStop?.pickupAddress) ||
-            normalizeOptionalText(matchedReference?.pickupAddress),
+            normalizeOptionalText(matchedReference?.pickupAddress) ||
+            normalizeOptionalText(item.pickupAddress),
         shipperReferenceKey: normalizeOptionalText(matchedReference?._key),
         shipperReferenceNumber:
             normalizeOptionalText(matchedReference?.referenceNumber) ||

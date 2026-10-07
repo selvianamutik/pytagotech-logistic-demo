@@ -19,6 +19,7 @@ import {
     getFreightNotaWeightColumnLabel,
     normalizeFreightNotaBillingMode,
 } from '@/lib/freight-nota-billing';
+import { buildFreightNotaDisplayNumberFromParts } from '@/lib/nota-numbering';
 import {
     buildNotaRowsFromDeliveryOrder,
     createEmptyNotaRow,
@@ -115,6 +116,62 @@ export default function NewNotaPage() {
     const [pph23BaseMode, setPph23BaseMode] = useState<'BEFORE_CLAIM' | 'AFTER_CLAIM'>('BEFORE_CLAIM');
     const [editingRow, setEditingRow] = useState<NotaItemRow | null>(null);
     const [pendingDoSelection, setPendingDoSelection] = useState<PendingDeliveryOrderSelection | null>(null);
+    const [notaNumber, setNotaNumber] = useState('');
+    const [notaNumberTouched, setNotaNumberTouched] = useState(false);
+    const [existingNotaNumber, setExistingNotaNumber] = useState('');
+    const [notaDisplayNumber, setNotaDisplayNumber] = useState('');
+    const [notaDisplayNumberTouched, setNotaDisplayNumberTouched] = useState(false);
+    const [existingNotaDisplayNumber, setExistingNotaDisplayNumber] = useState('');
+    const [notaSeriesCode, setNotaSeriesCode] = useState<string | null>(null);
+
+    // Preview only: the server still owns numbering, so leaving the fields untouched keeps
+    // today's auto internal number and the derived printed number.
+    useEffect(() => {
+        if (isEditMode) {
+            return;
+        }
+        let cancelled = false;
+        const loadNotaNumberPreview = async () => {
+            try {
+                const response = await fetch('/api/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        entity: 'freight-notas',
+                        action: 'peek-number',
+                        data: { issueDate },
+                    }),
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const payload = await response.json();
+                const preview = typeof payload?.data?.notaNumber === 'string' ? payload.data.notaNumber : '';
+                if (!cancelled) {
+                    if (preview) {
+                        setNotaNumber(preview);
+                    }
+                    setNotaSeriesCode(
+                        typeof payload?.data?.notaSeriesCode === 'string' ? payload.data.notaSeriesCode : null
+                    );
+                }
+            } catch {
+                // Best-effort preview; saving still generates a number on the server.
+            }
+        };
+        void loadNotaNumberPreview();
+        return () => {
+            cancelled = true;
+        };
+    }, [isEditMode, issueDate]);
+
+    // The printed number follows the internal number until the operator sets it explicitly.
+    const autoNotaDisplayNumber = notaNumber.trim()
+        ? buildFreightNotaDisplayNumberFromParts(notaNumber.trim(), issueDate, notaSeriesCode)
+        : '';
+    const effectiveNotaDisplayNumber = notaDisplayNumberTouched
+        ? notaDisplayNumber
+        : autoNotaDisplayNumber;
 
     const mergeCustomerBillingRates = useCallback((nextRates: CustomerBillingRate[]) => {
         const activeRates = nextRates.filter(rate => rate.active !== false);
@@ -290,6 +347,8 @@ export default function NewNotaPage() {
                         return;
                     }
                     skipCustomerDefaultsRef.current = true;
+                    setExistingNotaNumber(editNota.notaNumber || '');
+                    setExistingNotaDisplayNumber(editNota.notaDisplayNumber || '');
                     setCustomerRef(editNota.customerRef || '');
                     setCustomerName(editNota.customerName || '');
                     setIssueDate(editNota.issueDate || getBusinessDateValue());
@@ -881,6 +940,12 @@ export default function NewNotaPage() {
                         issueDate,
                         dueDate: dueDate || undefined,
                         notes: notes || undefined,
+                        notaNumber: !isEditMode && notaNumberTouched
+                            ? (notaNumber.trim() || undefined)
+                            : undefined,
+                        notaDisplayNumber: !isEditMode && notaDisplayNumberTouched
+                            ? (notaDisplayNumber.trim() || undefined)
+                            : undefined,
                         billingMode,
                         pph23Enabled,
                         pph23RatePercent,
@@ -1029,6 +1094,44 @@ export default function NewNotaPage() {
                                     />
                                 </div>
                             )}
+
+                            <div className="form-group" style={{ maxWidth: 320 }}>
+                                <label className="form-label">No. Invoice Internal</label>
+                                <input
+                                    className="form-input"
+                                    value={isEditMode ? existingNotaNumber : notaNumber}
+                                    onChange={event => {
+                                        setNotaNumberTouched(true);
+                                        setNotaNumber(event.target.value);
+                                    }}
+                                    disabled={isEditMode}
+                                    placeholder="Otomatis"
+                                />
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                    {isEditMode
+                                        ? 'Nomor invoice tidak berubah saat revisi.'
+                                        : 'Terisi otomatis dari counter. Ubah kalau perlu nomor internal manual.'}
+                                </div>
+                            </div>
+
+                            <div className="form-group" style={{ maxWidth: 320 }}>
+                                <label className="form-label">No. Cetak Invoice</label>
+                                <input
+                                    className="form-input"
+                                    value={isEditMode ? existingNotaDisplayNumber : effectiveNotaDisplayNumber}
+                                    onChange={event => {
+                                        setNotaDisplayNumberTouched(true);
+                                        setNotaDisplayNumber(event.target.value);
+                                    }}
+                                    disabled={isEditMode}
+                                    placeholder="Otomatis"
+                                />
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                    {isEditMode
+                                        ? 'Nomor cetak tidak berubah saat revisi.'
+                                        : 'Terisi otomatis dari nomor internal. Ubah kalau perlu nomor cetak sendiri — dipakai apa adanya di cetakan dan daftar invoice.'}
+                                </div>
+                            </div>
 
                             <div className="form-row">
                                 <div className="form-group">

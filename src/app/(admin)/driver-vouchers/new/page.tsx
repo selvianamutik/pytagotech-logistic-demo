@@ -12,6 +12,7 @@ import { getBusinessDateValue } from '@/lib/business-date';
 import { buildDriverVoucherRouteLabel } from '@/lib/driver-voucher-route';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
 import type { BankAccount, Driver, DeliveryOrder, DriverVoucher, Order } from '@/lib/types';
+import { normalizeTripOwnership } from '@/lib/types';
 import { formatCurrency, formatShipperDeliveryOrderNumber, getShipperReferenceCount } from '@/lib/utils';
 
 export default function NewDriverVoucherPage() {
@@ -91,6 +92,7 @@ export default function NewDriverVoucherPage() {
 
     const eligibleDos = dos
         .filter(deliveryOrder =>
+            normalizeTripOwnership(deliveryOrder.tripOwnership) !== 'MITRA' &&
             Boolean(deliveryOrder.driverRef) &&
             Boolean(deliveryOrder.vehicleRef || deliveryOrder.vehiclePlate) &&
             !usedVoucherDoRefs.includes(deliveryOrder._id) &&
