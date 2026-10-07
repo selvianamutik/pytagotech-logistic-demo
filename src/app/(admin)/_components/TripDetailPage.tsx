@@ -401,6 +401,7 @@ export default function TripDetailPage() {
     const [actualCargoStepBlockMessages, setActualCargoStepBlockMessages] = useState<ActualCargoStepBlockMessage[]>([]);
     const [showSuratJalanActualEditModal, setShowSuratJalanActualEditModal] = useState(false);
     const [manualOvertonaseReviewMode, setManualOvertonaseReviewMode] = useState<'manual' | 'automatic' | null>(null);
+    const [manualWageDeductionOpen, setManualWageDeductionOpen] = useState(false);
     const [selectedSuratJalanActualEditDocument, setSelectedSuratJalanActualEditDocument] = useState<SuratJalanDocument | null>(null);
     const [selectedSuratJalanActualEditItemRef, setSelectedSuratJalanActualEditItemRef] = useState('');
     const statusModalBodyRef = useRef<HTMLDivElement | null>(null);
@@ -447,6 +448,7 @@ export default function TripDetailPage() {
     const [keteranganBorongan, setKeteranganBorongan] = useState('');
     const [manualOvertonaseWeightInputValue, setManualOvertonaseWeightInputValue] = useState(0);
     const [manualOvertonaseWeightInputUnit, setManualOvertonaseWeightInputUnit] = useState<WeightInputUnit>('KG');
+    const [manualWageDeductionInputValue, setManualWageDeductionInputValue] = useState(0);
     const [tripRouteRates, setTripRouteRates] = useState<TripRouteRate[]>([]);
     const [tripRouteRateRef, setTripRouteRateRef] = useState('');
     const [tripOriginArea, setTripOriginArea] = useState('');
@@ -460,6 +462,7 @@ export default function TripDetailPage() {
     const [updatingStatus, setUpdatingStatus] = useState(false);
     const [savingTarip, setSavingTarip] = useState(false);
     const [savingManualOvertonase, setSavingManualOvertonase] = useState(false);
+    const [savingManualWageDeduction, setSavingManualWageDeduction] = useState(false);
     const [loadingTripCashOptions, setLoadingTripCashOptions] = useState(false);
     const [issuingTripCash, setIssuingTripCash] = useState(false);
     const [toppingUpTripCash, setToppingUpTripCash] = useState(false);
@@ -577,6 +580,7 @@ export default function TripDetailPage() {
         actualCargoStepBlockMessages.length > 0 ||
         showSuratJalanActualEditModal ||
         manualOvertonaseReviewMode !== null ||
+        manualWageDeductionOpen ||
         pendingTripClosure !== null;
     const tripOriginAreaOptions = buildTripRateAreaOptions(tripRouteRates, 'originArea', {
         serviceRef: doData?.serviceRef,
@@ -4051,6 +4055,77 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         }
     };
 
+    const getManualWageDeductionPreview = () => {
+        if (!doData) {
+            return null;
+        }
+        const inputDeduction = Math.round(parseFormattedNumberish(manualWageDeductionInputValue || 0, { maxFractionDigits: 0 }));
+        const nextDeductionAmount = inputDeduction > 0 ? inputDeduction : 0;
+        const baseFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
+        const currentOvertonaseAmount = doData.overtonaseDriverAmount || 0;
+        const systemTripFee = (baseFee > 0 ? baseFee : 0) + currentOvertonaseAmount;
+        const nextTripFee = Math.max(systemTripFee - nextDeductionAmount, 0);
+
+        return {
+            nextDeductionAmount,
+            currentDeductionAmount: doData.manualTripFeeDeductionAmount || 0,
+            baseFee,
+            currentOvertonaseAmount,
+            systemTripFee,
+            currentTripFee: doData.taripBorongan || 0,
+            nextTripFee,
+        };
+    };
+
+    const openManualWageDeductionReview = () => {
+        if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
+        setManualWageDeductionInputValue(doData.manualTripFeeDeductionAmount || 0);
+        setManualWageDeductionOpen(true);
+    };
+
+    const saveManualWageDeduction = async () => {
+        if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
+        const deductionAmount = Math.round(manualWageDeductionInputValue || 0);
+        if (deductionAmount < 0) {
+            addToast('error', 'Nominal pengurangan tidak valid.');
+            return;
+        }
+        setSavingManualWageDeduction(true);
+        try {
+            const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entity: 'delivery-orders',
+                    action: 'update-manual-wage-deduction',
+                    data: {
+                        id: doData._id,
+                        deductionAmount,
+                    },
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                addToast('error', result.error || 'Gagal menyimpan pengurangan upah');
+                return;
+            }
+            setManualWageDeductionOpen(false);
+            await refreshTripDetail();
+            const warning = result.data?.settledVoucherOvertonageWarning;
+            if (warning) {
+                addToast('warning', warning);
+            } else if (result.data?.linkedVoucherAdjustmentSummary) {
+                addToast('success', `Pengurangan disimpan, ${result.data.linkedVoucherAdjustmentSummary}`);
+            } else {
+                addToast('success', deductionAmount > 0 ? 'Pengurangan upah disimpan' : 'Pengurangan direset ke upah sistem');
+            }
+        } catch {
+            addToast('error', 'Gagal menyimpan pengurangan upah');
+        } finally {
+            setSavingManualWageDeduction(false);
+        }
+    };
+
     const saveTripResources = async () => {
         if (!tripVehicleRef && !tripDriverRef) {
             addToast('error', 'Pilih kendaraan dan/atau supir untuk trip ini');
@@ -5265,6 +5340,11 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
     const manualOvertonasePendingPreview = manualOvertonaseReviewMode
         ? getManualOvertonasePreview(manualOvertonaseReviewMode === 'automatic')
         : null;
+    const wageDeductionAmount = doData.manualTripFeeDeductionAmount || 0;
+    const hasWageDeduction = wageDeductionAmount > 0;
+    const manualWageDeductionPreview = manualWageDeductionOpen
+        ? getManualWageDeductionPreview()
+        : null;
     const exceedsVehicleCapacity = (doData.vehicleCapacityExceededKg || 0) > 0;
     const effectiveOvertonaseLimitKg = doData.serviceMaxPayloadKg || 0;
     const overtonaseDriverRatePerTon = doData.overtonaseDriverRatePerKg
@@ -5284,7 +5364,7 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         textAlign: 'right',
         fontVariantNumeric: 'tabular-nums',
     } as const;
-    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || exceedsVehicleCapacity;
+    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || hasWageDeduction || exceedsVehicleCapacity;
     const settledVoucherNeedsManualAdjustment = Boolean(
         linkedVoucher?.status === 'SETTLED' &&
         totalTripFee > 0 &&
@@ -7480,7 +7560,7 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                 accent="success"
                 defaultOpen={shouldOpenTripFeeCard}
                 subtitle={totalTripFee
-                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}`
+                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}${hasWageDeduction ? ' (dikurangi pengurangan)' : ''}`
                     : 'Upah driver belum diisi'}
             >
                     {!editingTarip ? (
@@ -7493,9 +7573,11 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                     </div>
                                     <div className="text-muted text-sm" style={{ marginTop: '0.25rem' }}>
                                         {hasOvertonase
-                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase`
+                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase${hasWageDeduction ? ` - ${formatCurrency(wageDeductionAmount)} pengurangan` : ''}`
                                             : baseTripFee
-                                                ? 'Tidak ada tambahan overtonase'
+                                                ? hasWageDeduction
+                                                    ? `${formatCurrency(baseTripFee)} - ${formatCurrency(wageDeductionAmount)} pengurangan`
+                                                    : 'Tidak ada tambahan overtonase'
                                                 : 'Upah dasar belum diisi'}
                                     </div>
                                 </div>
@@ -7506,7 +7588,7 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                 )}
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem' }}>
+                            <div className="trip-fee-section-grid">
                                 <section>
                                     <div className="font-semibold" style={{ marginBottom: '0.35rem' }}>Kapasitas & Muatan</div>
                                     <div style={tripFeeRowStyle}>
@@ -7551,6 +7633,12 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                         <span className="text-muted text-sm">Tambahan overtonase</span>
                                         <strong style={{ ...tripFeeValueStyle, color: hasOvertonase ? 'var(--color-warning)' : 'var(--color-gray-500)' }}>
                                             {hasOvertonase ? formatCurrency(overtonaseDriverAmount) : '-'}
+                                        </strong>
+                                    </div>
+                                    <div style={tripFeeRowStyle}>
+                                        <span className="text-muted text-sm">Pengurangan</span>
+                                        <strong style={{ ...tripFeeValueStyle, color: hasWageDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>
+                                            {hasWageDeduction ? `-${formatCurrency(wageDeductionAmount)}` : '-'}
                                         </strong>
                                     </div>
                                     <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
@@ -7601,6 +7689,26 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                         disabled={savingManualOvertonase}
                                     >
                                         <Edit size={14} /> Atur Overtonase
+                                    </button>
+                                </div>
+                            )}
+                            {canManageTripFee && !isTripClosedByAdmin && (
+                                <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.5rem', background: 'var(--color-gray-50)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                    <div style={{ minWidth: 220 }}>
+                                        <div className="font-semibold">Manual Pengurangan</div>
+                                        <div className="text-muted text-sm">
+                                            {hasWageDeduction
+                                                ? `Aktif: -${formatCurrency(wageDeductionAmount)} dari upah sistem`
+                                                : 'Belum ada pengurangan manual'}
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm"
+                                        onClick={() => openManualWageDeductionReview()}
+                                        disabled={savingManualWageDeduction}
+                                    >
+                                        <Edit size={14} /> Atur Pengurangan
                                     </button>
                                 </div>
                             )}
@@ -7909,6 +8017,14 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                         Otomatis
                                     </button>
                                 </div>
+                                <div className="text-muted text-sm">
+                                    Nilai otomatis saat ini:{' '}
+                                    <strong>
+                                        {manualOvertonasePendingPreview.automaticOvertonaseWeightKg > 0
+                                            ? `${manualOvertonasePendingPreview.automaticOvertonaseWeightKg} kg (dibayar ${Math.floor(manualOvertonasePendingPreview.automaticOvertonaseWeightKg / 1000)} ton penuh)`
+                                            : '0 kg (muatan tidak melebihi batas)'}
+                                    </strong>
+                                </div>
                             </div>
 
                             <div className="detail-row">
@@ -7987,6 +8103,116 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                 disabled={savingManualOvertonase}
                             >
                                 <Save size={16} /> {savingManualOvertonase ? 'Menyimpan...' : 'Konfirmasi Simpan'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {manualWageDeductionOpen && manualWageDeductionPreview && (
+                <div className="modal-overlay" onClick={() => { if (!savingManualWageDeduction) setManualWageDeductionOpen(false); }}>
+                    <div className="modal" style={{ maxWidth: 760 }} onClick={event => event.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h3 className="modal-title">Review Perubahan Pengurangan</h3>
+                                <div className="text-muted text-sm" style={{ marginTop: '0.2rem' }}>
+                                    Potong upah trip langsung tanpa mengubah master data
+                                </div>
+                            </div>
+                            <button className="modal-close" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>&times;</button>
+                        </div>
+                        <div className="modal-body">
+                            <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.65rem', marginBottom: '0.85rem' }}>
+                                <div>
+                                    <div className="font-semibold">Nominal Pengurangan</div>
+                                    <div className="text-muted text-sm">
+                                        Isi nominal rupiah yang dipotong dari upah sistem. Reset mengosongkan isian — Simpan untuk menerapkan.
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end', flexWrap: 'wrap' }}>
+                                    <div style={{ maxWidth: 280, flex: '1 1 200px' }}>
+                                        <label className="form-label">Pengurangan (Rp)</label>
+                                        <FormattedNumberInput
+                                            min={0}
+                                            allowDecimal={false}
+                                            value={manualWageDeductionInputValue}
+                                            onValueChange={value => setManualWageDeductionInputValue(value)}
+                                            disabled={savingManualWageDeduction}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    {manualWageDeductionInputValue > 0 && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            style={{ color: 'var(--color-danger)' }}
+                                            onClick={() => setManualWageDeductionInputValue(0)}
+                                            disabled={savingManualWageDeduction}
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="detail-row">
+                                <div className="detail-item">
+                                    <div className="detail-label">Upah Sistem</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.systemTripFee ? formatCurrency(manualWageDeductionPreview.systemTripFee) : '-'}</div>
+                                    <div className="text-muted text-sm">
+                                        Dasar {manualWageDeductionPreview.baseFee ? formatCurrency(manualWageDeductionPreview.baseFee) : '-'}
+                                        {manualWageDeductionPreview.currentOvertonaseAmount > 0 && ` + ${formatCurrency(manualWageDeductionPreview.currentOvertonaseAmount)} overtonase`}
+                                    </div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
+                                </div>
+                            </div>
+
+                            <div className="detail-row" style={{ marginTop: '0.75rem' }}>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Sekarang</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentDeductionAmount ? formatCurrency(manualWageDeductionPreview.currentDeductionAmount) : '-'}</div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Pengurangan Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
+                                </div>
+                            </div>
+
+                            <div className="detail-row" style={{ marginTop: '0.75rem' }}>
+                                <div className="detail-item">
+                                    <div className="detail-label">Total Upah Sekarang</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentTripFee ? formatCurrency(manualWageDeductionPreview.currentTripFee) : '-'}</div>
+                                </div>
+                                <div className="detail-item">
+                                    <div className="detail-label">Total Upah Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextTripFee ? formatCurrency(manualWageDeductionPreview.nextTripFee) : '-'}</div>
+                                    {manualWageDeductionPreview.nextDeductionAmount > manualWageDeductionPreview.systemTripFee && (
+                                        <div className="text-danger text-sm">Nominal melebihi upah sistem — kurangi nominalnya.</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {linkedVoucher?.status === 'SETTLED' ? (
+                                <div className="alert alert-warning" style={{ marginTop: '0.85rem' }}>
+                                    Uang Jalan Trip sudah selesai. Perubahan ini menyimpan pengurangan di trip, tapi penyelesaian uang jalan lama tidak otomatis berubah.
+                                </div>
+                            ) : linkedVoucher ? (
+                                <div className="alert alert-info" style={{ marginTop: '0.85rem' }}>
+                                    Uang Jalan Trip yang belum selesai akan disinkronkan ke total upah baru.
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>Batal</button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => void saveManualWageDeduction()}
+                                disabled={savingManualWageDeduction}
+                            >
+                                <Save size={16} /> {savingManualWageDeduction ? 'Menyimpan...' : 'Konfirmasi Simpan'}
                             </button>
                         </div>
                     </div>

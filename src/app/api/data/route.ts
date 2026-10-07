@@ -110,6 +110,7 @@ import {
     handleDeliveryOrderCargoItemUpdate,
     handleDeliveryOrderCargoItemRemove,
     handleDeliveryOrderManualOvertonaseUpdate,
+    handleDeliveryOrderManualWageDeductionUpdate,
     handleDeliveryOrderSuratJalanActualCargoUpdate,
     handleDeliveryOrderCancelTrip,
     handleDeliveryOrderContinueHeldCargo,
@@ -1973,6 +1974,10 @@ export async function POST(request: Request) {
 
         if (entity === 'delivery-orders' && action === 'update-manual-overtonase') {
             return await handleDeliveryOrderManualOvertonaseUpdate(session, data, addAuditLog);
+        }
+
+        if (entity === 'delivery-orders' && action === 'update-manual-wage-deduction') {
+            return await handleDeliveryOrderManualWageDeductionUpdate(session, data, addAuditLog);
         }
 
         if (entity === 'delivery-orders' && action === 'remove-cargo-item') {

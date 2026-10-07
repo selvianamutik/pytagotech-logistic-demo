@@ -822,6 +822,7 @@ export interface DeliveryOrder {
   overtonaseDriverRatePerKg?: number;
   overtonaseDriverAmount?: number;
   vehicleCapacityExceededKg?: number;
+  manualTripFeeDeductionAmount?: number;
   trackingState?: 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED';
   trackingStartedAt?: string;
   trackingStoppedAt?: string;

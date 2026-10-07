@@ -449,6 +449,7 @@ export async function deriveDeliveryOrdersForResponse(
             deliveryOrderOvertonaseRatePerKg > 0
                 ? deliveryOrderOvertonaseRatePerKg
                 : routeOvertonaseRatePerKg;
+        const manualTripFeeDeductionAmount = normalizeCurrencyNumber(deliveryOrder.manualTripFeeDeductionAmount ?? 0);
         const serviceMaxPayloadKg =
             normalizeNumber(deliveryOrder.serviceMaxPayloadKg, { maxFractionDigits: 2 }) > 0
                 ? normalizeNumber(deliveryOrder.serviceMaxPayloadKg, { maxFractionDigits: 2 })
@@ -470,6 +471,7 @@ export async function deriveDeliveryOrdersForResponse(
                     baseTripFee: normalizeCurrencyNumber(deliveryOrder.baseTaripBorongan ?? deliveryOrder.taripBorongan ?? 0),
                     overtonaseDriverRatePerKg: effectiveOvertonaseRatePerKg,
                     manualOvertonaseWeightKg: deliveryOrder.manualOvertonaseWeightKg,
+                    manualTripFeeDeductionAmount,
                 })
                 : null;
 

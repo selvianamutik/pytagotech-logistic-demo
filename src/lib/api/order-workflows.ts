@@ -7047,6 +7047,106 @@ export async function handleDeliveryOrderManualOvertonaseUpdate(
     });
 }
 
+export async function handleDeliveryOrderManualWageDeductionUpdate(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = typeof data.id === 'string' ? data.id : '';
+    if (!id) {
+        return NextResponse.json({ error: 'Trip tidak valid' }, { status: 400 });
+    }
+
+    const deliveryOrder = await getDocumentById<DeliveryOrder & { _rev?: string }>(id, 'deliveryOrder');
+    if (!deliveryOrder) {
+        return NextResponse.json({ error: 'Trip tidak ditemukan' }, { status: 404 });
+    }
+    if (deliveryOrder.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'Pengurangan upah tidak bisa diubah untuk trip yang sudah dibatalkan.' }, { status: 409 });
+    }
+    if (deliveryOrder.tripClosedByAdminAt) {
+        return NextResponse.json({ error: 'Trip ini sudah ditutup admin sehingga pengurangan tidak bisa diubah lagi.' }, { status: 409 });
+    }
+
+    const deductionInput = normalizeCurrencyNumber(data.deductionAmount ?? 0);
+    if (!Number.isFinite(deductionInput) || deductionInput < 0) {
+        return NextResponse.json({ error: 'Nominal pengurangan tidak valid' }, { status: 400 });
+    }
+    const manualTripFeeDeductionAmount = Math.round(deductionInput);
+
+    const actualDropTotals = summarizeActualDropPointCargo(deliveryOrder.actualDropPoints || []);
+    const persistedActualWeight = normalizeNumber(deliveryOrder.actualTotalWeightKg ?? 0, { maxFractionDigits: 2 });
+    const actualTotalTripWeightKg = persistedActualWeight > 0 ? persistedActualWeight : actualDropTotals.weightKg;
+    const deliveryOrderForCalculation = {
+        ...deliveryOrder,
+        manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : undefined,
+    };
+    const tripOvertonage = await computeTripOvertonageAdjustment({
+        deliveryOrder: deliveryOrderForCalculation,
+        actualTotalTripWeightKg,
+    });
+    const overtonageResult = tripOvertonage.overtonageResult;
+    const baseTripFee = normalizeCurrencyNumber(deliveryOrder.baseTaripBorongan ?? deliveryOrder.taripBorongan ?? 0);
+    const systemTripFee = baseTripFee + (overtonageResult.overtonaseDriverAmount || 0);
+    if (manualTripFeeDeductionAmount > systemTripFee) {
+        return NextResponse.json({ error: `Nominal pengurangan melebihi upah sistem (${systemTripFee}).` }, { status: 400 });
+    }
+    const timestamp = new Date().toISOString();
+
+    try {
+        await updateDocument(id, {
+            manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : null,
+            baseTaripBorongan: baseTripFee > 0 ? baseTripFee : undefined,
+            taripBorongan: manualTripFeeDeductionAmount > 0
+                ? overtonageResult.effectiveTripFee
+                : (overtonageResult.effectiveTripFee || normalizeCurrencyNumber(deliveryOrder.taripBorongan ?? 0) || undefined),
+            actualTotalWeightKg: overtonageResult.actualTotalWeightKg || undefined,
+            serviceMaxPayloadKg: overtonageResult.serviceMaxPayloadKg,
+            vehicleCapacityKg: overtonageResult.vehicleCapacityKg,
+            overtonaseWeightKg: overtonageResult.overtonaseWeightKg,
+            overtonaseDriverRatePerKg: overtonageResult.overtonaseDriverRatePerKg,
+            overtonaseDriverAmount: overtonageResult.overtonaseDriverAmount,
+            vehicleCapacityExceededKg: overtonageResult.vehicleCapacityExceededKg,
+            wageDeductionUpdatedAt: timestamp,
+            wageDeductionUpdatedBy: session._id,
+            wageDeductionUpdatedByName: session.name,
+        }, 'deliveryOrder');
+
+        if (tripOvertonage.linkedVoucherPatch) {
+            await updateDocument(tripOvertonage.linkedVoucherPatch._id, {
+                driverFeeAmount: tripOvertonage.linkedVoucherPatch.driverFeeAmount,
+                totalClaimAmount: tripOvertonage.linkedVoucherPatch.totalClaimAmount,
+                balance: tripOvertonage.linkedVoucherPatch.balance,
+            }, 'driverVoucher');
+        }
+    } catch (error) {
+        if (isMutationConflictError(error)) {
+            return NextResponse.json({ error: 'Pengurangan berubah karena update lain. Refresh lalu coba lagi.' }, { status: 409 });
+        }
+        throw error;
+    }
+
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'delivery-orders',
+        id,
+        manualTripFeeDeductionAmount > 0
+            ? `Ubah manual pengurangan upah trip menjadi ${manualTripFeeDeductionAmount}`
+            : 'Hapus pengurangan upah trip manual dan kembali ke upah sistem'
+    );
+
+    return NextResponse.json({
+        data: {
+            _id: id,
+            manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : undefined,
+            taripBorongan: overtonageResult.effectiveTripFee,
+            linkedVoucherAdjustmentSummary: tripOvertonage.linkedVoucherAdjustmentSummary,
+            settledVoucherOvertonageWarning: tripOvertonage.settledVoucherOvertonageWarning,
+        },
+    });
+}
+
 export async function handleDeliveryOrderTripResourceAssign(
     session: ApiSession,
     data: Record<string, unknown>,
