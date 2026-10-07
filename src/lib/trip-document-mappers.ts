@@ -4,6 +4,7 @@ import {
     getDeliveryOrderReturnCargoSummary,
 } from './delivery-order-completion';
 import { parseFormattedNumberish } from '@/components/FormattedNumberInput.helpers';
+import { convertVolumeToM3, convertWeightToKg, getWeightInputFractionDigits, readVolumeInputUnit, readWeightInputUnit } from '@/lib/measurement';
 import type { DeliveryActualDropPoint, DeliveryOrder, DeliveryOrderItem, DeliveryOrderShipperReference, TrackingLog } from './types';
 import type { CargoSummary, SuratJalanDocument, SuratJalanDocumentItem, SuratJalanItemRecord, SuratJalanRecord, Trip, TripRecord, TripShipperReferenceSummary, TripTrackingEvent } from './trip-document-types';
 import {
@@ -59,10 +60,34 @@ function hasCargo(summary: CargoSummary) {
 }
 
 function getActualDropPointCargo(point: NonNullable<DeliveryOrder['actualDropPoints']>[number]): CargoSummary {
+    const weightUnit = readWeightInputUnit(point.weightInputUnit, 'KG');
+    const volumeUnit = readVolumeInputUnit(point.volumeInputUnit, 'M3');
+    const canonicalWeightKg = parseFormattedNumberish(point.weightKg || 0, {
+        maxFractionDigits: 2,
+    });
+    const canonicalVolumeM3 = parseFormattedNumberish(point.volumeM3 || 0, {
+        maxFractionDigits: 3,
+    });
     return {
         qtyKoli: parseFormattedNumberish(point.qtyKoli || 0),
-        weightKg: parseFormattedNumberish(point.weightKg || point.weightInputValue || 0),
-        volumeM3: parseFormattedNumberish(point.volumeM3 || point.volumeInputValue || 0, { maxFractionDigits: 3 }),
+        weightKg:
+            canonicalWeightKg > 0
+                ? canonicalWeightKg
+                : convertWeightToKg(
+                      parseFormattedNumberish(point.weightInputValue || 0, {
+                          maxFractionDigits: getWeightInputFractionDigits(weightUnit),
+                      }),
+                      weightUnit
+                  ),
+        volumeM3:
+            canonicalVolumeM3 > 0
+                ? canonicalVolumeM3
+                : convertVolumeToM3(
+                      parseFormattedNumberish(point.volumeInputValue || 0, {
+                          maxFractionDigits: volumeUnit === 'LITER' ? 0 : 3,
+                      }),
+                      volumeUnit
+                  ),
     };
 }
 

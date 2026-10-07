@@ -122,6 +122,8 @@ export default function OrderDetailPage() {
     const [orderService, setOrderService] = useState<Service | null>(null);
     const [customerProducts, setCustomerProducts] = useState<CustomerProduct[]>([]);
     const [customerPickups, setCustomerPickups] = useState<CustomerPickupLocation[]>([]);
+    /** Resolved names of the non-primary customers on this order, for display. */
+    const [additionalCustomers, setAdditionalCustomers] = useState<Array<Pick<Customer, '_id' | 'name'>>>([]);
     // DO form
     const [doDate, setDoDate] = useState(getBusinessDateValue());
     const [doCustomerDoNumber, setDoCustomerDoNumber] = useState('');
@@ -202,36 +204,53 @@ export default function OrderDetailPage() {
 
     const loadOrderReferenceData = useCallback(async (orderData: Order | null) => {
         const optionalFetchOptions = { onError: (message: string) => addToast('error', message), silentAccessDenied: true };
-        const [customerData, serviceData, customerProductData, customerPickupData] = await Promise.all([
+        // Every customer this order serves, primary first — masters and display follow the same list.
+        const scopedCustomerRefs = [orderData?.customerRef, ...(orderData?.customerRefs || [])]
+            .filter((ref, index, all): ref is string => Boolean(ref) && all.indexOf(ref) === index);
+        const [customerData, serviceData, customerProductsPerCustomer, customerPickupsPerCustomer, additionalCustomerRows] = await Promise.all([
             orderData?.customerRef
                 ? fetchOptionalAdminData<Pick<Customer, 'deliveryOrderPrefix'> | null>(`/api/data?entity=customers&id=${orderData.customerRef}`, 'Gagal memuat detail order', optionalFetchOptions)
                 : Promise.resolve(null),
             orderData?.serviceRef
                 ? fetchOptionalAdminData<Service | null>(`/api/data?entity=services&id=${orderData.serviceRef}`, 'Gagal memuat detail order', optionalFetchOptions)
                 : Promise.resolve(null),
-            orderData?.customerRef
-                ? fetchOptionalAdminCollectionData<CustomerProduct>(
-                    `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: orderData.customerRef, active: true }))}`,
+            Promise.all(scopedCustomerRefs.map(ref =>
+                fetchOptionalAdminCollectionData<CustomerProduct>(
+                    `/api/data?entity=customer-products&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
                     'Gagal memuat detail order',
                     undefined,
                     optionalFetchOptions
                 )
-                : Promise.resolve([] as CustomerProduct[]),
-            orderData?.customerRef
-                ? fetchOptionalAdminCollectionData<CustomerPickupLocation>(
-                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: orderData.customerRef, active: true }))}&sortField=label&sortDir=asc`,
+            )),
+            Promise.all(scopedCustomerRefs.map(ref =>
+                fetchOptionalAdminCollectionData<CustomerPickupLocation>(
+                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}&sortField=label&sortDir=asc`,
                     'Gagal memuat master pickup customer',
                     undefined,
                     optionalFetchOptions
                 )
-                : Promise.resolve([] as CustomerPickupLocation[]),
+            )),
+            Promise.all(scopedCustomerRefs
+                .filter(ref => ref !== orderData?.customerRef)
+                .map(ref => fetchOptionalAdminData<Pick<Customer, '_id' | 'name'> | null>(
+                    `/api/data?entity=customers&id=${ref}`,
+                    'Gagal memuat detail order',
+                    optionalFetchOptions
+                ))),
         ]);
+
+        const mergeById = <T extends { _id: string }>(rowsPerCustomer: Array<T[] | null | undefined>) => Array.from(
+            new Map(rowsPerCustomer.flatMap(rows => rows || []).map(row => [row._id, row])).values()
+        );
 
         setShipperReferenceFormat((customerData?.deliveryOrderPrefix || 'SJ').toUpperCase());
         setOrderService(serviceData || null);
-        setCustomerProducts((customerProductData || []).filter(product => product.active !== false));
-        setCustomerPickups((customerPickupData || []).filter(pickup => pickup.active !== false));
-        loadedReferenceSignatureRef.current = `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+        setCustomerProducts(mergeById(customerProductsPerCustomer).filter(product => product.active !== false));
+        setCustomerPickups(mergeById(customerPickupsPerCustomer).filter(pickup => pickup.active !== false));
+        setAdditionalCustomers(
+            additionalCustomerRows.filter((row): row is Pick<Customer, '_id' | 'name'> => Boolean(row))
+        );
+        loadedReferenceSignatureRef.current = `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
     }, [addToast]);
 
     const refreshOrderCoreState = useCallback(async (fallbackMessage: string = 'Gagal memuat ulang detail order') => {
@@ -314,7 +333,7 @@ export default function OrderDetailPage() {
                 setNotas([...(orderNotas || [])].sort((a, b) => `${b.issueDate || ''}-${b._id}`.localeCompare(`${a.issueDate || ''}-${a._id}`)));
             }
 
-            const shouldReloadReferences = loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+            const shouldReloadReferences = loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
             if (shouldReloadReferences) {
                 await loadOrderReferenceData(orderData);
             }
@@ -415,7 +434,7 @@ export default function OrderDetailPage() {
             }
             const shouldReloadReferences =
                 mode === 'initial' ||
-                loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}`;
+                loadedReferenceSignatureRef.current !== `${orderData?.customerRef || ''}|${orderData?.serviceRef || ''}|${(orderData?.customerRefs || []).join(',')}`;
             if (shouldReloadReferences) {
                 await loadOrderReferenceData(orderData);
             }
@@ -1156,20 +1175,6 @@ export default function OrderDetailPage() {
     }, [order, hasPlannedTrips]);
 
     const usesExistingItemsForDeliveryOrder = !isHeaderOnlyOrder;
-    const canCreateDeliveryOrder =
-        !orderIsCancelled &&
-        (
-            isHeaderOnlyOrder ||
-            (!usesExistingItemsForDeliveryOrder || (availableItems.length > 0 && nonCancelledDos.length === 0))
-        );
-    const primaryDeliveryOrderButtonLabel =
-        isHeaderOnlyOrder && nonCancelledDos.length > 0
-            ? 'Tambah Surat Jalan'
-            : 'Buat Surat Jalan';
-    const canShowPrimaryDeliveryOrderButton =
-        !orderIsCancelled &&
-        !hasPlannedTrips &&
-        (isHeaderOnlyOrder || nonCancelledDos.length === 0);
     const flattenedDirectCargoItems = flattenDirectCargoGroups(directCargoGroups);
     const draftDirectCargoItems = getDraftOrderItems(flattenedDirectCargoItems);
     const draftDirectCargoGroups = directCargoGroups
@@ -1181,7 +1186,10 @@ export default function OrderDetailPage() {
     const directCargoSummary = summarizeDraftOrderCargo(flattenedDirectCargoItems);
     const selectedTripPickupStops = selectablePickupStops.filter(stop => selectedPickupStopKeys.includes(stop._key));
     const selectedTripDraftPickupStops = selectablePickupStops.filter(stop => tripDraft.pickupStopKeys.includes(stop._key));
-    const availableTripDraftPickupStops = selectablePickupStops.filter(stop => !tripDraft.pickupStopKeys.includes(stop._key));
+    // Trip plans may only reference pickups chosen on the order itself.
+    // Master-customer extras stay available in the SJ flow (selectablePickupStops)
+    // but must never be attachable to a trip plan here.
+    const availableTripDraftPickupStops = resolvedOrderPickupStops.filter(stop => !tripDraft.pickupStopKeys.includes(stop._key));
     const headerOnlyManifestByDo = isHeaderOnlyOrder
         ? nonCancelledDos.map(deliveryOrder => {
             const pickupMap = new Map(
@@ -1373,7 +1381,7 @@ export default function OrderDetailPage() {
             addToast('error', 'Pilih kendaraan sebelum membuat surat jalan');
             return;
         }
-        if (selectablePickupStops.length > 0 && selectedPickupStopKeys.length === 0) {
+        if (resolvedOrderPickupStops.length > 0 && selectedPickupStopKeys.length === 0) {
             addToast('error', 'Pilih minimal 1 titik pickup untuk trip ini');
             return;
         }
@@ -1389,7 +1397,7 @@ export default function OrderDetailPage() {
             }
             const invalidPickupGroup = draftDirectCargoGroups.findIndex(group => {
                 const resolvedPickupStopKey = group.pickupStopKey || (selectedTripPickupStops.length === 1 ? selectedTripPickupStops[0]._key : '');
-                return selectablePickupStops.length > 0 && !resolvedPickupStopKey;
+                return resolvedOrderPickupStops.length > 0 && !resolvedPickupStopKey;
             });
             if (invalidPickupGroup >= 0) {
                 addToast('error', `Titik pickup wajib dipilih pada SJ ${invalidPickupGroup + 1}`);
@@ -1658,11 +1666,6 @@ export default function OrderDetailPage() {
                     </div>
                 </div>
                 <div className="page-actions">
-                    {canShowPrimaryDeliveryOrderButton && (
-                        <button className="btn btn-primary" onClick={() => openCreateDOModal()} disabled={!canCreateDeliveryOrder}>
-                            <Truck size={16} /> {primaryDeliveryOrderButtonLabel}
-                        </button>
-                    )}
                     {canCreateInvoice && (
                         <button
                             className="btn btn-secondary"
@@ -1814,7 +1817,21 @@ export default function OrderDetailPage() {
                             <div className="detail-item"><div className="detail-label">Tanggal</div><div className="detail-value">{formatDate(order.createdAt)}</div></div>
                         </div>
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Customer / Pengirim / Penagih</div><div className="detail-value">{canOpenCustomerPage && order.customerRef ? <Link href={withReturnTo(`/customers/${order.customerRef}`)}>{order.customerName}</Link> : order.customerName}</div></div>
+                            <div className="detail-item">
+                                <div className="detail-label">Customer / Pengirim / Penagih</div>
+                                <div className="detail-value">
+                                    {canOpenCustomerPage && order.customerRef ? <Link href={withReturnTo(`/customers/${order.customerRef}`)}>{order.customerName}</Link> : order.customerName}
+                                    {additionalCustomers.length > 0 && (
+                                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.35rem', marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+                                            {additionalCustomers.map(customer => (
+                                                <span key={customer._id} className="badge badge-info" title="Customer tambahan pada order ini">
+                                                    {customer.name}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                             <div className="detail-item"><div className="detail-label">Kategori Truk / Armada</div><div className="detail-value">{order.serviceName || '-'}</div></div>
                         </div>
                         <div className="mt-2">
@@ -2499,12 +2516,13 @@ export default function OrderDetailPage() {
                                                 </div>
                                                 <button
                                                     type="button"
-                                                    className="btn btn-ghost btn-icon-only"
+                                                    className="btn btn-secondary btn-sm"
                                                     onClick={() => toggleTripDraftPickupStop(pickupStop._key, false)}
                                                     disabled={savingTripPlan}
                                                     title="Hapus pickup dari rencana trip"
+                                                    aria-label="Hapus pickup dari rencana trip"
                                                 >
-                                                    <X size={16} />
+                                                    <Trash2 size={14} /> Hapus
                                                 </button>
                                             </div>
                                         ))
@@ -3008,13 +3026,13 @@ export default function OrderDetailPage() {
                                                     previous.includes(nextKey) ? previous : [...previous, nextKey]
                                                 ));
                                             }}
-                                            options={selectablePickupStops
+                                            options={resolvedOrderPickupStops
                                                 .filter(pickupStop => !selectedPickupStopKeys.includes(pickupStop._key))
                                                 .map((pickupStop, index) => (
-                                                    { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''}${'fromMaster' in pickupStop && pickupStop.fromMaster ? ' (Master)' : ''} - ${pickupStop.pickupAddress}` }
+                                                    { value: pickupStop._key, label: `Pickup ${index + 1}${pickupStop.pickupLabel ? ` - ${pickupStop.pickupLabel}` : ''} - ${pickupStop.pickupAddress}` }
                                                 ))}
-                                            placeholder="Tambah titik pickup dari master..."
-                                            disabled={creatingDO || selectablePickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
+                                            placeholder="Pilih titik pickup order..."
+                                            disabled={creatingDO || resolvedOrderPickupStops.every(pickupStop => selectedPickupStopKeys.includes(pickupStop._key))}
                                             className="form-select"
                                         />
                                         {selectedTripPickupStops.length === 0 ? (
@@ -3045,12 +3063,13 @@ export default function OrderDetailPage() {
                                                         </div>
                                                         <button
                                                             type="button"
-                                                            className="btn btn-ghost btn-icon-only"
+                                                            className="btn btn-secondary btn-sm"
                                                             onClick={() => setSelectedPickupStopKeys(previous => previous.filter(value => value !== pickupStop._key))}
                                                             disabled={creatingDO}
                                                             title="Hapus pickup dari trip ini"
+                                                            aria-label="Hapus pickup dari trip ini"
                                                         >
-                                                            <X size={16} />
+                                                            <Trash2 size={14} /> Hapus
                                                         </button>
                                                     </div>
                                                 ))}
@@ -3333,9 +3352,28 @@ export default function OrderDetailPage() {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                {group.items.length > 1 && (
-                                                                    <button type="button" className="btn btn-ghost btn-icon-only" onClick={() => removeDirectCargoGroupItem(group.id, itemIndex)} disabled={creatingDO} style={{ marginBottom: 4 }}>
-                                                                        <X size={18} />
+                                                                {group.items.length > 1 ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-danger-outline btn-sm"
+                                                                        onClick={() => removeDirectCargoGroupItem(group.id, itemIndex)}
+                                                                        disabled={creatingDO}
+                                                                        title={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                        aria-label={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                        style={{ marginBottom: 4 }}
+                                                                    >
+                                                                        <Trash2 size={14} /> Hapus Barang
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-secondary btn-sm"
+                                                                        disabled
+                                                                        title="Minimal 1 barang per SJ"
+                                                                        aria-label="Minimal 1 barang per SJ"
+                                                                        style={{ marginBottom: 4 }}
+                                                                    >
+                                                                        <Trash2 size={14} /> Hapus Barang
                                                                     </button>
                                                                 )}
                                                             </div>

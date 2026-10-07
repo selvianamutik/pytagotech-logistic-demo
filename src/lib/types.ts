@@ -660,6 +660,12 @@ export interface Order {
   cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
   customerRef: string;
   customerName?: string;
+  /**
+   * Additional customers this order/trip serves; the primary `customerRef` is always first.
+   * Declared for display, billing selection, export and the driver app — actual billing stays
+   * per-SJ via `billingCustomerRef`. Absent or a single entry = single-customer order.
+   */
+  customerRefs?: string[];
   customerRecipientRef?: string;
   customerPickupRef?: string;
   receiverName?: string;
@@ -779,6 +785,8 @@ export interface DeliveryOrder {
   orderRef: string;
   masterResi?: string;
   customerRef?: string;
+  /** Additional customers this trip serves; the primary `customerRef` is always first. */
+  customerRefs?: string[];
   vehicleRef?: string;
   vehiclePlate?: string;
   driverRef?: string;

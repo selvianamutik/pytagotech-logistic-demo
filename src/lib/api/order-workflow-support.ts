@@ -333,6 +333,152 @@ export function deriveOrderStatusFromItems(items: OrderItemStatusSummary[]) {
     return 'OPEN';
 }
 
+export const MAX_ORDER_CUSTOMER_REFS = 5;
+
+/** A customer ref may arrive as a bare string id or as a document-ish object. */
+function readOrderCustomerRefValue(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+        return normalizeOptionalText(value);
+    }
+    if (isPlainObject(value)) {
+        return normalizeOptionalText(value._id)
+            || normalizeOptionalText(value._ref)
+            || normalizeOptionalText(value.customerRef)
+            || normalizeOptionalText(value.value);
+    }
+    return undefined;
+}
+
+/**
+ * Normalizes the customer list of an order/trip: the primary `customerRef` always comes first,
+ * duplicates are dropped, and the list is capped at MAX_ORDER_CUSTOMER_REFS.
+ */
+export function normalizeOrderCustomerRefs(primaryCustomerRef: unknown, rawCustomerRefs: unknown): string[] {
+    const refs: string[] = [];
+    const push = (value: unknown) => {
+        const ref = readOrderCustomerRefValue(value);
+        if (ref && !refs.includes(ref)) {
+            refs.push(ref);
+        }
+    };
+
+    push(primaryCustomerRef);
+    if (Array.isArray(rawCustomerRefs)) {
+        rawCustomerRefs.forEach(push);
+    }
+
+    if (refs.length > MAX_ORDER_CUSTOMER_REFS) {
+        throw new Error(`Maksimal ${MAX_ORDER_CUSTOMER_REFS} customer per order/trip`);
+    }
+
+    return refs;
+}
+
+/**
+ * Every additional customer must exist and be active. The primary is validated separately by
+ * `resolveOrderPartyData`, which also returns the document used for name/address defaults.
+ */
+export async function assertOrderAdditionalCustomers(customerRefs: string[], primaryCustomerRef: string) {
+    for (const ref of customerRefs) {
+        if (ref === primaryCustomerRef) {
+            continue;
+        }
+        const customer = await getDocumentById<{ _id: string; name?: string; active?: boolean }>(ref, 'customer');
+        if (!customer) {
+            throw new Error(`Customer tambahan ${ref} tidak ditemukan`);
+        }
+        if (customer.active === false) {
+            throw new Error(`Customer tambahan ${customer.name || ref} tidak aktif`);
+        }
+    }
+}
+
+/**
+ * Master-data scope for an order: either a single customer, or any of the order's customers
+ * once a second customer has been declared.
+ */
+export type OrderCustomerRefScope = string | string[];
+
+function normalizeOrderCustomerRefScope(scope: OrderCustomerRefScope): Set<string> {
+    const values = (Array.isArray(scope) ? scope : [scope])
+        .map(value => normalizeOptionalText(value))
+        .filter((value): value is string => Boolean(value));
+    return new Set(values);
+}
+
+function isOrderCustomerRefInScope(scope: OrderCustomerRefScope, value: unknown): boolean {
+    const ref = normalizeOptionalText(value);
+    if (!ref) {
+        return false;
+    }
+    return normalizeOrderCustomerRefScope(scope).has(ref);
+}
+
+/**
+ * Rule 4: which customer has already billed each SJ of a trip.
+ *
+ * `VOID` nota items are ignored on purpose — voiding an invoice releases its SJs so a wrong
+ * billing customer can still be corrected.
+ */
+export async function getActiveNotaBilledCustomerBySJ(doRef: string) {
+    const activeNotaItems = await listDocumentsByFilter<{
+        noSJ?: string;
+        customerRef?: string;
+        status?: string;
+    }>('freightNotaItem', { doRef });
+
+    const billedCustomerBySJ = new Map<string, string>();
+    for (const item of activeNotaItems) {
+        if (item.status === 'VOID') {
+            continue;
+        }
+        const noSJ = normalizeOptionalText(item.noSJ)?.toUpperCase();
+        const customerRef = normalizeOptionalText(item.customerRef);
+        if (noSJ && customerRef && !billedCustomerBySJ.has(noSJ)) {
+            billedCustomerBySJ.set(noSJ, customerRef);
+        }
+    }
+    return billedCustomerBySJ;
+}
+
+/**
+ * Rule 4: returns the first submitted row whose SJ is already billed to a *different* customer.
+ * Re-billing the same SJ to the same customer is handled by the existing item coverage rules.
+ */
+export async function findNotaRowBilledToDifferentCustomer(
+    rows: Array<{ doRef?: unknown; noSJ?: unknown; customerRef?: unknown }>
+) {
+    const rowsByDoRef = new Map<string, Array<{ noSJ?: string; customerRef?: string }>>();
+    for (const row of rows) {
+        const doRef = normalizeOptionalText(row.doRef);
+        if (!doRef) {
+            continue;
+        }
+        const current = rowsByDoRef.get(doRef) || [];
+        current.push({
+            noSJ: normalizeOptionalText(row.noSJ),
+            customerRef: normalizeOptionalText(row.customerRef),
+        });
+        rowsByDoRef.set(doRef, current);
+    }
+
+    for (const [doRef, doRows] of rowsByDoRef) {
+        const billedCustomerBySJ = await getActiveNotaBilledCustomerBySJ(doRef);
+        for (const row of doRows) {
+            const noSJ = row.noSJ?.toUpperCase();
+            if (!noSJ || !row.customerRef) {
+                continue;
+            }
+            const billedCustomerRef = billedCustomerBySJ.get(noSJ);
+            if (billedCustomerRef && billedCustomerRef !== row.customerRef) {
+                return { doRef, noSJ, billedCustomerRef, requestedCustomerRef: row.customerRef };
+            }
+        }
+    }
+
+    return null;
+}
+
 export async function resolveOrderPartyData(customerRef: string, serviceRef?: string) {
     const customer = await getDocumentById<{ _id: string; _rev?: string; name?: string; address?: string; active?: boolean }>(customerRef, 'customer') as ResolvedOrderPartyData['customer'] | null;
     if (!customer) {
@@ -363,7 +509,7 @@ export async function resolveOrderPartyData(customerRef: string, serviceRef?: st
     } satisfies ResolvedOrderPartyData;
 }
 
-export async function resolveOrderRecipientData(customerRef: string, customerRecipientRef?: string) {
+export async function resolveOrderRecipientData(customerRef: OrderCustomerRefScope, customerRecipientRef?: string) {
     if (!customerRecipientRef) {
         return null;
     }
@@ -372,7 +518,7 @@ export async function resolveOrderRecipientData(customerRef: string, customerRec
     if (!recipient || recipient._id !== customerRecipientRef) {
         throw new Error('Master penerima customer tidak ditemukan');
     }
-    if (normalizeOptionalText((recipient as { customerRef?: string }).customerRef) !== customerRef) {
+    if (!isOrderCustomerRefInScope(customerRef, (recipient as { customerRef?: string }).customerRef)) {
         throw new Error('Master penerima tidak sesuai dengan customer yang dipilih');
     }
     if (recipient.active === false) {
@@ -382,7 +528,7 @@ export async function resolveOrderRecipientData(customerRef: string, customerRec
     return recipient;
 }
 
-export async function resolveOrderPickupData(customerRef: string, customerPickupRef?: string) {
+export async function resolveOrderPickupData(customerRef: OrderCustomerRefScope, customerPickupRef?: string) {
     if (!customerPickupRef) {
         return null;
     }
@@ -391,7 +537,7 @@ export async function resolveOrderPickupData(customerRef: string, customerPickup
     if (!pickup || pickup._id !== customerPickupRef) {
         throw new Error('Master pickup customer tidak ditemukan');
     }
-    if (normalizeOptionalText((pickup as { customerRef?: string }).customerRef) !== customerRef) {
+    if (!isOrderCustomerRefInScope(customerRef, (pickup as { customerRef?: string }).customerRef)) {
         throw new Error('Master pickup tidak sesuai dengan customer yang dipilih');
     }
     if (pickup.active === false) {
@@ -402,7 +548,7 @@ export async function resolveOrderPickupData(customerRef: string, customerPickup
 }
 
 export async function normalizeOrderItemsInput(
-    customerRef: string,
+    customerRef: OrderCustomerRefScope,
     rawItems: unknown[],
     options?: { allowEmpty?: boolean }
 ) {
@@ -475,7 +621,7 @@ pickupStopKey: normalizeOptionalText(item.pickupStopKey),
             throw new Error('Barang customer yang dipilih tidak ditemukan');
         }
         if (customerProduct) {
-            if (normalizeOptionalText(customerProduct.customerRef) !== customerRef) {
+            if (!isOrderCustomerRefInScope(customerRef, customerProduct.customerRef)) {
                 throw new Error('Barang customer harus sesuai dengan customer order yang dipilih');
             }
             if (customerProduct.active === false) {

@@ -50,6 +50,7 @@
     "audit:master-data-import": "npx tsx --conditions react-server scripts/audit-master-data-import.ts",
     "audit:freight-nota-revision-flow": "npx tsx scripts/audit-freight-nota-revision-flow.ts",
     "audit:manual-nota-number": "npx tsx scripts/audit-manual-nota-number.ts",
+    "audit:multi-customer-trip": "npx tsx --conditions react-server scripts/audit-multi-customer-trip.ts",
     "audit:order-to-nota-e2e": "npx tsx scripts/audit-order-to-nota-e2e.ts",
     "audit:order-status-consistency": "npx tsx scripts/audit-order-status-consistency.ts",
     "audit:hold-continuation-origin": "npx tsx scripts/audit-hold-continuation-origin.ts",

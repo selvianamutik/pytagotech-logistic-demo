@@ -585,23 +585,41 @@ class _TrackingHomePageState extends State<TrackingHomePage>
 
   // ── Tracking ───────────────────────────────────────────────
 
-  List<CustomerProductOption> _productsForCustomer(String? customerRef) {
-    final normalizedCustomerRef = customerRef?.trim() ?? '';
-    if (normalizedCustomerRef.isEmpty) {
+  /// The customers a trip serves: the primary `customerRef` plus any declared extras.
+  /// Deduped, blanks dropped.
+  List<String> _customerRefScopeOf(String? primaryCustomerRef, List<String> customerRefs) {
+    final refs = <String>[];
+    void add(String? value) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isNotEmpty && !refs.contains(normalized)) {
+        refs.add(normalized);
+      }
+    }
+
+    add(primaryCustomerRef);
+    for (final ref in customerRefs) {
+      add(ref);
+    }
+    return refs;
+  }
+
+  List<CustomerProductOption> _productsForCustomers(List<String> customerRefs) {
+    final scope = customerRefs.toSet();
+    if (scope.isEmpty) {
       return _customerProducts;
     }
     return _customerProducts
-        .where((product) => product.customerRef == normalizedCustomerRef)
+        .where((product) => scope.contains(product.customerRef))
         .toList(growable: false);
   }
 
-  List<CustomerRecipientOption> _recipientsForCustomer(String? customerRef) {
-    final normalizedCustomerRef = customerRef?.trim() ?? '';
-    if (normalizedCustomerRef.isEmpty) {
+  List<CustomerRecipientOption> _recipientsForCustomers(List<String> customerRefs) {
+    final scope = customerRefs.toSet();
+    if (scope.isEmpty) {
       return _customerRecipients;
     }
     return _customerRecipients
-        .where((recipient) => recipient.customerRef == normalizedCustomerRef)
+        .where((recipient) => scope.contains(recipient.customerRef))
         .toList(growable: false);
   }
 
@@ -858,7 +876,9 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ? 'Simpan SJ & Barang'
                   : 'Simpan SJ',
               pickupStops: tripPlan.pickupStops,
-              customerProducts: _productsForCustomer(tripPlan.customerRef),
+              customerProducts: _productsForCustomers(
+                _customerRefScopeOf(tripPlan.customerRef, tripPlan.customerRefs),
+              ),
               allowsDirectCargoInput: tripPlan.allowsDirectCargoInput,
             ),
           ),
@@ -920,7 +940,9 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ? 'Simpan SJ & Barang'
                   : 'Simpan SJ',
               pickupStops: trip.pickupStops,
-              customerProducts: _productsForCustomer(trip.customerRef),
+              customerProducts: _productsForCustomers(
+                _customerRefScopeOf(trip.customerRef, trip.customerRefs),
+              ),
               allowsDirectCargoInput: trip.allowsDirectCargoInput,
               initialShipperReferences: trip.shipperReferences,
               existingCargoItems: trip.cargoItems,
@@ -1375,7 +1397,9 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           MaterialPageRoute(
             builder: (_) => DeliveryCompletionPage(
               trip: trip,
-              customerRecipients: _recipientsForCustomer(trip.customerRef),
+              customerRecipients: _recipientsForCustomers(
+                _customerRefScopeOf(trip.customerRef, trip.customerRefs),
+              ),
               initialSelectedSuratJalanRefs: initialSelectedSuratJalanRefs,
             ),
           ),

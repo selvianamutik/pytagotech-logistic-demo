@@ -85,6 +85,8 @@ export default function NewOrderPage() {
     const [loading, setLoading] = useState(false);
 
     const [customerRef, setCustomerRef] = useState('');
+    /** Additional customers this order/trip serves; the primary stays `customerRef` above. */
+    const [additionalCustomerRefs, setAdditionalCustomerRefs] = useState<string[]>([]);
     const [serviceRef, setServiceRef] = useState('');
     const [pickupStops, setPickupStops] = useState<PickupStopForm[]>([createDefaultPickupStopForm()]);
     const [tripDrafts, setTripDrafts] = useState<TripDraftForm[]>([]);
@@ -92,6 +94,14 @@ export default function NewOrderPage() {
     const [notes, setNotes] = useState('');
 
     const selectedCustomer = customers.find(customer => customer._id === customerRef) || null;
+    // The primary always comes first; extras follow. Only sent to the server when there is more
+    // than one, so single-customer orders keep their existing payload shape.
+    const orderCustomerRefs = customerRef ? [customerRef, ...additionalCustomerRefs] : [...additionalCustomerRefs];
+    const additionalCustomerOptions = customers
+        .filter(customer => customer.active !== false
+            && customer._id !== customerRef
+            && !additionalCustomerRefs.includes(customer._id))
+        .map(customer => ({ value: customer._id, label: customer.name }));
     const customerCreditUsage = summarizeCustomerCreditUsage(selectedCustomer, customerCreditNotas);
     const selectedService = services.find(service => service._id === serviceRef) || null;
     const sortedCustomerPickups = sortCustomerPickups(customerPickups);
@@ -142,7 +152,8 @@ export default function NewOrderPage() {
     }, [addToast]);
 
     useEffect(() => {
-        if (!customerRef) {
+        const scopedCustomerRefs = [customerRef, ...additionalCustomerRefs].filter(Boolean);
+        if (scopedCustomerRefs.length === 0) {
             setCustomerPickups([]);
             setCustomerScopedMastersLoaded(false);
             return;
@@ -152,12 +163,22 @@ export default function NewOrderPage() {
         setCustomerScopedMastersLoaded(false);
         const loadCustomerScopedMasters = async () => {
             try {
-                const pickupRows = await fetchAdminCollectionData<CustomerPickupLocation[]>(
-                    `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef, active: true }))}`,
-                    'Gagal memuat master customer'
+                // One request per customer keeps us on the proven single-value filter path.
+                const rowsPerCustomer = await Promise.all(scopedCustomerRefs.map(ref =>
+                    fetchAdminCollectionData<CustomerPickupLocation[]>(
+                        `/api/data?entity=customer-pickups&filter=${encodeURIComponent(JSON.stringify({ customerRef: ref, active: true }))}`,
+                        'Gagal memuat master customer'
+                    )
+                ));
+                const mergedPickups = Array.from(
+                    new Map(
+                        rowsPerCustomer
+                            .flatMap(rows => rows || [])
+                            .map(pickup => [pickup._id, pickup])
+                    ).values()
                 );
                 if (!cancelled) {
-                    setCustomerPickups(pickupRows || []);
+                    setCustomerPickups(mergedPickups);
                     setCustomerScopedMastersLoaded(true);
                 }
             } catch (error) {
@@ -173,7 +194,7 @@ export default function NewOrderPage() {
         return () => {
             cancelled = true;
         };
-    }, [addToast, customerRef]);
+    }, [addToast, customerRef, additionalCustomerRefs]);
 
     useEffect(() => {
         if (!customerRef) {
@@ -215,7 +236,10 @@ export default function NewOrderPage() {
         if (!customerScopedMastersLoaded || !shouldAutoApplyDefaultPickup || !customerRef || pickupStops.length === 0) {
             return;
         }
-        const defaultPickup = findDefaultCustomerPickup(customerPickups);
+        // Only the primary customer's default pickup may seed the trip's first stop.
+        const defaultPickup = findDefaultCustomerPickup(
+            customerPickups.filter(pickup => pickup.customerRef === customerRef)
+        );
         if (!defaultPickup) {
             setShouldAutoApplyDefaultPickup(false);
             return;
@@ -230,9 +254,24 @@ export default function NewOrderPage() {
         const nextCustomer = customers.find(customer => customer._id === nextCustomerRef);
         const defaultStop = createDefaultPickupStopForm(nextCustomer?.address || '');
         setCustomerRef(nextCustomerRef);
+        // The customer just promoted to primary cannot also stay in the extras list.
+        setAdditionalCustomerRefs(previous => previous.filter(ref => ref !== nextCustomerRef));
         setPickupStops([defaultStop]);
         setTripDrafts([]);
         setShouldAutoApplyDefaultPickup(Boolean(nextCustomerRef));
+    };
+
+    const addAdditionalCustomer = (nextCustomerRef: string) => {
+        if (!nextCustomerRef || nextCustomerRef === customerRef) {
+            return;
+        }
+        setAdditionalCustomerRefs(previous => (
+            previous.includes(nextCustomerRef) ? previous : [...previous, nextCustomerRef]
+        ));
+    };
+
+    const removeAdditionalCustomer = (targetCustomerRef: string) => {
+        setAdditionalCustomerRefs(previous => previous.filter(ref => ref !== targetCustomerRef));
     };
 
     const updatePickupStop = <K extends keyof PickupStopForm>(index: number, field: K, value: PickupStopForm[K]) => {
@@ -438,6 +477,7 @@ export default function NewOrderPage() {
                     data: {
                         customerRef,
                         customerName: selectedCustomerRow?.name || '',
+                        customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
                         customerPickupRef: payloadPickupStops[0]?.customerPickupRef,
                         pickupAddress: payloadPickupStops[0]?.pickupAddress || '',
                         pickupStops: payloadPickupStops,
@@ -526,6 +566,43 @@ export default function NewOrderPage() {
                                     className="form-select"
                                     required
                                 />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Customer Tambahan (opsional)</label>
+                                <Combobox
+                                    value=""
+                                    onChange={(v: string) => addAdditionalCustomer(v)}
+                                    options={additionalCustomerOptions}
+                                    placeholder={additionalCustomerOptions.length > 0
+                                        ? 'Tambah customer lain'
+                                        : 'Tidak ada customer lain yang bisa ditambahkan'}
+                                    className="form-select"
+                                    disabled={additionalCustomerOptions.length === 0}
+                                />
+                                {additionalCustomerRefs.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                        {additionalCustomerRefs.map(ref => {
+                                            const additionalCustomer = customers.find(item => item._id === ref);
+                                            return (
+                                                <span key={ref} className="badge badge-info">
+                                                    {additionalCustomer?.name || ref}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeAdditionalCustomer(ref)}
+                                                        aria-label={`Hapus customer ${additionalCustomer?.name || ref}`}
+                                                        style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700, lineHeight: 1 }}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                    Customer pertama tetap customer utama: pickup, barang, dan limit piutang mengikuti customer pertama.
+                                    Tambahan hanya menandai trip ini melayani customer lain — penagihan tetap per SJ. Maksimal 5 customer.
+                                </div>
                             </div>
                             {selectedCustomer && customerCreditUsage.isLimited && (
                                 <div
@@ -619,7 +696,14 @@ export default function NewOrderPage() {
                                                 options={[
                                                     { value: MANUAL_PICKUP_MASTER_VALUE, label: MANUAL_PICKUP_MASTER_LABEL },
                                                     ...sortedCustomerPickups.map(pickup => (
-                                                        { value: pickup._id, label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}` }
+                                                        {
+                                                            value: pickup._id,
+                                                            // With several customers on one order, name the owner so two
+                                                            // "Gudang Utama" entries stay distinguishable.
+                                                            label: `${pickup.isDefault ? '[Default] ' : ''}${pickup.label}${orderCustomerRefs.length > 1
+                                                                ? ` — ${customers.find(customer => customer._id === pickup.customerRef)?.name || 'Customer lain'}`
+                                                                : ''}`,
+                                                        }
                                                     )),
                                                 ]}
                                                 placeholder={customerPickups.length > 0 ? 'Pilih master pickup, atau tulis manual' : 'Tulis manual di bawah'}
