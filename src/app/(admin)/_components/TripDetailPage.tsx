@@ -130,7 +130,7 @@ import { applyOrderItemPickerSelection, getOrderItemPickerValue, MANUAL_ITEM_OPT
 import { generateDOPdf } from '@/lib/pdf/doTemplate';
 import { hasPageAccess, hasPermission, normalizeUserRole } from '@/lib/rbac';
 import { getSuratJalanActualDropDestinations } from '@/lib/surat-jalan-destination';
-import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel, getTripRouteOvertonaseRatePerKg } from '@/lib/trip-route-rate-support';
+import { buildTripRateAreaOptions, findMatchingTripRouteRate, formatTripRouteRateLabel } from '@/lib/trip-route-rate-support';
 import { roundToPrecision } from '@/lib/number-precision';
 import type { SuratJalanDocument, Trip, TripCashLinkSummary, TripDetailReferencesSnapshot, TripDetailSnapshot, TripTrackingEvent } from '@/lib/trip-document-types';
 import type { BankAccount, Customer, CustomerProduct, CustomerRecipient, DeliveryOrder, DeliveryOrderItem, CompanyProfile, FreightNota, FreightNotaItem, Order, OrderItem, Driver, DriverVoucher, DriverVoucherDisbursement, ExpenseCategory, PendingDriverStatusRequest, Service, TireEvent, TripRouteRate, Vehicle } from '@/lib/types';
@@ -401,7 +401,7 @@ export default function TripDetailPage() {
     const [actualCargoStepBlockMessages, setActualCargoStepBlockMessages] = useState<ActualCargoStepBlockMessage[]>([]);
     const [showSuratJalanActualEditModal, setShowSuratJalanActualEditModal] = useState(false);
     const [manualOvertonaseReviewMode, setManualOvertonaseReviewMode] = useState<'manual' | 'automatic' | null>(null);
-    const [manualUnderloadReviewMode, setManualUnderloadReviewMode] = useState<'manual' | 'automatic' | null>(null);
+    const [manualWageDeductionOpen, setManualWageDeductionOpen] = useState(false);
     const [selectedSuratJalanActualEditDocument, setSelectedSuratJalanActualEditDocument] = useState<SuratJalanDocument | null>(null);
     const [selectedSuratJalanActualEditItemRef, setSelectedSuratJalanActualEditItemRef] = useState('');
     const statusModalBodyRef = useRef<HTMLDivElement | null>(null);
@@ -448,10 +448,7 @@ export default function TripDetailPage() {
     const [keteranganBorongan, setKeteranganBorongan] = useState('');
     const [manualOvertonaseWeightInputValue, setManualOvertonaseWeightInputValue] = useState(0);
     const [manualOvertonaseWeightInputUnit, setManualOvertonaseWeightInputUnit] = useState<WeightInputUnit>('KG');
-    const [manualUnderloadWeightInputValue, setManualUnderloadWeightInputValue] = useState(0);
-    const [manualUnderloadWeightInputUnit, setManualUnderloadWeightInputUnit] = useState<WeightInputUnit>('KG');
-    const [manualUnderloadRateMode, setManualUnderloadRateMode] = useState<'default' | 'custom'>('default');
-    const [manualUnderloadCustomRatePerTon, setManualUnderloadCustomRatePerTon] = useState(0);
+    const [manualWageDeductionInputValue, setManualWageDeductionInputValue] = useState(0);
     const [tripRouteRates, setTripRouteRates] = useState<TripRouteRate[]>([]);
     const [tripRouteRateRef, setTripRouteRateRef] = useState('');
     const [tripOriginArea, setTripOriginArea] = useState('');
@@ -465,7 +462,7 @@ export default function TripDetailPage() {
     const [updatingStatus, setUpdatingStatus] = useState(false);
     const [savingTarip, setSavingTarip] = useState(false);
     const [savingManualOvertonase, setSavingManualOvertonase] = useState(false);
-    const [savingManualUnderload, setSavingManualUnderload] = useState(false);
+    const [savingManualWageDeduction, setSavingManualWageDeduction] = useState(false);
     const [loadingTripCashOptions, setLoadingTripCashOptions] = useState(false);
     const [issuingTripCash, setIssuingTripCash] = useState(false);
     const [toppingUpTripCash, setToppingUpTripCash] = useState(false);
@@ -583,7 +580,7 @@ export default function TripDetailPage() {
         actualCargoStepBlockMessages.length > 0 ||
         showSuratJalanActualEditModal ||
         manualOvertonaseReviewMode !== null ||
-        manualUnderloadReviewMode !== null ||
+        manualWageDeductionOpen ||
         pendingTripClosure !== null;
     const tripOriginAreaOptions = buildTripRateAreaOptions(tripRouteRates, 'originArea', {
         serviceRef: doData?.serviceRef,
@@ -826,16 +823,6 @@ export default function TripDetailPage() {
             setManualOvertonaseWeightInputUnit('KG');
             setManualOvertonaseWeightInputValue(resolvedDeliveryOrder?.manualOvertonaseWeightKg || 0);
         }
-        if (!savingManualUnderload) {
-            setManualUnderloadWeightInputUnit('KG');
-            setManualUnderloadWeightInputValue(resolvedDeliveryOrder?.manualUnderloadWeightKg || 0);
-            setManualUnderloadRateMode(resolvedDeliveryOrder?.underloadRateMode === 'custom' ? 'custom' : 'default');
-            setManualUnderloadCustomRatePerTon(
-                resolvedDeliveryOrder?.underloadDriverRatePerKg
-                    ? Math.round(resolvedDeliveryOrder.underloadDriverRatePerKg * 1000)
-                    : 0
-            );
-        }
         await hydrateDeliveryOrderItemsState(deliveryOrderItems);
         setTrackingLogs(sortTrackingLogs(trackingEvents));
 
@@ -844,7 +831,7 @@ export default function TripDetailPage() {
             deliveryOrderItems,
             resolvedDeliveryOrder,
         };
-    }, [hydrateDeliveryOrderItemsState, savingManualOvertonase, savingManualUnderload]);
+    }, [hydrateDeliveryOrderItemsState, savingManualOvertonase]);
 
     const loadDO = useCallback(async (mode: 'initial' | 'refresh' = 'refresh') => {
         if (mode === 'initial') {
@@ -4068,112 +4055,61 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         }
     };
 
-    const updateManualUnderloadWeightUnit = (nextUnit: WeightInputUnit) => {
-        const currentWeightKg = convertWeightToKg(
-            parseFormattedNumberish(manualUnderloadWeightInputValue || 0, {
-                maxFractionDigits: getWeightInputFractionDigits(manualUnderloadWeightInputUnit),
-            }),
-            manualUnderloadWeightInputUnit
-        );
-        setManualUnderloadWeightInputUnit(nextUnit);
-        setManualUnderloadWeightInputValue(currentWeightKg > 0 ? convertKgToWeightInputValue(currentWeightKg, nextUnit) : 0);
-    };
-
-    const getManualUnderloadPreview = (clearManualValue = false) => {
+    const getManualWageDeductionPreview = () => {
         if (!doData) {
             return null;
         }
-        const inputWeight = parseFormattedNumberish(manualUnderloadWeightInputValue || 0, {
-            maxFractionDigits: getWeightInputFractionDigits(manualUnderloadWeightInputUnit),
-        });
-        const manualWeightKg = clearManualValue
-            ? 0
-            : roundToPrecision(convertWeightToKg(inputWeight, manualUnderloadWeightInputUnit), 2);
-        const actualTotalWeightKg = doData.actualTotalWeightKg || 0;
-        const serviceMaxPayloadKg = doData.serviceMaxPayloadKg || 0;
-        const automaticUnderloadWeightKg =
-            actualTotalWeightKg > 0 && serviceMaxPayloadKg > 0
-                ? Math.max(roundToPrecision(serviceMaxPayloadKg - actualTotalWeightKg, 2), 0)
-                : 0;
-        const nextUnderloadWeightKg = manualWeightKg > 0 ? manualWeightKg : automaticUnderloadWeightKg;
-        const nextPayableTon = Math.floor(nextUnderloadWeightKg / 1000);
-        const currentPayableTon = Math.floor((doData.underloadWeightKg || 0) / 1000);
-        const routeDefaultRatePerKg = getTripRouteOvertonaseRatePerKg(matchedTripRouteRate);
-        const customRatePerKg = manualUnderloadCustomRatePerTon > 0 ? manualUnderloadCustomRatePerTon / 1000 : 0;
-        const defaultRatePerKg = routeDefaultRatePerKg;
-        const ratePerKg = manualUnderloadRateMode === 'custom' ? customRatePerKg : defaultRatePerKg;
-        const ratePerTon = Math.round(ratePerKg * 1000);
-        const nextDeductionAmount = nextPayableTon > 0 && ratePerKg > 0
-            ? Math.round(nextPayableTon * 1000 * ratePerKg)
-            : 0;
+        const inputDeduction = Math.round(parseFormattedNumberish(manualWageDeductionInputValue || 0, { maxFractionDigits: 0 }));
+        const nextDeductionAmount = inputDeduction > 0 ? inputDeduction : 0;
         const baseFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
         const currentOvertonaseAmount = doData.overtonaseDriverAmount || 0;
-        const nextTripFee = Math.max((baseFee > 0 ? baseFee : 0) + currentOvertonaseAmount - nextDeductionAmount, 0);
+        const systemTripFee = (baseFee > 0 ? baseFee : 0) + currentOvertonaseAmount;
+        const nextTripFee = Math.max(systemTripFee - nextDeductionAmount, 0);
 
         return {
-            manualWeightKg,
-            automaticUnderloadWeightKg,
-            nextUnderloadWeightKg,
-            nextPayableTon,
-            currentPayableTon,
-            ratePerKg,
-            ratePerTon,
-            defaultRatePerTon: Math.round(defaultRatePerKg * 1000),
             nextDeductionAmount,
-            currentDeductionAmount: doData.underloadDeductionAmount || 0,
+            currentDeductionAmount: doData.manualTripFeeDeductionAmount || 0,
             baseFee,
+            currentOvertonaseAmount,
+            systemTripFee,
             currentTripFee: doData.taripBorongan || 0,
             nextTripFee,
-            modeLabel: manualWeightKg > 0 ? 'Manual' : 'Otomatis',
-            rateModeLabel: manualUnderloadRateMode === 'custom' ? 'Khusus' : 'Default',
         };
     };
 
-    const openManualUnderloadReview = (clearManualValue = false) => {
+    const openManualWageDeductionReview = () => {
         if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
-        setManualUnderloadWeightInputUnit('KG');
-        setManualUnderloadWeightInputValue(clearManualValue ? 0 : doData.manualUnderloadWeightKg || 0);
-        setManualUnderloadRateMode(doData.underloadRateMode === 'custom' ? 'custom' : 'default');
-        setManualUnderloadCustomRatePerTon(
-            doData.underloadDriverRatePerKg ? Math.round(doData.underloadDriverRatePerKg * 1000) : 0
-        );
-        setManualUnderloadReviewMode(clearManualValue ? 'automatic' : 'manual');
+        setManualWageDeductionInputValue(doData.manualTripFeeDeductionAmount || 0);
+        setManualWageDeductionOpen(true);
     };
 
-    const saveManualUnderload = async (clearManualValue = false) => {
+    const saveManualWageDeduction = async () => {
         if (!doData?._id || !canManageTripFee || isTripClosedByAdmin) return;
-        const preview = getManualUnderloadPreview(clearManualValue);
-        if (!clearManualValue && (!preview || preview.manualWeightKg <= 0)) {
-            addToast('error', 'Isi berat manual lebih dari 0, atau gunakan mode otomatis.');
+        const deductionAmount = Math.round(manualWageDeductionInputValue || 0);
+        if (deductionAmount < 0) {
+            addToast('error', 'Nominal pengurangan tidak valid.');
             return;
         }
-        if (manualUnderloadRateMode === 'custom' && manualUnderloadCustomRatePerTon <= 0) {
-            addToast('error', 'Isi rate khusus pengurangan lebih dari 0, atau gunakan rate default.');
-            return;
-        }
-        setSavingManualUnderload(true);
+        setSavingManualWageDeduction(true);
         try {
             const res = await fetch('/api/data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     entity: 'delivery-orders',
-                    action: 'update-manual-underload',
+                    action: 'update-manual-wage-deduction',
                     data: {
                         id: doData._id,
-                        manualUnderloadWeightInputValue: clearManualValue ? 0 : manualUnderloadWeightInputValue,
-                        manualUnderloadWeightInputUnit,
-                        underloadRateMode: manualUnderloadRateMode,
-                        underloadDriverRatePerKg: manualUnderloadRateMode === 'custom' ? manualUnderloadCustomRatePerTon / 1000 : 0,
+                        deductionAmount,
                     },
                 }),
             });
             const result = await res.json();
             if (!res.ok) {
-                addToast('error', result.error || 'Gagal menyimpan pengurangan manual');
+                addToast('error', result.error || 'Gagal menyimpan pengurangan upah');
                 return;
             }
-            setManualUnderloadReviewMode(null);
+            setManualWageDeductionOpen(false);
             await refreshTripDetail();
             const warning = result.data?.settledVoucherOvertonageWarning;
             if (warning) {
@@ -4181,12 +4117,12 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
             } else if (result.data?.linkedVoucherAdjustmentSummary) {
                 addToast('success', `Pengurangan disimpan, ${result.data.linkedVoucherAdjustmentSummary}`);
             } else {
-                addToast('success', clearManualValue ? 'Pengurangan kembali ke hitungan otomatis' : 'Pengurangan manual disimpan');
+                addToast('success', deductionAmount > 0 ? 'Pengurangan upah disimpan' : 'Pengurangan direset ke upah sistem');
             }
         } catch {
-            addToast('error', 'Gagal menyimpan pengurangan manual');
+            addToast('error', 'Gagal menyimpan pengurangan upah');
         } finally {
-            setSavingManualUnderload(false);
+            setSavingManualWageDeduction(false);
         }
     };
 
@@ -5404,13 +5340,10 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
     const manualOvertonasePendingPreview = manualOvertonaseReviewMode
         ? getManualOvertonasePreview(manualOvertonaseReviewMode === 'automatic')
         : null;
-    const underloadDeductionAmount = doData.underloadDeductionAmount || 0;
-    const hasUnderloadDeduction = underloadDeductionAmount > 0;
-    const hasManualUnderload = (doData.manualUnderloadWeightKg || 0) > 0;
-    const payableUnderloadTon = Math.floor((doData.underloadWeightKg || 0) / 1000);
-    const underloadRateModeLabel = doData.underloadRateMode === 'custom' ? 'Khusus' : 'Default';
-    const manualUnderloadPendingPreview = manualUnderloadReviewMode
-        ? getManualUnderloadPreview(manualUnderloadReviewMode === 'automatic')
+    const wageDeductionAmount = doData.manualTripFeeDeductionAmount || 0;
+    const hasWageDeduction = wageDeductionAmount > 0;
+    const manualWageDeductionPreview = manualWageDeductionOpen
+        ? getManualWageDeductionPreview()
         : null;
     const exceedsVehicleCapacity = (doData.vehicleCapacityExceededKg || 0) > 0;
     const effectiveOvertonaseLimitKg = doData.serviceMaxPayloadKg || 0;
@@ -5431,7 +5364,7 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         textAlign: 'right',
         fontVariantNumeric: 'tabular-nums',
     } as const;
-    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || hasUnderloadDeduction || hasManualUnderload || exceedsVehicleCapacity;
+    const shouldOpenTripFeeCard = !doData.taripBorongan || hasOvertonase || hasManualOvertonase || hasWageDeduction || exceedsVehicleCapacity;
     const settledVoucherNeedsManualAdjustment = Boolean(
         linkedVoucher?.status === 'SETTLED' &&
         totalTripFee > 0 &&
@@ -7627,7 +7560,7 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                 accent="success"
                 defaultOpen={shouldOpenTripFeeCard}
                 subtitle={totalTripFee
-                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}${hasUnderloadDeduction ? ' (dikurangi muatan kurang)' : ''}`
+                    ? `Total upah ${formatCurrency(totalTripFee)}${hasOvertonase ? ' (termasuk overtonase)' : ''}${hasWageDeduction ? ' (dikurangi pengurangan)' : ''}`
                     : 'Upah driver belum diisi'}
             >
                     {!editingTarip ? (
@@ -7640,10 +7573,10 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                     </div>
                                     <div className="text-muted text-sm" style={{ marginTop: '0.25rem' }}>
                                         {hasOvertonase
-                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase${hasUnderloadDeduction ? ` - ${formatCurrency(underloadDeductionAmount)} pengurangan` : ''}`
+                                            ? `${formatCurrency(baseTripFee)} + ${formatCurrency(overtonaseDriverAmount)} overtonase${hasWageDeduction ? ` - ${formatCurrency(wageDeductionAmount)} pengurangan` : ''}`
                                             : baseTripFee
-                                                ? hasUnderloadDeduction
-                                                    ? `${formatCurrency(baseTripFee)} - ${formatCurrency(underloadDeductionAmount)} pengurangan`
+                                                ? hasWageDeduction
+                                                    ? `${formatCurrency(baseTripFee)} - ${formatCurrency(wageDeductionAmount)} pengurangan`
                                                     : 'Tidak ada tambahan overtonase'
                                                 : 'Upah dasar belum diisi'}
                                     </div>
@@ -7666,16 +7599,10 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                         <span className="text-muted text-sm">Muatan aktual</span>
                                         <strong style={tripFeeValueStyle}>{doData.actualTotalWeightKg ? formatWeightKg(doData.actualTotalWeightKg) : 'Belum final'}</strong>
                                     </div>
-                                    <div style={tripFeeRowStyle}>
+                                    <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
                                         <span className="text-muted text-sm">Berat overtonase</span>
                                         <strong style={{ ...tripFeeValueStyle, color: hasOvertonase ? 'var(--color-warning)' : 'var(--color-gray-500)' }}>
                                             {formatWeightKg(doData.overtonaseWeightKg)}
-                                        </strong>
-                                    </div>
-                                    <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
-                                        <span className="text-muted text-sm">Berat muatan kurang</span>
-                                        <strong style={{ ...tripFeeValueStyle, color: hasUnderloadDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>
-                                            {formatWeightKg(doData.underloadWeightKg)}
                                         </strong>
                                     </div>
                                 </section>
@@ -7697,22 +7624,6 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                 </section>
 
                                 <section>
-                                    <div className="font-semibold" style={{ marginBottom: '0.35rem' }}>Perhitungan Pengurangan</div>
-                                    <div style={tripFeeRowStyle}>
-                                        <span className="text-muted text-sm">Mode hitung</span>
-                                        <strong style={tripFeeValueStyle}>{hasManualUnderload ? 'Manual' : 'Otomatis'}</strong>
-                                    </div>
-                                    <div style={tripFeeRowStyle}>
-                                        <span className="text-muted text-sm">Rate</span>
-                                        <strong style={tripFeeValueStyle}>{underloadRateModeLabel}{doData.underloadDriverRatePerKg ? ` • ${formatCurrency(Math.round(doData.underloadDriverRatePerKg * 1000))}/ton` : ''}</strong>
-                                    </div>
-                                    <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
-                                        <span className="text-muted text-sm">Ton dikurangi</span>
-                                        <strong style={{ ...tripFeeValueStyle, color: hasUnderloadDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>{hasUnderloadDeduction ? `${payableUnderloadTon} ton` : '-'}</strong>
-                                    </div>
-                                </section>
-
-                                <section>
                                     <div className="font-semibold" style={{ marginBottom: '0.35rem' }}>Upah Driver</div>
                                     <div style={tripFeeRowStyle}>
                                         <span className="text-muted text-sm">Upah dasar</span>
@@ -7725,9 +7636,9 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                         </strong>
                                     </div>
                                     <div style={tripFeeRowStyle}>
-                                        <span className="text-muted text-sm">Pengurangan muatan kurang</span>
-                                        <strong style={{ ...tripFeeValueStyle, color: hasUnderloadDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>
-                                            {hasUnderloadDeduction ? `-${formatCurrency(underloadDeductionAmount)}` : '-'}
+                                        <span className="text-muted text-sm">Pengurangan</span>
+                                        <strong style={{ ...tripFeeValueStyle, color: hasWageDeduction ? 'var(--color-danger)' : 'var(--color-gray-500)' }}>
+                                            {hasWageDeduction ? `-${formatCurrency(wageDeductionAmount)}` : '-'}
                                         </strong>
                                     </div>
                                     <div style={{ ...tripFeeRowStyle, borderBottom: 0 }}>
@@ -7786,16 +7697,16 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                     <div style={{ minWidth: 220 }}>
                                         <div className="font-semibold">Manual Pengurangan</div>
                                         <div className="text-muted text-sm">
-                                            {hasManualUnderload
-                                                ? `Aktif: ${doData.manualUnderloadWeightKg} kg • Rate ${underloadRateModeLabel}`
-                                                : 'Mengikuti hitungan otomatis dari muatan aktual'}
+                                            {hasWageDeduction
+                                                ? `Aktif: -${formatCurrency(wageDeductionAmount)} dari upah sistem`
+                                                : 'Belum ada pengurangan manual'}
                                         </div>
                                     </div>
                                     <button
                                         type="button"
                                         className="btn btn-primary btn-sm"
-                                        onClick={() => openManualUnderloadReview(false)}
-                                        disabled={savingManualUnderload}
+                                        onClick={() => openManualWageDeductionReview()}
+                                        disabled={savingManualWageDeduction}
                                     >
                                         <Edit size={14} /> Atur Pengurangan
                                     </button>
@@ -8198,177 +8109,89 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                 </div>
             )}
 
-            {manualUnderloadReviewMode && manualUnderloadPendingPreview && (
-                <div className="modal-overlay" onClick={() => { if (!savingManualUnderload) setManualUnderloadReviewMode(null); }}>
+            {manualWageDeductionOpen && manualWageDeductionPreview && (
+                <div className="modal-overlay" onClick={() => { if (!savingManualWageDeduction) setManualWageDeductionOpen(false); }}>
                     <div className="modal" style={{ maxWidth: 760 }} onClick={event => event.stopPropagation()}>
                         <div className="modal-header">
                             <div>
                                 <h3 className="modal-title">Review Perubahan Pengurangan</h3>
                                 <div className="text-muted text-sm" style={{ marginTop: '0.2rem' }}>
-                                    {manualUnderloadReviewMode === 'automatic'
-                                        ? 'Kembali ke hitungan otomatis dari muatan aktual'
-                                        : 'Simpan koreksi berat muatan kurang manual'}
+                                    Potong upah trip langsung tanpa mengubah master data
                                 </div>
                             </div>
-                            <button className="modal-close" onClick={() => setManualUnderloadReviewMode(null)} disabled={savingManualUnderload}>&times;</button>
+                            <button className="modal-close" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>&times;</button>
                         </div>
                         <div className="modal-body">
                             <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.65rem', marginBottom: '0.85rem' }}>
                                 <div>
-                                    <div className="font-semibold">Input Pengurangan</div>
+                                    <div className="font-semibold">Nominal Pengurangan</div>
                                     <div className="text-muted text-sm">
-                                        Isi berat manual jika perlu koreksi. Gunakan otomatis untuk kembali ke hitungan dari muatan aktual. Pengurangan tetap dibulatkan turun per ton.
+                                        Isi nominal rupiah yang dipotong dari upah sistem. Reset mengosongkan isian — Simpan untuk menerapkan.
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end', flexWrap: 'wrap' }}>
-                                    <div style={{ flex: '1 1 220px' }}>
-                                        <label className="form-label">Berat Manual</label>
+                                    <div style={{ maxWidth: 280, flex: '1 1 200px' }}>
+                                        <label className="form-label">Pengurangan (Rp)</label>
                                         <FormattedNumberInput
                                             min={0}
-                                            maxFractionDigits={getWeightInputFractionDigits(manualUnderloadWeightInputUnit)}
-                                            value={manualUnderloadWeightInputValue}
-                                            onValueChange={value => {
-                                                setManualUnderloadWeightInputValue(value);
-                                                setManualUnderloadReviewMode('manual');
-                                            }}
-                                            disabled={savingManualUnderload || manualUnderloadReviewMode === 'automatic'}
+                                            allowDecimal={false}
+                                            value={manualWageDeductionInputValue}
+                                            onValueChange={value => setManualWageDeductionInputValue(value)}
+                                            disabled={savingManualWageDeduction}
                                             placeholder="0"
                                         />
                                     </div>
-                                    <div style={{ flex: '0 0 110px' }}>
-                                        <label className="form-label">Unit</label>
-                                        <Combobox
-                                            value={manualUnderloadWeightInputUnit}
-                                            onChange={(v: string) => {
-                                                updateManualUnderloadWeightUnit(v as WeightInputUnit);
-                                                setManualUnderloadReviewMode('manual');
-                                            }}
-                                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                            disabled={savingManualUnderload || manualUnderloadReviewMode === 'automatic'}
-                                        />
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className={manualUnderloadReviewMode === 'manual' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-                                        onClick={() => setManualUnderloadReviewMode('manual')}
-                                        disabled={savingManualUnderload}
-                                    >
-                                        Manual
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={manualUnderloadReviewMode === 'automatic' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-                                        onClick={() => setManualUnderloadReviewMode('automatic')}
-                                        disabled={savingManualUnderload}
-                                    >
-                                        Otomatis
-                                    </button>
-                                </div>
-                                <div className="text-muted text-sm">
-                                    Nilai otomatis saat ini:{' '}
-                                    <strong>
-                                        {manualUnderloadPendingPreview.automaticUnderloadWeightKg > 0
-                                            ? `${manualUnderloadPendingPreview.automaticUnderloadWeightKg} kg (dikurangi ${Math.floor(manualUnderloadPendingPreview.automaticUnderloadWeightKg / 1000)} ton penuh)`
-                                            : '0 kg (muatan tidak di bawah batas)'}
-                                    </strong>
-                                </div>
-                            </div>
-
-                            <div style={{ padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.65rem', marginBottom: '0.85rem' }}>
-                                <div>
-                                    <div className="font-semibold">Rate Pengurangan</div>
-                                    <div className="text-muted text-sm">
-                                        Default mengikuti rate overtonase rute. Pilih khusus untuk memakai rate sendiri.
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end', flexWrap: 'wrap' }}>
-                                    <button
-                                        type="button"
-                                        className={manualUnderloadRateMode === 'default' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-                                        onClick={() => setManualUnderloadRateMode('default')}
-                                        disabled={savingManualUnderload}
-                                    >
-                                        Default{manualUnderloadPendingPreview.defaultRatePerTon ? ` (${formatCurrency(manualUnderloadPendingPreview.defaultRatePerTon)}/ton)` : ''}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={manualUnderloadRateMode === 'custom' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-                                        onClick={() => setManualUnderloadRateMode('custom')}
-                                        disabled={savingManualUnderload}
-                                    >
-                                        Khusus
-                                    </button>
-                                    {manualUnderloadRateMode === 'custom' && (
-                                        <div style={{ flex: '1 1 200px' }}>
-                                            <label className="form-label">Rate Khusus / ton</label>
-                                            <FormattedNumberInput
-                                                min={0}
-                                                allowDecimal={false}
-                                                value={manualUnderloadCustomRatePerTon}
-                                                onValueChange={value => setManualUnderloadCustomRatePerTon(value)}
-                                                disabled={savingManualUnderload}
-                                                placeholder="0"
-                                            />
-                                        </div>
+                                    {manualWageDeductionInputValue > 0 && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            style={{ color: 'var(--color-danger)' }}
+                                            onClick={() => setManualWageDeductionInputValue(0)}
+                                            disabled={savingManualWageDeduction}
+                                        >
+                                            Reset
+                                        </button>
                                     )}
                                 </div>
                             </div>
 
                             <div className="detail-row">
                                 <div className="detail-item">
-                                    <div className="detail-label">Mode Sekarang</div>
-                                    <div className="detail-value">{hasManualUnderload ? 'Manual' : 'Otomatis'} • Rate {underloadRateModeLabel}</div>
+                                    <div className="detail-label">Upah Sistem</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.systemTripFee ? formatCurrency(manualWageDeductionPreview.systemTripFee) : '-'}</div>
+                                    <div className="text-muted text-sm">
+                                        Dasar {manualWageDeductionPreview.baseFee ? formatCurrency(manualWageDeductionPreview.baseFee) : '-'}
+                                        {manualWageDeductionPreview.currentOvertonaseAmount > 0 && ` + ${formatCurrency(manualWageDeductionPreview.currentOvertonaseAmount)} overtonase`}
+                                    </div>
                                 </div>
                                 <div className="detail-item">
-                                    <div className="detail-label">Mode Baru</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.modeLabel} • Rate {manualUnderloadPendingPreview.rateModeLabel}</div>
-                                </div>
-                            </div>
-
-                            <div className="detail-row" style={{ marginTop: '0.75rem' }}>
-                                <div className="detail-item">
-                                    <div className="detail-label">Berat Muatan Kurang Sekarang</div>
-                                    <div className="detail-value">{doData.underloadWeightKg ? `${doData.underloadWeightKg} kg` : '-'}</div>
-                                    <div className="text-muted text-sm">Dikurangi {manualUnderloadPendingPreview.currentPayableTon} ton penuh</div>
-                                </div>
-                                <div className="detail-item">
-                                    <div className="detail-label">Berat Muatan Kurang Baru</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.nextUnderloadWeightKg ? `${manualUnderloadPendingPreview.nextUnderloadWeightKg} kg` : '-'}</div>
-                                    <div className="text-muted text-sm">Dikurangi {manualUnderloadPendingPreview.nextPayableTon} ton penuh</div>
+                                    <div className="detail-label">Pengurangan Baru</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
                                 </div>
                             </div>
 
                             <div className="detail-row" style={{ marginTop: '0.75rem' }}>
                                 <div className="detail-item">
                                     <div className="detail-label">Pengurangan Sekarang</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.currentDeductionAmount ? formatCurrency(manualUnderloadPendingPreview.currentDeductionAmount) : '-'}</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentDeductionAmount ? formatCurrency(manualWageDeductionPreview.currentDeductionAmount) : '-'}</div>
                                 </div>
                                 <div className="detail-item">
                                     <div className="detail-label">Pengurangan Baru</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.nextDeductionAmount ? formatCurrency(manualUnderloadPendingPreview.nextDeductionAmount) : '-'}</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextDeductionAmount ? formatCurrency(manualWageDeductionPreview.nextDeductionAmount) : '-'}</div>
                                 </div>
                             </div>
 
                             <div className="detail-row" style={{ marginTop: '0.75rem' }}>
                                 <div className="detail-item">
                                     <div className="detail-label">Total Upah Sekarang</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.currentTripFee ? formatCurrency(manualUnderloadPendingPreview.currentTripFee) : '-'}</div>
+                                    <div className="detail-value">{manualWageDeductionPreview.currentTripFee ? formatCurrency(manualWageDeductionPreview.currentTripFee) : '-'}</div>
                                 </div>
                                 <div className="detail-item">
                                     <div className="detail-label">Total Upah Baru</div>
-                                    <div className="detail-value">{manualUnderloadPendingPreview.nextTripFee ? formatCurrency(manualUnderloadPendingPreview.nextTripFee) : '-'}</div>
-                                </div>
-                            </div>
-
-                            <div style={{ marginTop: '0.85rem', padding: '0.85rem', border: '1px solid var(--color-gray-200)', borderRadius: '0.75rem', background: 'var(--color-gray-50)', display: 'grid', gap: '0.35rem' }}>
-                                <div className="text-sm">
-                                    Dasar upah: <strong>{manualUnderloadPendingPreview.baseFee ? formatCurrency(manualUnderloadPendingPreview.baseFee) : '-'}</strong>
-                                </div>
-                                <div className="text-sm">
-                                    Rate pengurangan: <strong>{manualUnderloadPendingPreview.ratePerTon ? formatCurrency(manualUnderloadPendingPreview.ratePerTon) : '-'}</strong> / ton
-                                </div>
-                                <div className="text-sm">
-                                    Hitungan otomatis dari muatan aktual saat ini: <strong>{manualUnderloadPendingPreview.automaticUnderloadWeightKg} kg</strong>
+                                    <div className="detail-value">{manualWageDeductionPreview.nextTripFee ? formatCurrency(manualWageDeductionPreview.nextTripFee) : '-'}</div>
+                                    {manualWageDeductionPreview.nextDeductionAmount > manualWageDeductionPreview.systemTripFee && (
+                                        <div className="text-danger text-sm">Nominal melebihi upah sistem — kurangi nominalnya.</div>
+                                    )}
                                 </div>
                             </div>
 
@@ -8383,13 +8206,13 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                             ) : null}
                         </div>
                         <div className="modal-footer">
-                            <button className="btn btn-secondary" onClick={() => setManualUnderloadReviewMode(null)} disabled={savingManualUnderload}>Batal</button>
+                            <button className="btn btn-secondary" onClick={() => setManualWageDeductionOpen(false)} disabled={savingManualWageDeduction}>Batal</button>
                             <button
                                 className="btn btn-primary"
-                                onClick={() => void saveManualUnderload(manualUnderloadReviewMode === 'automatic')}
-                                disabled={savingManualUnderload}
+                                onClick={() => void saveManualWageDeduction()}
+                                disabled={savingManualWageDeduction}
                             >
-                                <Save size={16} /> {savingManualUnderload ? 'Menyimpan...' : 'Konfirmasi Simpan'}
+                                <Save size={16} /> {savingManualWageDeduction ? 'Menyimpan...' : 'Konfirmasi Simpan'}
                             </button>
                         </div>
                     </div>

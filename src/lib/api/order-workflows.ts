@@ -7047,7 +7047,7 @@ export async function handleDeliveryOrderManualOvertonaseUpdate(
     });
 }
 
-export async function handleDeliveryOrderManualUnderloadUpdate(
+export async function handleDeliveryOrderManualWageDeductionUpdate(
     session: ApiSession,
     data: Record<string, unknown>,
     addAuditLog: AuditLogFn
@@ -7062,43 +7062,24 @@ export async function handleDeliveryOrderManualUnderloadUpdate(
         return NextResponse.json({ error: 'Trip tidak ditemukan' }, { status: 404 });
     }
     if (deliveryOrder.status === 'CANCELLED') {
-        return NextResponse.json({ error: 'Pengurangan muatan kurang tidak bisa diubah untuk trip yang sudah dibatalkan.' }, { status: 409 });
+        return NextResponse.json({ error: 'Pengurangan upah tidak bisa diubah untuk trip yang sudah dibatalkan.' }, { status: 409 });
     }
     if (deliveryOrder.tripClosedByAdminAt) {
         return NextResponse.json({ error: 'Trip ini sudah ditutup admin sehingga pengurangan tidak bisa diubah lagi.' }, { status: 409 });
     }
 
-    const manualInputUnit = data.manualUnderloadWeightInputUnit === 'TON' ? 'TON' : 'KG';
-    const manualInputValue = normalizeNumber(
-        data.manualUnderloadWeightInputValue ?? data.manualUnderloadWeightKg ?? 0,
-        { maxFractionDigits: manualInputUnit === 'TON' ? 5 : 2 }
-    );
-    if (!Number.isFinite(manualInputValue) || manualInputValue < 0) {
-        return NextResponse.json({ error: 'Berat manual pengurangan tidak valid' }, { status: 400 });
+    const deductionInput = normalizeCurrencyNumber(data.deductionAmount ?? 0);
+    if (!Number.isFinite(deductionInput) || deductionInput < 0) {
+        return NextResponse.json({ error: 'Nominal pengurangan tidak valid' }, { status: 400 });
     }
-    const manualUnderloadWeightKg =
-        manualInputValue > 0
-            ? roundQuantity(convertWeightToKg(manualInputValue, manualInputUnit), 2)
-            : 0;
-
-    const underloadRateMode = data.underloadRateMode === 'custom' ? 'custom' : 'default';
-    const underloadRateInput = underloadRateMode === 'custom'
-        ? normalizeCurrencyNumber(data.underloadDriverRatePerKg ?? 0)
-        : 0;
-    if (!Number.isFinite(underloadRateInput) || underloadRateInput < 0) {
-        return NextResponse.json({ error: 'Rate pengurangan tidak valid' }, { status: 400 });
-    }
-    if (underloadRateMode === 'custom' && underloadRateInput <= 0) {
-        return NextResponse.json({ error: 'Rate khusus pengurangan harus lebih dari 0' }, { status: 400 });
-    }
+    const manualTripFeeDeductionAmount = Math.round(deductionInput);
 
     const actualDropTotals = summarizeActualDropPointCargo(deliveryOrder.actualDropPoints || []);
     const persistedActualWeight = normalizeNumber(deliveryOrder.actualTotalWeightKg ?? 0, { maxFractionDigits: 2 });
     const actualTotalTripWeightKg = persistedActualWeight > 0 ? persistedActualWeight : actualDropTotals.weightKg;
     const deliveryOrderForCalculation = {
         ...deliveryOrder,
-        manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : undefined,
-        underloadDriverRatePerKg: underloadRateInput > 0 ? underloadRateInput : undefined,
+        manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : undefined,
     };
     const tripOvertonage = await computeTripOvertonageAdjustment({
         deliveryOrder: deliveryOrderForCalculation,
@@ -7106,14 +7087,19 @@ export async function handleDeliveryOrderManualUnderloadUpdate(
     });
     const overtonageResult = tripOvertonage.overtonageResult;
     const baseTripFee = normalizeCurrencyNumber(deliveryOrder.baseTaripBorongan ?? deliveryOrder.taripBorongan ?? 0);
+    const systemTripFee = baseTripFee + (overtonageResult.overtonaseDriverAmount || 0);
+    if (manualTripFeeDeductionAmount > systemTripFee) {
+        return NextResponse.json({ error: `Nominal pengurangan melebihi upah sistem (${systemTripFee}).` }, { status: 400 });
+    }
     const timestamp = new Date().toISOString();
 
     try {
         await updateDocument(id, {
-            manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : null,
-            underloadRateMode,
+            manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : null,
             baseTaripBorongan: baseTripFee > 0 ? baseTripFee : undefined,
-            taripBorongan: overtonageResult.effectiveTripFee || normalizeCurrencyNumber(deliveryOrder.taripBorongan ?? 0) || undefined,
+            taripBorongan: manualTripFeeDeductionAmount > 0
+                ? overtonageResult.effectiveTripFee
+                : (overtonageResult.effectiveTripFee || normalizeCurrencyNumber(deliveryOrder.taripBorongan ?? 0) || undefined),
             actualTotalWeightKg: overtonageResult.actualTotalWeightKg || undefined,
             serviceMaxPayloadKg: overtonageResult.serviceMaxPayloadKg,
             vehicleCapacityKg: overtonageResult.vehicleCapacityKg,
@@ -7121,12 +7107,9 @@ export async function handleDeliveryOrderManualUnderloadUpdate(
             overtonaseDriverRatePerKg: overtonageResult.overtonaseDriverRatePerKg,
             overtonaseDriverAmount: overtonageResult.overtonaseDriverAmount,
             vehicleCapacityExceededKg: overtonageResult.vehicleCapacityExceededKg,
-            underloadWeightKg: overtonageResult.underloadWeightKg,
-            underloadDriverRatePerKg: overtonageResult.underloadDriverRatePerKg,
-            underloadDeductionAmount: overtonageResult.underloadDeductionAmount,
-            underloadUpdatedAt: timestamp,
-            underloadUpdatedBy: session._id,
-            underloadUpdatedByName: session.name,
+            wageDeductionUpdatedAt: timestamp,
+            wageDeductionUpdatedBy: session._id,
+            wageDeductionUpdatedByName: session.name,
         }, 'deliveryOrder');
 
         if (tripOvertonage.linkedVoucherPatch) {
@@ -7148,18 +7131,15 @@ export async function handleDeliveryOrderManualUnderloadUpdate(
         'UPDATE',
         'delivery-orders',
         id,
-        manualUnderloadWeightKg > 0
-            ? `Ubah manual pengurangan muatan kurang menjadi ${manualUnderloadWeightKg} kg (rate ${underloadRateMode})`
-            : `Hapus manual pengurangan muatan kurang dan kembali ke hitungan otomatis (rate ${underloadRateMode})`
+        manualTripFeeDeductionAmount > 0
+            ? `Ubah manual pengurangan upah trip menjadi ${manualTripFeeDeductionAmount}`
+            : 'Hapus pengurangan upah trip manual dan kembali ke upah sistem'
     );
 
     return NextResponse.json({
         data: {
             _id: id,
-            manualUnderloadWeightKg: manualUnderloadWeightKg > 0 ? manualUnderloadWeightKg : undefined,
-            underloadRateMode,
-            underloadWeightKg: overtonageResult.underloadWeightKg,
-            underloadDeductionAmount: overtonageResult.underloadDeductionAmount,
+            manualTripFeeDeductionAmount: manualTripFeeDeductionAmount > 0 ? manualTripFeeDeductionAmount : undefined,
             taripBorongan: overtonageResult.effectiveTripFee,
             linkedVoucherAdjustmentSummary: tripOvertonage.linkedVoucherAdjustmentSummary,
             settledVoucherOvertonageWarning: tripOvertonage.settledVoucherOvertonageWarning,

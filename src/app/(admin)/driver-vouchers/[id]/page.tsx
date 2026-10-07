@@ -1250,7 +1250,7 @@ export default function DriverVoucherDetailPage() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Biaya Lain-lain</span><strong>{formatCurrency(operationalSpent)}</strong></div>
                                 {linkedDeliveryOrder && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Dasar DO</span><strong>{formatCurrency(linkedDoBaseTripFee)}</strong></div>}
                                 {linkedDeliveryOrder && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Tambahan Overtonase</span><strong>{linkedDoHasFinalActualWeight ? formatCurrency(linkedDoOvertonaseAmount) : 'Menunggu aktual final'}</strong></div>}
-                                {linkedDeliveryOrder && ((linkedDeliveryOrder.underloadDeductionAmount || 0) > 0 || (linkedDeliveryOrder.manualUnderloadWeightKg || 0) > 0) && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Pengurangan Muatan Kurang</span><strong>{linkedDoHasFinalActualWeight ? `-${formatCurrency(linkedDeliveryOrder.underloadDeductionAmount || 0)}` : 'Menunggu aktual final'}</strong></div>}
+                                {linkedDeliveryOrder && ((linkedDeliveryOrder.manualTripFeeDeductionAmount || 0) > 0) && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Pengurangan Upah</span><strong>{linkedDoHasFinalActualWeight ? `-${formatCurrency(linkedDeliveryOrder.manualTripFeeDeductionAmount || 0)}` : 'Menunggu aktual final'}</strong></div>}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Borongan</span><strong>{formatCurrency(driverFeeAmount)}</strong></div>
                                 {linkedDeliveryOrder && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Borongan Final DO</span><strong>{linkedDoHasFinalActualWeight ? formatCurrency(linkedDoFinalTripFee) : 'Menunggu aktual final'}</strong></div>}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Total Biaya</span><strong>{formatCurrency(totalClaimAmount)}</strong></div>
@@ -1304,6 +1304,18 @@ export default function DriverVoucherDetailPage() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}><span>Upah Borongan Baru</span><strong>{formatCurrency(correctionForm.driverFeeAmount)}</strong></div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Penyelesaian Jika Sekarang</span><strong style={{ color: correctionPreviewBalance < 0 ? 'var(--color-danger)' : 'inherit' }}>{formatCurrency(correctionPreviewBalance)}</strong></div>
                             </div>
+                            {linkedDeliveryOrder && ((linkedDeliveryOrder.manualTripFeeDeductionAmount || 0) > 0 || (linkedDeliveryOrder.manualOvertonaseWeightKg || 0) > 0) && (
+                                <div style={{ marginTop: '0.85rem', padding: '0.75rem 1rem', borderRadius: '0.75rem', background: 'var(--color-warning-light)', border: '1px solid var(--color-warning)', fontSize: '0.8rem' }}>
+                                    Trip ini punya penyesuaian upah manual
+                                    {(linkedDeliveryOrder.manualTripFeeDeductionAmount || 0) > 0 && (
+                                        <> (pengurangan {formatCurrency(linkedDeliveryOrder.manualTripFeeDeductionAmount)})</>
+                                    )}
+                                    {(linkedDeliveryOrder.manualOvertonaseWeightKg || 0) > 0 && (
+                                        <> (overtonase manual {linkedDeliveryOrder.manualOvertonaseWeightKg} kg)</>
+                                    )}
+                                    . Koreksi di sini mengubah total final, tapi penyesuaian tersebut tetap tersimpan — sesuaikan di halaman trip bila perlu.
+                                </div>
+                            )}
                         </div>
                         <div className="modal-footer"><button className="btn btn-secondary" onClick={closeCorrectionModal} disabled={correctingVoucher}>Batal</button><button className="btn btn-primary" onClick={handleCorrectCore} disabled={correctingVoucher}><Save size={16} /> {correctingVoucher ? 'Memproses...' : 'Simpan Koreksi'}</button></div>
                     </div>

@@ -822,11 +822,7 @@ export interface DeliveryOrder {
   overtonaseDriverRatePerKg?: number;
   overtonaseDriverAmount?: number;
   vehicleCapacityExceededKg?: number;
-  manualUnderloadWeightKg?: number;
-  underloadWeightKg?: number;
-  underloadRateMode?: 'default' | 'custom';
-  underloadDriverRatePerKg?: number;
-  underloadDeductionAmount?: number;
+  manualTripFeeDeductionAmount?: number;
   trackingState?: 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED';
   trackingStartedAt?: string;
   trackingStoppedAt?: string;
