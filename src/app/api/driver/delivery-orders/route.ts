@@ -36,9 +36,11 @@ export async function GET(request: Request) {
             ...deliveryOrders.map(item => typeof item.orderRef === 'string' ? item.orderRef : ''),
             ...plannedTrips.map(item => item.orderRef || ''),
         ]);
+        // Products must cover every customer on the trip, not just the primary one, so a driver can
+        // pick the second customer's goods. Recipients already span all billing customers below.
         const customerRefs = [
-            ...deliveryOrders.map(item => item.customerRef || ''),
-            ...plannedTrips.map(item => item.customerRef || ''),
+            ...deliveryOrders.flatMap(item => [item.customerRef || '', ...(item.customerRefs || [])]),
+            ...plannedTrips.flatMap(item => [item.customerRef || '', ...(item.customerRefs || [])]),
         ];
         const billingCustomers = await getDriverBillingCustomers();
         const allCustomerRefs = [

@@ -323,6 +323,7 @@ class DriverAssignedTripPlan {
     required this.allowsDirectCargoInput,
     this.masterResi,
     this.customerRef,
+    this.customerRefs = const [],
     this.customerName,
     this.serviceName,
     this.vehicleRef,
@@ -348,6 +349,8 @@ class DriverAssignedTripPlan {
   final bool allowsDirectCargoInput;
   final String? masterResi;
   final String? customerRef;
+  /// Every customer this trip plan serves; the primary `customerRef` is first.
+  final List<String> customerRefs;
   final String? customerName;
   final String? serviceName;
   final String? vehicleRef;
@@ -622,6 +625,7 @@ class DeliveryTrip {
     required this.allowsDirectCargoInput,
     this.orderRef,
     this.customerRef,
+    this.customerRefs = const [],
     this.trackingState,
     this.pendingDriverStatus,
     this.pendingDriverRequests = const [],
@@ -656,6 +660,8 @@ class DeliveryTrip {
   final bool allowsDirectCargoInput;
   final String? orderRef;
   final String? customerRef;
+  /// Every customer this trip serves; the primary `customerRef` is first.
+  final List<String> customerRefs;
   final String? trackingState;
   final String? pendingDriverStatus;
   final List<PendingDriverRequest> pendingDriverRequests;

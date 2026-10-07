@@ -62,7 +62,11 @@ function drawTable(
 export function generateDOPdf(
     doData: DeliveryOrder,
     doItems: DeliveryOrderItem[],
-    company: Pick<CompanyProfile, 'name' | 'address' | 'phone' | 'email'>
+    company: Pick<CompanyProfile, 'name' | 'address' | 'phone' | 'email'>,
+    options?: {
+        /** Names of the non-primary customers on this trip, in display order. */
+        additionalCustomerNames?: string[];
+    }
 ) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -116,11 +120,23 @@ export function generateDOPdf(
         doc.text(`: ${value}`, x + 30, yPos);
     };
 
+    // A trip may serve more than one customer; name the extras so the printed SJ matches the order.
+    // Bounded to two names plus a count so the value cannot overflow the right-hand column.
+    const additionalCustomerNames = (options?.additionalCustomerNames || [])
+        .map(name => name.trim())
+        .filter(Boolean);
+    const additionalCustomerSummary = additionalCustomerNames.length > 2
+        ? `${additionalCustomerNames.slice(0, 2).join(', ')} +${additionalCustomerNames.length - 2}`
+        : additionalCustomerNames.join(', ');
+    const customerLabel = additionalCustomerSummary
+        ? `${doData.customerName || '-'} (+ ${additionalCustomerSummary})`
+        : (doData.customerName || '-');
+
     addRow('Tanggal', formatDate(doData.date), margin, y);
     addRow('No. DO Internal', doData.doNumber || '-', col2X, y);
     y += 5;
     addRow('No. SJ Pengirim', formatShipperDeliveryOrderNumber(doData, { mode: 'summary', maxVisible: 3 }), margin, y);
-    addRow('Customer', doData.customerName || '-', col2X, y);
+    addRow('Customer', customerLabel, col2X, y);
     y += 5;
     addRow('Resi', doData.masterResi || '-', margin, y);
     addRow('Kendaraan', doData.vehiclePlate || '-', col2X, y);

@@ -1152,8 +1152,8 @@ export default function TripDetailPage() {
                 pickupStopKey: '',
                 pickupAddress: doData?.pickupAddress || '',
                 selectedRecipientId: '',
-                billingCustomerRef: doData?.customerRef || '',
-                billingCustomerName: doData?.customerName || '',
+                billingCustomerRef: isMultiCustomerTrip ? '' : (doData?.customerRef || ''),
+                billingCustomerName: isMultiCustomerTrip ? '' : (doData?.customerName || ''),
                 receiverName: '',
                 receiverPhone: '',
                 receiverAddress: '',
@@ -1170,8 +1170,8 @@ export default function TripDetailPage() {
                     pickupStopKey: defaultShipperReferencePickupOption?.key || '',
                     pickupAddress: defaultShipperReferencePickupOption?.address || '',
                     selectedRecipientId: '',
-                    billingCustomerRef: doData?.customerRef || '',
-                    billingCustomerName: doData?.customerName || '',
+                    billingCustomerRef: isMultiCustomerTrip ? '' : (doData?.customerRef || ''),
+                    billingCustomerName: isMultiCustomerTrip ? '' : (doData?.customerName || ''),
                     receiverName: '',
                     receiverPhone: '',
                     receiverAddress: '',
@@ -1334,6 +1334,102 @@ export default function TripDetailPage() {
             ...previous,
             [selectedShipperReferenceDraft.draftKey]: (previous[selectedShipperReferenceDraft.draftKey] || []).filter((_, currentIndex) => currentIndex !== itemIndex),
         }));
+    };
+
+    const renderNewShipperReferenceItemCard = (item: DeliveryOrderCargoDraftItem, itemIndex: number) => {
+        return (
+            <div style={{ display: 'grid', gap: 12, padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => removeSelectedShipperReferenceItemDraft(itemIndex)}
+                    disabled={savingShipperReference}
+                    title="Hapus barang ini dari Surat Jalan (disimpan saat klik Simpan)"
+                >
+                    <Trash2 size={14} /> Hapus Barang
+                </button>
+            </div>
+                <div className="form-stack">
+                    <div>
+                        <label className="form-label">Barang Customer</label>
+                    <Combobox
+                        value={getOrderItemPickerValue(item)}
+                        onChange={(v: string) => applySelectedShipperReferenceItemProduct(itemIndex, v)}
+                        options={[
+                            { value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' },
+                            ...deliveryOrderCustomerProducts.map(product => ({
+                                value: product._id,
+                                label: `${product.code ? `${product.code} - ` : ''}${product.name}`,
+                            })),
+                        ]}
+                        placeholder={deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}
+                        disabled={savingShipperReference || !doData?.customerRef}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Deskripsi Barang</label>
+                    <input
+                        className="form-input"
+                        value={item.description}
+                        onChange={e => updateSelectedShipperReferenceItemDraft(itemIndex, 'description', e.target.value)}
+                        placeholder="Mis. Oli Diesel 10W-40 / Beras 50 kg / Keramik"
+                        disabled={savingShipperReference}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Koli</label>
+                    <FormattedNumberInput
+                        min={0}
+                        allowDecimal={false}
+                        value={item.qtyKoli}
+                        onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'qtyKoli', value)}
+                        disabled={savingShipperReference}
+                    />
+                </div>
+                <div>
+                    <label className="form-label">Berat</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <FormattedNumberInput
+                            min={0}
+                            maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
+                            value={item.weightInputValue}
+                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
+                            disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
+                        />
+                        <div style={{ width: 92 }}>
+                        <Combobox
+                            value={item.weightInputUnit}
+                            onChange={(v: string) => updateSelectedShipperReferenceItemWeightUnit(itemIndex, v as DeliveryOrderCargoDraftItem['weightInputUnit'])}
+                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                            disabled={savingShipperReference}
+                        />
+                    </div>
+                    </div>
+                </div>
+                <div>
+                    <label className="form-label">Volume</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <FormattedNumberInput
+                            min={0}
+                            maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
+                            value={item.volumeInputValue}
+                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
+                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
+                        />
+                        <div style={{ width: 92 }}>
+                        <Combobox
+                            value={item.volumeInputUnit}
+                            onChange={(v: string) => updateSelectedShipperReferenceItemVolumeUnit(itemIndex, v as DeliveryOrderCargoDraftItem['volumeInputUnit'])}
+                            options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                            disabled={savingShipperReference}
+                        />
+                    </div>
+                    </div>
+                </div>
+                </div>
+                </div>
+        );
     };
 
     const applySelectedShipperReferenceItemProduct = (itemIndex: number, nextProductRef: string) => {
@@ -3910,7 +4006,11 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
             if (!issuerCompany) {
                 throw new Error('Profil perusahaan tidak tersedia');
             }
-            generateDOPdf(doData!, doItems, issuerCompany);
+            generateDOPdf(doData!, doItems, issuerCompany, {
+                additionalCustomerNames: tripAdditionalCustomerRefs.map(ref =>
+                    billingCustomers.find(customer => customer._id === ref)?.name || ref
+                ),
+            });
             addToast('success', 'PDF Surat Jalan berhasil di-download');
         } catch (err) {
             console.error('PDF Export Error:', err);
@@ -4659,7 +4759,9 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
                             id: doData?._id,
                             deliveryOrderItemId: item.deliveryOrderItemId,
                             cargoItem: {
-                                customerProductRef: item.customerProductRef || undefined,
+                                // Explicit null clears a previously linked master product.
+                                // (undefined would be dropped by JSON and the old link would survive.)
+                                customerProductRef: item.customerProductRef || null,
                                 description: item.description,
                                 qtyKoli: item.qtyKoli,
                                 weightInputValue: item.weightInputValue,
@@ -5274,8 +5376,13 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
             .map(item => item.customerProductRef.trim())
             .filter(Boolean)
     );
+    // Products are offered for every customer this trip serves, not just the primary one.
+    const deliveryOrderCustomerProductRefs = new Set<string>(
+        [doData.customerRef, ...(doData.customerRefs || [])]
+            .filter((ref): ref is string => Boolean(ref))
+    );
     const deliveryOrderCustomerProducts = customerProducts.filter(product =>
-        product.customerRef === doData.customerRef ||
+        (product.customerRef ? deliveryOrderCustomerProductRefs.has(product.customerRef) : false) ||
         cargoDraftSelectedProductRefs.has(product._id)
     );
     const isEditingCargoItem = Boolean(editingCargoItemId);
@@ -5331,6 +5438,18 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         }[linkedTripCashStatus || 'DRAFT'])
         : null;
     const isMitraTrip = normalizeTripOwnership(doData.tripOwnership) === 'MITRA';
+    // A trip that serves more than one customer must not silently default billing to the primary.
+    const tripCustomerRefs = doData.customerRefs || [];
+    const isMultiCustomerTrip = tripCustomerRefs.length > 1;
+    const tripAdditionalCustomerRefs = tripCustomerRefs.filter(ref => ref !== doData.customerRef);
+    const orderedBillingCustomers = isMultiCustomerTrip
+        ? [
+            ...tripCustomerRefs
+                .map(ref => billingCustomers.find(customer => customer._id === ref))
+                .filter((customer): customer is (typeof billingCustomers)[number] => Boolean(customer)),
+            ...billingCustomers.filter(customer => !tripCustomerRefs.includes(customer._id)),
+        ]
+        : billingCustomers;
     const baseTripFee = doData.baseTaripBorongan ?? doData.taripBorongan ?? 0;
     const overtonaseDriverAmount = doData.overtonaseDriverAmount || 0;
     const totalTripFee = doData.taripBorongan || 0;
@@ -5785,16 +5904,9 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                 point.volumeInputUnit
             ),
         }), { qtyKoli: 0, weightKg: 0, volumeM3: 0 });
-    const selectedActualDropMismatchMessage =
-        reviewingDriverRequest
-            ? null
-            : selectedActualCargoTotals.qtyKoli > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.qtyKoli - selectedActualCargoTotals.qtyKoli) > 0.01
-            ? 'Total qty titik DROP harus sama dengan qty aktual barang SJ.'
-            : selectedActualCargoTotals.weightKg > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.weightKg - selectedActualCargoTotals.weightKg) > 0.01
-                ? 'Total berat titik DROP harus sama dengan berat aktual barang SJ.'
-                : selectedActualCargoTotals.volumeM3 > 0 && Math.abs(selectedSubmissionBillableActualDropTotals.volumeM3 - selectedActualCargoTotals.volumeM3) > 0.001
-                    ? 'Total volume titik DROP harus sama dengan volume aktual barang SJ.'
-                    : null;
+    // Aktual barang SJ is flexible input: actual weight/volume per item may be
+    // lower, higher, or equal, so drop allocation is not required to match it.
+    const selectedActualDropMismatchMessage: string | null = null;
     const selectedPhysicalActualDropPoints = showAdvancedDropEditor ? selectedActualDropPoints : selectedEffectiveActualDropPoints;
     const selectedBillableDropCount = selectedPhysicalActualDropPoints.filter(point => isDeliveryOrderBillableDropType(point.stopType)).length;
     const selectedHoldDropCount = selectedPhysicalActualDropPoints.filter(point => isDeliveryOrderHoldDropType(point.stopType)).length;
@@ -6220,7 +6332,6 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
         );
     });
     const selectedActualDropReady =
-        !selectedActualDropMismatchMessage &&
         !selectedActualDropAmbiguityMessage &&
         selectedEffectiveActualDropPoints.length > 0 &&
         selectedEffectiveActualDropPoints.every(item => {
@@ -7124,7 +7235,21 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                             </div>
                         )}
                         <div className="detail-row">
-                            <div className="detail-item"><div className="detail-label">Customer</div><div className="detail-value">{canOpenCustomerPage && doData.customerRef ? <Link href={withReturnTo(`/customers/${doData.customerRef}`)}>{doData.customerName || '-'}</Link> : (doData.customerName || '-')}</div></div>
+                            <div className="detail-item">
+                                <div className="detail-label">Customer</div>
+                                <div className="detail-value">
+                                    {canOpenCustomerPage && doData.customerRef ? <Link href={withReturnTo(`/customers/${doData.customerRef}`)}>{doData.customerName || '-'}</Link> : (doData.customerName || '-')}
+                                    {tripAdditionalCustomerRefs.length > 0 && (
+                                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.35rem', marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+                                            {tripAdditionalCustomerRefs.map(ref => (
+                                                <span key={ref} className="badge badge-info" title="Customer tambahan pada trip ini">
+                                                    {billingCustomers.find(customer => customer._id === ref)?.name || ref}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                             <div className="detail-item"><div className="detail-label">Master Resi</div><div className="detail-value">{canOpenSourceOrderPage ? <Link href={withReturnTo(`/orders/${doData.orderRef}`)}>{doData.masterResi}</Link> : doData.masterResi}</div></div>
                         </div>
                         {shipperReferenceDisplayList.length > 0 && (
@@ -8980,12 +9105,23 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                                 value={selectedActualDropBillingCustomerRef}
                                                 onChange={(v: string) => updateSelectedActualDropBillingCustomer(v)}
                                                 options={[
-                                                    { value: doData?.customerRef || '', label: 'Ikuti customer order / resi' },
-                                                    ...billingCustomers.map(customer => ({ value: customer._id, label: customer.name })),
+                                                    {
+                                                        value: doData?.customerRef || '',
+                                                        label: isMultiCustomerTrip
+                                                            ? `Ikuti customer utama (${doData?.customerName || 'customer order'})`
+                                                            : 'Ikuti customer order / resi',
+                                                    },
+                                                    ...orderedBillingCustomers.map(customer => ({ value: customer._id, label: customer.name })),
                                                 ]}
                                                 placeholder="Pilih customer invoice"
                                                 disabled={updatingStatus}
                                             />
+                                            {isMultiCustomerTrip && !selectedActualDropBillingCustomerRef && (
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-warning-dark)', marginTop: '0.35rem' }}>
+                                                    Trip ini melayani {tripCustomerRefs.length} customer. Pilih customer invoice dulu —
+                                                    tanpa pilihan ini tagihan akan ikut customer utama.
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     <div className="form-group">
@@ -9805,6 +9941,9 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                             }}
                                         >
                                             <span>Item {index + 1}</span>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0 }}>
+                                                {item.description || '-'}
+                                            </span>
                                             <span style={{ fontSize: '0.72rem', fontWeight: 500, opacity: 0.85 }}>
                                                 {tabHasValue ? tabValueSummary : 'Belum diisi'}
                                             </span>
@@ -10714,102 +10853,22 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                             </div>
                                         )}
 
-                                        {activeShipperReferenceItemFocus?.kind === 'new' && (() => {
+                                        {isCreatingNewShipperReference
+                                            ? (selectedShipperReferenceItemDrafts.length === 0
+                                                ? (
+                                                    <div style={{ border: '1px dashed var(--color-gray-300)', borderRadius: '0.75rem', padding: '0.85rem 1rem', background: 'var(--color-gray-50)' }}>
+                                                        <div className="text-muted text-sm">Belum ada barang. Klik Tambah Item untuk menambahkan barang pertama.</div>
+                                                    </div>
+                                                )
+                                                : selectedShipperReferenceItemDrafts.map((item, itemIndex) => (
+                                                    <div key={`sj-new-item-${itemIndex}`} style={{ display: 'contents' }}>
+                                                        {renderNewShipperReferenceItemCard(item, itemIndex)}
+                                                    </div>
+                                                )))
+                                            : (activeShipperReferenceItemFocus?.kind === 'new' && (() => {
                                             const { item, index: itemIndex } = activeShipperReferenceItemFocus;
-                                            return (
-                                                <div style={{ display: 'grid', gap: 12, padding: 12, background: 'var(--color-white)', borderRadius: '0.8rem', border: '1px solid var(--color-gray-200)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-danger btn-sm"
-                                                        onClick={() => removeSelectedShipperReferenceItemDraft(itemIndex)}
-                                                        disabled={savingShipperReference}
-                                                        title="Hapus barang ini dari Surat Jalan (disimpan saat klik Simpan)"
-                                                    >
-                                                        <Trash2 size={14} /> Hapus Barang
-                                                    </button>
-                                                </div>
-                                                <div className="form-stack">
-                                                    <div>
-                                                        <label className="form-label">Barang Customer</label>
-                                                    <Combobox
-                                                        value={getOrderItemPickerValue(item)}
-                                                        onChange={(v: string) => applySelectedShipperReferenceItemProduct(itemIndex, v)}
-                                                        options={[
-                                                            { value: MANUAL_ITEM_OPTION_VALUE, label: 'Tambah manual' },
-                                                            ...deliveryOrderCustomerProducts.map(product => ({
-                                                                value: product._id,
-                                                                label: `${product.code ? `${product.code} - ` : ''}${product.name}`,
-                                                            })),
-                                                        ]}
-                                                        placeholder={deliveryOrderCustomerProducts.length > 0 ? 'Pilih master barang' : 'Belum ada master barang'}
-                                                        disabled={savingShipperReference || !doData?.customerRef}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Deskripsi Barang</label>
-                                                    <input
-                                                        className="form-input"
-                                                        value={item.description}
-                                                        onChange={e => updateSelectedShipperReferenceItemDraft(itemIndex, 'description', e.target.value)}
-                                                        placeholder="Mis. Oli Diesel 10W-40 / Beras 50 kg / Keramik"
-                                                        disabled={savingShipperReference}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Koli</label>
-                                                    <FormattedNumberInput
-                                                        min={0}
-                                                        allowDecimal={false}
-                                                        value={item.qtyKoli}
-                                                        onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'qtyKoli', value)}
-                                                        disabled={savingShipperReference}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Berat</label>
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        <FormattedNumberInput
-                                                            min={0}
-                                                            maxFractionDigits={getWeightInputFractionDigits(item.weightInputUnit)}
-                                                            value={item.weightInputValue}
-                                                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'weightInputValue', value)}
-                                                            disabled={savingShipperReference || shouldLockOrderItemWeight(item)}
-                                                        />
-                                                        <div style={{ width: 92 }}>
-                                                        <Combobox
-                                                            value={item.weightInputUnit}
-                                                            onChange={(v: string) => updateSelectedShipperReferenceItemWeightUnit(itemIndex, v as DeliveryOrderCargoDraftItem['weightInputUnit'])}
-                                                            options={WEIGHT_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                                            disabled={savingShipperReference}
-                                                        />
-                                                    </div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="form-label">Volume</label>
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        <FormattedNumberInput
-                                                            min={0}
-                                                            maxFractionDigits={item.volumeInputUnit === 'LITER' ? 0 : 3}
-                                                            value={item.volumeInputValue}
-                                                            onValueChange={value => updateSelectedShipperReferenceItemDraft(itemIndex, 'volumeInputValue', value)}
-                                                            disabled={savingShipperReference || shouldLockOrderItemVolume(item)}
-                                                        />
-                                                        <div style={{ width: 92 }}>
-                                                        <Combobox
-                                                            value={item.volumeInputUnit}
-                                                            onChange={(v: string) => updateSelectedShipperReferenceItemVolumeUnit(itemIndex, v as DeliveryOrderCargoDraftItem['volumeInputUnit'])}
-                                                            options={VOLUME_INPUT_UNIT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
-                                                            disabled={savingShipperReference}
-                                                        />
-                                                    </div>
-                                                    </div>
-                                                </div>
-                                                </div>
-                                                </div>
-                                            );
-                                        })()}
+                                            return renderNewShipperReferenceItemCard(item, itemIndex);
+                                        })())}
                                     </div>
                                 </div>
                             )}
@@ -11272,10 +11331,31 @@ getNextDeliveryOrderStatuses(getSuratJalanOperationalStatus(document.referenceKe
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {!isEditingCargoItem && group.items.length > 1 && (
-                                                            <button type="button" className="btn btn-ghost btn-icon-only" onClick={() => removeCargoDraftItem(group.id, itemIndex)} disabled={savingCargo} style={{ marginBottom: 4 }}>
-                                                                <X size={18} />
-                                                            </button>
+                                                        {!isEditingCargoItem && (
+                                                            group.items.length > 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-danger-outline btn-sm"
+                                                                    onClick={() => removeCargoDraftItem(group.id, itemIndex)}
+                                                                    disabled={savingCargo}
+                                                                    title={`Hapus barang ${itemIndex + 1} dari SJ ini (tersimpan saat klik Simpan)`}
+                                                                    aria-label={`Hapus barang ${itemIndex + 1} dari SJ ini`}
+                                                                    style={{ marginBottom: 4 }}
+                                                                >
+                                                                    <Trash2 size={14} /> Hapus Barang
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-secondary btn-sm"
+                                                                    disabled
+                                                                    title="Minimal 1 barang per SJ"
+                                                                    aria-label="Minimal 1 barang per SJ"
+                                                                    style={{ marginBottom: 4 }}
+                                                                >
+                                                                    <Trash2 size={14} /> Hapus Barang
+                                                                </button>
+                                                            )
                                                         )}
                                                     </div>
                                                 ))}

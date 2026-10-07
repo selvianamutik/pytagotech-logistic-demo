@@ -51,6 +51,9 @@ import {
     deriveActualCargoInputsFromDropPoints,
     deriveOrderStatusFromItems,
     type DeliveryOrderItemCargoSnapshot,
+    normalizeOrderCustomerRefs,
+    assertOrderAdditionalCustomers,
+    getActiveNotaBilledCustomerBySJ,
     normalizeOrderItemsInput,
     normalizeCustomerDoPrefix,
     normalizeDeliveryActualDropPoints,
@@ -826,14 +829,17 @@ export async function handleOrderCreate(
     let items: NormalizedOrderItemInput[];
     let pickupStops: OrderPickupStop[] = [];
     let tripPlans: OrderTripPlan[] = [];
+    let orderCustomerRefs: string[] = [customerRef];
     try {
+        orderCustomerRefs = normalizeOrderCustomerRefs(customerRef, data.customerRefs);
         const party = await resolveOrderPartyData(customerRef, serviceRef);
         customer = party.customer;
         service = party.service;
         serviceName = party.serviceName;
-        customerRecipient = await resolveOrderRecipientData(customerRef, customerRecipientRef);
-        customerPickup = await resolveOrderPickupData(customerRef, customerPickupRef);
-        items = await normalizeOrderItemsInput(customerRef, Array.isArray(data.items) ? data.items : [], {
+        await assertOrderAdditionalCustomers(orderCustomerRefs, customerRef);
+        customerRecipient = await resolveOrderRecipientData(orderCustomerRefs, customerRecipientRef);
+        customerPickup = await resolveOrderPickupData(orderCustomerRefs, customerPickupRef);
+        items = await normalizeOrderItemsInput(orderCustomerRefs, Array.isArray(data.items) ? data.items : [], {
             allowEmpty: true,
         });
         pickupStops = normalizeOrderPickupStopsInput(
@@ -910,6 +916,8 @@ export async function handleOrderCreate(
         cargoEntryMode: items.length === 0 ? 'DELIVERY_ORDER' : 'ORDER',
         customerRef,
         customerName: customer.name,
+        // Only stored when a second customer is declared, so single-customer orders stay unchanged.
+        customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
         customerRecipientRef: customerRecipientRef || undefined,
         customerPickupRef: customerPickupRef || undefined,
         receiverName,
@@ -980,6 +988,7 @@ export async function handleOrderUpdateWithItems(
         _rev?: string;
         masterResi?: string;
         cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
+        customerRefs?: string[];
         receiverName?: string;
         receiverAddress?: string;
         pickupAddress?: string;
@@ -1041,14 +1050,17 @@ export async function handleOrderUpdateWithItems(
     let customerRecipient: ResolvedCustomerRecipientData | null = null;
     let customerPickup: ResolvedCustomerPickupData | null = null;
     let items: NormalizedOrderItemInput[];
+    let orderCustomerRefs: string[] = [customerRef];
     try {
+        orderCustomerRefs = normalizeOrderCustomerRefs(customerRef, data.customerRefs ?? order.customerRefs);
         const party = await resolveOrderPartyData(customerRef, serviceRef);
         customer = party.customer;
         service = party.service;
         serviceName = party.serviceName;
-        customerRecipient = await resolveOrderRecipientData(customerRef, customerRecipientRef);
-        customerPickup = await resolveOrderPickupData(customerRef, customerPickupRef);
-        items = await normalizeOrderItemsInput(customerRef, Array.isArray(data.items) ? data.items : [], {
+        await assertOrderAdditionalCustomers(orderCustomerRefs, customerRef);
+        customerRecipient = await resolveOrderRecipientData(orderCustomerRefs, customerRecipientRef);
+        customerPickup = await resolveOrderPickupData(orderCustomerRefs, customerPickupRef);
+        items = await normalizeOrderItemsInput(orderCustomerRefs, Array.isArray(data.items) ? data.items : [], {
             allowEmpty: true,
         });
     } catch (error) {
@@ -1104,6 +1116,7 @@ export async function handleOrderUpdateWithItems(
             cargoEntryMode: 'ORDER',
             customerRef,
             customerName: customer.name,
+            customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
             customerRecipientRef: customerRecipientRef || undefined,
             customerPickupRef: customerPickupRef || undefined,
             receiverName,
@@ -1181,6 +1194,7 @@ export async function handleOrderHeaderBookingUpdate(
         masterResi?: string;
         cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
         customerRef?: string;
+        customerRefs?: string[];
         customerRecipientRef?: string;
         customerPickupRef?: string;
         receiverName?: string;
@@ -1226,6 +1240,13 @@ export async function handleOrderHeaderBookingUpdate(
             hasChanged('receiverAddress', order.receiverAddress, normalizeText) ||
             hasChanged('receiverCompany', order.receiverCompany) ||
             hasChanged('pickupAddress', order.pickupAddress) ||
+            // Secondary customers are frozen too once a DO exists.
+            (Object.prototype.hasOwnProperty.call(data, 'customerRefs') &&
+                [...(Array.isArray(data.customerRefs) ? data.customerRefs : [])]
+                    .map(value => normalizeOptionalText(typeof value === 'string' ? value : ''))
+                    .filter((value): value is string => Boolean(value))
+                    .join('|') !==
+                [...(order.customerRefs || [])].join('|')) ||
             Object.prototype.hasOwnProperty.call(data, 'pickupStops');
 
         if (attemptedHeaderChanges) {
@@ -1266,13 +1287,16 @@ export async function handleOrderHeaderBookingUpdate(
     let serviceName: string | undefined;
     let customerRecipient: ResolvedCustomerRecipientData | null = null;
     let customerPickup: ResolvedCustomerPickupData | null = null;
+    let orderCustomerRefs: string[] = [customerRef];
     try {
+        orderCustomerRefs = normalizeOrderCustomerRefs(customerRef, data.customerRefs ?? order.customerRefs);
         const party = await resolveOrderPartyData(customerRef, effectiveServiceRef);
         customer = party.customer;
         service = party.service;
         serviceName = party.serviceName;
-        customerRecipient = await resolveOrderRecipientData(customerRef, customerRecipientRef);
-        customerPickup = await resolveOrderPickupData(customerRef, customerPickupRef);
+        await assertOrderAdditionalCustomers(orderCustomerRefs, customerRef);
+        customerRecipient = await resolveOrderRecipientData(orderCustomerRefs, customerRecipientRef);
+        customerPickup = await resolveOrderPickupData(orderCustomerRefs, customerPickupRef);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Data order tidak valid';
         const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') ? 409 : 400;
@@ -1350,6 +1374,7 @@ export async function handleOrderHeaderBookingUpdate(
             cargoEntryMode: 'DELIVERY_ORDER',
             customerRef,
             customerName: customer.name,
+            customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
             customerRecipientRef: customerRecipientRef || undefined,
             customerPickupRef: pickupStops[0]?.customerPickupRef || customerPickupRef || undefined,
             receiverName: receiverName || normalizeText(order.receiverName) || customer.name,
@@ -4872,6 +4897,7 @@ export async function handleDeliveryOrderCreate(
         masterResi?: string;
         cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
         customerRef?: string;
+        customerRefs?: string[];
         customerName?: string;
         customerPickupRef?: string;
         receiverName?: string;
@@ -5315,7 +5341,7 @@ export async function handleDeliveryOrderCreate(
         }
         try {
             directCargoItems = await normalizeOrderItemsInput(
-                orderCustomerRef || normalizeText(order.customerRef),
+                normalizeOrderCustomerRefs(orderCustomerRef || normalizeText(order.customerRef), order.customerRefs),
                 Array.isArray(data.cargoItems) ? data.cargoItems : [],
                 { allowEmpty: deliveryOrderShipperReferences.length > 0 }
             );
@@ -5507,6 +5533,8 @@ export async function handleDeliveryOrderCreate(
         orderRef,
         masterResi: order.masterResi,
         customerRef: orderCustomerRef || undefined,
+        // Carry the declared customer list so the trip keeps serving the same customers.
+        customerRefs: (order.customerRefs || []).length > 1 ? order.customerRefs : undefined,
         customerName: order.customerName,
         customerDoPrefix,
         customerDoNumber,
@@ -5796,6 +5824,7 @@ export async function handleDeliveryOrderAppendCargoItems(
         tripClosedByAdminAt?: string;
         orderRef?: unknown;
         customerRef?: unknown;
+        customerRefs?: string[];
         customerDoNumber?: string;
         pickupStops?: Array<{
             _key?: string;
@@ -5845,6 +5874,7 @@ export async function handleDeliveryOrderAppendCargoItems(
         _id: string;
         cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER';
         customerRef?: unknown;
+        customerRefs?: string[];
     }>(orderRef, 'order');
     if (!order) {
         return NextResponse.json({ error: 'Order sumber surat jalan tidak ditemukan' }, { status: 404 });
@@ -5853,7 +5883,10 @@ export async function handleDeliveryOrderAppendCargoItems(
     let directCargoItems: NormalizedOrderItemInput[] = [];
     try {
         directCargoItems = await normalizeOrderItemsInput(
-            extractRefId(order.customerRef) || extractRefId(deliveryOrder.customerRef) || '',
+            normalizeOrderCustomerRefs(
+                extractRefId(order.customerRef) || extractRefId(deliveryOrder.customerRef) || '',
+                [...(deliveryOrder.customerRefs || []), ...(order.customerRefs || [])]
+            ),
             Array.isArray(data.cargoItems) ? data.cargoItems : [],
             { allowEmpty: true }
         );
@@ -6433,6 +6466,7 @@ export async function handleDeliveryOrderCargoItemUpdate(
         tripClosedByAdminAt?: string;
         orderRef?: unknown;
         customerRef?: unknown;
+        customerRefs?: string[];
         pickupStops?: Array<{
             _key?: string;
             orderPickupStopKey?: string;
@@ -6502,7 +6536,10 @@ export async function handleDeliveryOrderCargoItemUpdate(
     let normalizedItem: NormalizedOrderItemInput;
     try {
         const normalized = await normalizeOrderItemsInput(
-            extractRefId(deliveryOrder.customerRef) || '',
+            normalizeOrderCustomerRefs(
+                extractRefId(deliveryOrder.customerRef) || '',
+                deliveryOrder.customerRefs
+            ),
             [cargoItemPayload],
             { allowEmpty: false }
         );
@@ -6519,12 +6556,16 @@ export async function handleDeliveryOrderCargoItemUpdate(
     const cargoItemContext = shouldUpdateCargoItemContext
         ? resolveDeliveryOrderCargoItemContext(normalizedItem, deliveryOrder)
         : null;
+    // An explicit null unlinks a previously chosen master product. Normalization
+    // turns null into undefined (which the patch layer would skip, keeping the
+    // stale link), so the clearing is applied directly here.
+    const clearedProductRef = cargoItemPayload.customerProductRef === null;
     try {
         if (normalizedItem.customerProductRef) {
             await updateDocument(normalizedItem.customerProductRef, { updatedAt: new Date().toISOString() }, 'customerProduct');
         }
         await updateDocument(orderItemRef, {
-            customerProductRef: normalizedItem.customerProductRef,
+            customerProductRef: clearedProductRef ? null : normalizedItem.customerProductRef,
             customerProductCode: normalizedItem.customerProductCode,
             customerProductName: normalizedItem.customerProductName,
             description: normalizedItem.description,
@@ -7815,6 +7856,38 @@ export async function handleDeliveryOrderShipperReferenceUpdate(
             return NextResponse.json(
                 {
                     error: `SJ ${finalizedReferenceLabels.join(', ')} sudah terkirim atau masih ada muatan tertahan, jadi tidak bisa diubah dari daftar SJ pengirim.`,
+                },
+                { status: 409 }
+            );
+        }
+    }
+
+    // Rule 4: the customer that first billed an SJ owns it. Flipping that attribution while the nota
+    // is still active is refused — otherwise the same SJ ends up billed to two customers. Voiding the
+    // nota releases the SJ (its items become VOID), so a wrong customer can still be corrected.
+    const billingCustomerChangedReferences = nextShipperReferences.filter(nextReference =>
+        normalizeOptionalText(findPreviousReference(nextReference)?.billingCustomerRef)
+        !== normalizeOptionalText(nextReference.billingCustomerRef)
+    );
+    if (billingCustomerChangedReferences.length > 0) {
+        const billedCustomerBySJ = await getActiveNotaBilledCustomerBySJ(id);
+        const attributionFlip = billingCustomerChangedReferences.find(nextReference => {
+            const previousReference = findPreviousReference(nextReference);
+            const noSJ = (
+                normalizeOptionalText(nextReference.referenceNumber)
+                || normalizeOptionalText(previousReference?.referenceNumber)
+            )?.toUpperCase();
+            return Boolean(noSJ && billedCustomerBySJ.has(noSJ));
+        });
+        if (attributionFlip) {
+            const flippedNoSJ = (
+                normalizeOptionalText(attributionFlip.referenceNumber)
+                || normalizeOptionalText(findPreviousReference(attributionFlip)?.referenceNumber)
+                || '-'
+            ).toUpperCase();
+            return NextResponse.json(
+                {
+                    error: `Customer invoice SJ ${flippedNoSJ} tidak boleh diubah karena SJ ini sudah masuk invoice. Batalkan atau revisi invoice dulu.`,
                 },
                 { status: 409 }
             );

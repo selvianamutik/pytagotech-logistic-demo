@@ -70,6 +70,7 @@ import {
     type BankAccountSummary,
 } from './data-helpers';
 import { recomputeBankLedgerBalancesForAccounts, bankTransactionOrderKey } from './bank-balance-helpers';
+import { findNotaRowBilledToDifferentCustomer } from './order-workflow-support';
 import {
     INVOICE_ADJUSTMENT_KIND_SET,
     buildReceivablePatch,
@@ -2840,6 +2841,7 @@ export async function handleFreightNotaCreate(
             doNumber?: string;
             customerDoNumber?: string;
             customerRef?: unknown;
+            customerRefs?: string[];
             customerName?: string;
             vehiclePlate?: string;
             serviceRef?: string;
@@ -2986,6 +2988,24 @@ export async function handleFreightNotaCreate(
             deliveryOrder: deliveryOrder as DeliveryOrder,
             builtRows: builtNotaRowsByDoRef.get(row.doRef) || [],
         });
+
+        // A trip that serves more than one customer must have an explicit billing customer on the
+        // row: a scalar fallback would silently bill the other customer's cargo to the primary.
+        if ((deliveryOrder.customerRefs || []).length > 1) {
+            const rowCustomerSource: 'drop' | 'reference' | 'scalar' = matchedBuiltRow?.customerSource
+                || ((deliveryOrder.shipperReferences || []).some(reference =>
+                    normalizeOptionalText(reference.referenceNumber) === resolvedNoSj
+                    && normalizeOptionalText(reference.billingCustomerRef)
+                ) ? 'reference' : 'scalar');
+            if (rowCustomerSource === 'scalar') {
+                return NextResponse.json(
+                    {
+                        error: `Trip ${deliveryOrder.doNumber || row.doRef} melayani lebih dari satu customer. Tentukan Customer Invoice untuk SJ ${resolvedNoSj || row.noSJ || '-'} dulu sebelum ditagihkan.`,
+                    },
+                    { status: 409 }
+                );
+            }
+        }
 
         if (deliveryOrder.status !== 'DELIVERED' && !hasActualDropPoints) {
             return NextResponse.json(
@@ -3353,6 +3373,20 @@ export async function handleFreightNotaCreate(
                 }
             }
         }
+    }
+
+    // Rule 4: an SJ is billed once, by one customer. The existing coverage rules already stop the same
+    // cargo being billed twice for the same customer; this stops the *other* customer from billing an
+    // SJ that another customer already billed. Voiding the nota releases its SJs, so a wrong customer
+    // can still be corrected.
+    const crossCustomerSJBilling = await findNotaRowBilledToDifferentCustomer(rows);
+    if (crossCustomerSJBilling) {
+        return NextResponse.json(
+            {
+                error: `SJ ${crossCustomerSJBilling.noSJ} sudah ditagihkan ke customer lain pada DO ${crossCustomerSJBilling.doRef}. Batalkan atau revisi invoice itu dulu kalau customer-nya salah.`,
+            },
+            { status: 409 }
+        );
     }
 
     const inferredCustomerRefs = [...new Set(
@@ -3819,6 +3853,7 @@ export async function handleFreightNotaUpdate(
             doNumber?: string;
             customerDoNumber?: string;
             customerRef?: unknown;
+            customerRefs?: string[];
             customerName?: string;
             vehiclePlate?: string;
             serviceRef?: string;
@@ -3955,6 +3990,24 @@ export async function handleFreightNotaUpdate(
             deliveryOrder: deliveryOrder as DeliveryOrder,
             builtRows: builtNotaRowsByDoRef.get(row.doRef) || [],
         });
+
+        // Same rule as create: a multi-customer trip needs an explicit billing customer per row.
+        if ((deliveryOrder.customerRefs || []).length > 1) {
+            const rowCustomerSource: 'drop' | 'reference' | 'scalar' = matchedBuiltRow?.customerSource
+                || ((deliveryOrder.shipperReferences || []).some(reference =>
+                    normalizeOptionalText(reference.referenceNumber) === resolvedNoSj
+                    && normalizeOptionalText(reference.billingCustomerRef)
+                ) ? 'reference' : 'scalar');
+            if (rowCustomerSource === 'scalar') {
+                return NextResponse.json(
+                    {
+                        error: `Trip ${deliveryOrder.doNumber || row.doRef} melayani lebih dari satu customer. Tentukan Customer Invoice untuk SJ ${resolvedNoSj || row.noSJ || '-'} dulu sebelum ditagihkan.`,
+                    },
+                    { status: 409 }
+                );
+            }
+        }
+
         if (deliveryOrder.status !== 'DELIVERED' && !hasActualDropPoints) {
             return NextResponse.json(
                 {
@@ -4193,6 +4246,20 @@ export async function handleFreightNotaUpdate(
                 }
             }
         }
+    }
+
+    // Rule 4: an SJ is billed once, by one customer. The existing coverage rules already stop the same
+    // cargo being billed twice for the same customer; this stops the *other* customer from billing an
+    // SJ that another customer already billed. Voiding the nota releases its SJs, so a wrong customer
+    // can still be corrected.
+    const crossCustomerSJBilling = await findNotaRowBilledToDifferentCustomer(rows);
+    if (crossCustomerSJBilling) {
+        return NextResponse.json(
+            {
+                error: `SJ ${crossCustomerSJBilling.noSJ} sudah ditagihkan ke customer lain pada DO ${crossCustomerSJBilling.doRef}. Batalkan atau revisi invoice itu dulu kalau customer-nya salah.`,
+            },
+            { status: 409 }
+        );
     }
 
     const inferredCustomerRefs = [...new Set(

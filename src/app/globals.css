@@ -929,6 +929,19 @@ a:hover {
   background: #b91c1c;
 }
 
+/* Destructive action that must stay clearly visible without shouting: used for row-level deletes
+   inside dense editors, where a solid red button per row would be overwhelming. */
+.btn-danger-outline {
+  background: white;
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--color-danger-50);
+  border-color: var(--color-danger);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--color-gray-600);

@@ -21,6 +21,8 @@ export type OrderEditFormState = {
     cargoEntryMode: 'ORDER' | 'DELIVERY_ORDER';
     customerRef: string;
     customerName: string;
+    /** Additional customers this order serves; the primary is excluded (it stays in `customerRef`). */
+    additionalCustomerRefs: string[];
     customerRecipientRef: string;
     customerPickupRef: string;
     receiverName: string;
@@ -44,6 +46,7 @@ export const DEFAULT_ORDER_EDIT_FORM: OrderEditFormState = {
     cargoEntryMode: 'ORDER',
     customerRef: '',
     customerName: '',
+    additionalCustomerRefs: [],
     customerRecipientRef: '',
     customerPickupRef: '',
     receiverName: '',
@@ -77,6 +80,7 @@ export function buildOrderEditForm(order: Order | null): OrderEditFormState {
         cargoEntryMode: order.cargoEntryMode || 'ORDER',
         customerRef: order.customerRef,
         customerName: order.customerName || '',
+        additionalCustomerRefs: (order.customerRefs || []).filter(ref => ref !== order.customerRef),
         customerRecipientRef: order.customerRecipientRef || '',
         customerPickupRef: firstPickupStop.customerPickupRef || order.customerPickupRef || '',
         receiverName: order.receiverName || '',

@@ -1,7 +1,6 @@
 import { getBusinessDateValue } from '@/lib/business-date';
 import {
     getDocumentById,
-    listDocumentsByFilter,
 } from '@/lib/repositories/document-store';
 import type { OrderPickupStop, OrderTripPlan } from '@/lib/types';
 import { normalizeTripOwnership } from '@/lib/types';
@@ -88,16 +87,25 @@ export async function resolveOrderPickupStopExpansion(params: {
     extraPickupRefs: string[];
     orderCustomerRef: string | null | undefined;
 }) {
-    const extraPickupDocs = params.extraPickupRefs.length > 0
-        ? await listDocumentsByFilter<{
-            _id: string;
-            customerRef?: unknown;
-            label?: string;
-            pickupAddress?: string;
-            notes?: string;
-            active?: boolean;
-        }>('customerPickupLocation', { _id: params.extraPickupRefs })
-        : [];
+    if (params.extraPickupRefs.length > 0) {
+        return {
+            error: {
+                message: 'Titik pickup dari master data tidak bisa dipakai langsung. Tambahkan dulu sebagai titik pickup order.',
+                status: 409,
+            },
+            effectiveOrderPickupStops: params.currentOrderPickupStops,
+            pickupStopKeyAlias: new Map<string, string>(),
+            addedPickupStopCount: 0,
+        };
+    }
+    const extraPickupDocs: Array<{
+        _id: string;
+        customerRef?: unknown;
+        label?: string;
+        pickupAddress?: string;
+        notes?: string;
+        active?: boolean;
+    }> = [];
     if (extraPickupDocs.length !== params.extraPickupRefs.length) {
         return {
             error: {

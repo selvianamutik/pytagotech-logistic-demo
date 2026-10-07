@@ -67,6 +67,8 @@ export type DriverAssignedTripPlan = {
     orderRef: string;
     masterResi?: string;
     customerRef?: string;
+    /** Every customer the order serves; the primary `customerRef` is first. */
+    customerRefs?: string[];
     customerName?: string;
     serviceName?: string;
     pickupAddress?: string;
@@ -472,6 +474,7 @@ export async function getDriverAssignedTripPlans(driverRef: string) {
         status?: string;
         masterResi?: string;
         customerRef?: string;
+        customerRefs?: string[];
         customerName?: string;
         serviceName?: string;
         pickupAddress?: string;
@@ -522,6 +525,7 @@ export async function getDriverAssignedTripPlans(driverRef: string) {
                 orderRef: order._id,
                 masterResi: order.masterResi,
                 customerRef: order.customerRef,
+                customerRefs: order.customerRefs,
                 customerName: order.customerName,
                 serviceName: order.serviceName,
                 pickupAddress: order.pickupAddress,
