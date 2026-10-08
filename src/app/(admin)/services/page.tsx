@@ -182,6 +182,9 @@ export default function ServicesPage() {
                 await loadServices();
             }
             setDeleteId(null);
+            // The delete may have been triggered from the Edit modal: close it
+            // too, since its item no longer exists.
+            setShowModal(false);
             addToast('success', 'Kategori armada dihapus');
         } catch {
             addToast('error', 'Gagal menghapus kategori armada');
@@ -411,7 +414,7 @@ export default function ServicesPage() {
                         </div>
                         <div className="form-group"><label className="form-checkbox"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Aktif</label></div>
                     </div>
-                    <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
+                    <div className="modal-footer">{isOwner && editItem && (<button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => setDeleteId(editItem._id)} disabled={saving}><Trash2 size={16} /> Hapus</button>)}<button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
                 </div></div>
             )}
             {isOwner && deleteId && (
