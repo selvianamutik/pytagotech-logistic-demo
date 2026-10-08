@@ -451,6 +451,7 @@ export default function OrderEditPage() {
                     customerRef: form.customerRef,
                     serviceRef: form.serviceRef,
                     notes: form.notes,
+                    customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
                 }
                 : {
                     customerRef: form.customerRef,
@@ -474,6 +475,7 @@ export default function OrderEditPage() {
                     id: orderId,
                     notes: form.notes,
                     revisionReason,
+                    customerRefs: orderCustomerRefs.length > 1 ? orderCustomerRefs : undefined,
                     items: items.map(item => ({
                         id: item.id,
                         qtyKoli: item.qtyKoli,
@@ -607,7 +609,7 @@ export default function OrderEditPage() {
                                     placeholder={additionalCustomerOptions.length > 0
                                         ? 'Tambah customer lain'
                                         : 'Tidak ada customer lain yang bisa ditambahkan'}
-                                    disabled={isRevisionMode || headerFieldsLocked || additionalCustomerOptions.length === 0}
+                                    disabled={additionalCustomerOptions.length === 0}
                                     className="form-select"
                                 />
                                 {form.additionalCustomerRefs.length > 0 && (
@@ -617,13 +619,13 @@ export default function OrderEditPage() {
                                             return (
                                                 <span key={ref} className="badge badge-info">
                                                     {additionalCustomer?.name || ref}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeAdditionalCustomer(ref)}
-                                                        aria-label={`Hapus customer ${additionalCustomer?.name || ref}`}
-                                                        disabled={isRevisionMode || headerFieldsLocked}
-                                                        style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700, lineHeight: 1 }}
-                                                    >
+                                            <button
+                                                type="button"
+                                                onClick={() => removeAdditionalCustomer(ref)}
+                                                aria-label={`Hapus customer ${additionalCustomer?.name || ref}`}
+                                                disabled={saving}
+                                                style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700, lineHeight: 1 }}
+                                            >
                                                         ×
                                                     </button>
                                                 </span>
@@ -632,9 +634,7 @@ export default function OrderEditPage() {
                                     </div>
                                 )}
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                                    {headerFieldsLocked || isRevisionMode
-                                        ? 'Customer terkunci karena order ini sudah punya Surat Jalan.'
-                                        : 'Customer pertama tetap customer utama: pickup, barang, dan limit piutang mengikuti customer pertama. Maksimal 5 customer.'}
+                                    Customer pertama tetap customer utama: pickup, barang, dan limit piutang mengikuti customer pertama. Maksimal 5 customer.
                                 </div>
                             </div>
                             <div className="form-group">
@@ -784,32 +784,9 @@ export default function OrderEditPage() {
                         </div>
                     </div>
 
-                    <div className="card">
-                        <div className="card-header"><span className="card-header-title">Tujuan Surat Jalan</span></div>
-                        <div className="card-body">
-                            <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.75rem', padding: '1rem 1.1rem', fontSize: '0.85rem', color: 'var(--color-gray-700)', border: '1px solid var(--color-gray-200)' }}>
-                                {headerFieldsLocked
-                                    ? 'Tujuan/penerima sekarang dikelola di Surat Jalan. Karena order ini sudah punya Surat Jalan, pembaruan tujuan dilakukan langsung dari detail Surat Jalan masing-masing.'
-                                    : 'Order tidak lagi menyimpan tujuan/penerima. Saat Surat Jalan dibuat, admin bisa mengisi atau melengkapi tujuan/penerima langsung di dokumen Surat Jalan.'}
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
-                {isHeaderOnlyOrder ? (
-                    <div className="card mt-6">
-                        <div className="card-header">
-                            <span className="card-header-title">Input Barang di Surat Jalan</span>
-                        </div>
-                        <div className="card-body">
-                            <div style={{ background: 'var(--color-gray-50)', borderRadius: '0.75rem', padding: '1rem 1.1rem', fontSize: '0.85rem', color: 'var(--color-gray-700)', border: '1px solid var(--color-gray-200)' }}>
-                                {headerFieldsLocked
-                                    ? 'Order ini sudah punya Surat Jalan. Barang dan tujuan tetap mengikuti Surat Jalan, sedangkan halaman ini hanya dipakai untuk membetulkan catatan umum.'
-                                    : 'Order ini memakai flow header booking. Driver, truk, upah trip, dan uang jalan awal mengikuti rencana trip order; barang dan tujuan/penerima dicatat saat Surat Jalan dibuat.'}
-                            </div>
-                        </div>
-                    </div>
-                ) : (
+                {!isHeaderOnlyOrder && (
                     <div className="card mt-6">
                         <div className="card-header">
                             <span className="card-header-title">{isRevisionMode ? 'Target Item / Koli / Muatan' : 'Item / Koli'}</span>
