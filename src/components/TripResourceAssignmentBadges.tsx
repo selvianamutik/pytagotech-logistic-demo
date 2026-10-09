@@ -11,7 +11,6 @@ const ASSIGNMENT_STATUS_META: Record<string, AssignmentStatusMeta> = {
     ON_DELIVERY: { label: 'Jalan', color: 'info' },
     ARRIVED: { label: 'Tiba', color: 'info' },
     PARTIAL_HOLD: { label: 'Hold', color: 'warning' },
-    DELIVERED: { label: 'Terkirim', color: 'success' },
 };
 
 const PLAN_STATUS_META: AssignmentStatusMeta = { label: 'Rencana', color: 'secondary' };
