@@ -1240,13 +1240,6 @@ export async function handleOrderHeaderBookingUpdate(
             hasChanged('receiverAddress', order.receiverAddress, normalizeText) ||
             hasChanged('receiverCompany', order.receiverCompany) ||
             hasChanged('pickupAddress', order.pickupAddress) ||
-            // Secondary customers are frozen too once a DO exists.
-            (Object.prototype.hasOwnProperty.call(data, 'customerRefs') &&
-                [...(Array.isArray(data.customerRefs) ? data.customerRefs : [])]
-                    .map(value => normalizeOptionalText(typeof value === 'string' ? value : ''))
-                    .filter((value): value is string => Boolean(value))
-                    .join('|') !==
-                [...(order.customerRefs || [])].join('|')) ||
             Object.prototype.hasOwnProperty.call(data, 'pickupStops');
 
         if (attemptedHeaderChanges) {
@@ -1258,6 +1251,39 @@ export async function handleOrderHeaderBookingUpdate(
 
         if (!order._rev && !isSupabaseBackendEnabled()) {
             return NextResponse.json({ error: 'Revisi order tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
+        }
+
+        // Customer tambahan tetap bisa dikelola setelah Surat Jalan terbit;
+        // primary tidak bisa berubah (dijaga hasChanged di atas).
+        let propagatedCustomerTrips = 0;
+        if (Object.prototype.hasOwnProperty.call(data, 'customerRefs')) {
+            const storedPrimaryRef = normalizeText(order.customerRef);
+            let nextOrderCustomerRefs: string[];
+            try {
+                nextOrderCustomerRefs = normalizeOrderCustomerRefs(storedPrimaryRef, data.customerRefs);
+                await assertOrderAdditionalCustomers(nextOrderCustomerRefs, storedPrimaryRef);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Customer tambahan tidak valid';
+                const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') || message.includes('Maksimal') ? 409 : 400;
+                return NextResponse.json({ error: message }, { status });
+            }
+            const storedRefs = normalizeOrderCustomerRefs(storedPrimaryRef, order.customerRefs);
+            if (nextOrderCustomerRefs.join('|') !== storedRefs.join('|')) {
+                try {
+                    await updateDocument(id, {
+                        customerRefs: nextOrderCustomerRefs.length > 1 ? nextOrderCustomerRefs : undefined,
+                    }, 'order');
+                    propagatedCustomerTrips = await syncOrderCustomerRefsToDeliveryOrders(id, nextOrderCustomerRefs, storedPrimaryRef);
+                } catch (error) {
+                    if (isMutationConflictError(error)) {
+                        return NextResponse.json(
+                            { error: 'Header booking berubah karena ada update lain. Refresh lalu coba lagi.' },
+                            { status: 409 }
+                        );
+                    }
+                    throw error;
+                }
+            }
         }
 
         let updatedOrder: unknown;
@@ -1277,7 +1303,7 @@ export async function handleOrderHeaderBookingUpdate(
             'UPDATE',
             'orders',
             id,
-            `Update header booking ${order.masterResi || id}: catatan umum diperbarui setelah Surat Jalan terbit`
+            `Update header booking ${order.masterResi || id}: catatan umum diperbarui setelah Surat Jalan terbit${propagatedCustomerTrips > 0 ? `; customer order disinkron ke ${propagatedCustomerTrips} trip` : ''}`
         );
         return NextResponse.json({ data: updatedOrder, id });
     }
@@ -1406,6 +1432,276 @@ export async function handleOrderHeaderBookingUpdate(
         `Update header booking ${order.masterResi || id}: customer, tujuan, armada, atau catatan diperbarui`
     );
     return NextResponse.json({ data: updatedOrder, id });
+}
+
+/**
+ * Shared customer-list sync for full-list writes (edit-page saves): every
+ * non-cancelled delivery order gets the order's list (primary-adjusted), and
+ * billing tags pointing at customers no longer on the trip are cleared so
+ * rows fall back instead of pointing at removed customers. Returns the
+ * number of trips actually changed.
+ */
+async function syncOrderCustomerRefsToDeliveryOrders(
+    orderId: string,
+    nextOrderCustomerRefs: string[],
+    primaryCustomerRef: string
+): Promise<number> {
+    const relatedDeliveryOrders = await listDocumentsByFilter<{
+        _id: string;
+        status?: string;
+        customerRef?: unknown;
+        customerRefs?: string[];
+        shipperReferences?: Array<{ billingCustomerRef?: unknown; billingCustomerName?: unknown }>;
+        actualDropPoints?: Array<{ billingCustomerRef?: unknown; billingCustomerName?: unknown }>;
+    }>('deliveryOrder', { orderRef: orderId });
+    let propagatedDeliveryOrders = 0;
+    for (const deliveryOrder of relatedDeliveryOrders.filter(item => item.status !== 'CANCELLED')) {
+        const deliveryPrimaryRef = normalizeText(deliveryOrder.customerRef) || primaryCustomerRef;
+        const mergedRefs = normalizeOrderCustomerRefs(
+            deliveryPrimaryRef,
+            nextOrderCustomerRefs.filter(ref => ref !== deliveryPrimaryRef)
+        );
+        const removedRefs = (deliveryOrder.customerRefs || []).filter(ref => ref !== deliveryPrimaryRef && !nextOrderCustomerRefs.includes(ref));
+        let tagsCleared = false;
+        const clearedShipperReferences = (deliveryOrder.shipperReferences || []).map(reference => {
+            if (removedRefs.includes(normalizeOptionalText(reference.billingCustomerRef) || '')) {
+                tagsCleared = true;
+                return { ...reference, billingCustomerRef: undefined, billingCustomerName: undefined };
+            }
+            return reference;
+        });
+        const clearedDropPoints = (deliveryOrder.actualDropPoints || []).map(point => {
+            if (removedRefs.includes(normalizeOptionalText(point.billingCustomerRef) || '')) {
+                tagsCleared = true;
+                return { ...point, billingCustomerRef: undefined, billingCustomerName: undefined };
+            }
+            return point;
+        });
+        if (mergedRefs.join('|') === [...(deliveryOrder.customerRefs || [])].join('|') && !tagsCleared) {
+            continue;
+        }
+        await updateDocument(deliveryOrder._id, {
+            customerRefs: mergedRefs.length > 1 ? mergedRefs : undefined,
+            shipperReferences: clearedShipperReferences,
+            actualDropPoints: clearedDropPoints,
+        }, 'deliveryOrder');
+        propagatedDeliveryOrders += 1;
+    }
+    return propagatedDeliveryOrders;
+}
+
+/**
+ * Append-only customer addition for orders that already have delivery orders
+ * (e.g. the second customer only becomes known when its SJ arrives).
+ * Primary can never change here, nothing can be removed, and the cap still
+ * applies. The merged list is propagated to every non-cancelled delivery
+ * order so invoice filtering and trip UI see the new customer immediately.
+ */
+export async function handleOrderCustomerAppend(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = normalizeText(data.id);
+    if (!id) {
+        return NextResponse.json({ error: 'Order tidak valid' }, { status: 400 });
+    }
+
+    const order = await getDocumentById<{
+        _id: string;
+        _rev?: string;
+        masterResi?: string;
+        status?: string;
+        customerRef?: unknown;
+        customerRefs?: string[];
+    }>(id, 'order');
+    if (!order) {
+        return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
+    }
+    if (order.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'Customer tidak bisa ditambahkan pada order yang sudah dibatalkan.' }, { status: 409 });
+    }
+    const primaryCustomerRef = normalizeText(order.customerRef);
+    if (!primaryCustomerRef) {
+        return NextResponse.json({ error: 'Customer utama order tidak valid' }, { status: 409 });
+    }
+    const nextCustomerRef = normalizeOptionalText(data.customerRef);
+    if (!nextCustomerRef) {
+        return NextResponse.json({ error: 'Pilih customer yang akan ditambahkan' }, { status: 400 });
+    }
+    if (!order._rev && !isSupabaseBackendEnabled()) {
+        return NextResponse.json({ error: 'Revisi order tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
+    }
+
+    let nextCustomerRefs: string[];
+    try {
+        const currentRefs = normalizeOrderCustomerRefs(primaryCustomerRef, order.customerRefs);
+        if (currentRefs.includes(nextCustomerRef)) {
+            return NextResponse.json({ data: { _id: id, customerRefs: currentRefs }, id });
+        }
+        nextCustomerRefs = normalizeOrderCustomerRefs(primaryCustomerRef, [...currentRefs, nextCustomerRef]);
+        await assertOrderAdditionalCustomers(nextCustomerRefs, primaryCustomerRef);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Customer tambahan tidak valid';
+        const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') || message.includes('Maksimal') ? 409 : 400;
+        return NextResponse.json({ error: message }, { status });
+    }
+    const addedCustomer = await getDocumentById<{ _id: string; name?: string }>(nextCustomerRef, 'customer');
+
+    const relatedDeliveryOrders = await listDocumentsByFilter<{
+        _id: string;
+        status?: string;
+        customerRef?: unknown;
+        customerRefs?: string[];
+    }>('deliveryOrder', { orderRef: id });
+    let propagatedDeliveryOrders = 0;
+    try {
+        for (const deliveryOrder of relatedDeliveryOrders.filter(item => item.status !== 'CANCELLED')) {
+            const deliveryPrimaryRef = normalizeText(deliveryOrder.customerRef) || primaryCustomerRef;
+            const mergedRefs = normalizeOrderCustomerRefs(
+                deliveryPrimaryRef,
+                [...(deliveryOrder.customerRefs || []), nextCustomerRef]
+            );
+            const currentJoined = [...(deliveryOrder.customerRefs || [])].join('|');
+            if (mergedRefs.join('|') === currentJoined) {
+                continue;
+            }
+            await updateDocument(deliveryOrder._id, {
+                customerRefs: mergedRefs.length > 1 ? mergedRefs : undefined,
+            }, 'deliveryOrder');
+            propagatedDeliveryOrders += 1;
+        }
+        await updateDocument(id, {
+            customerRefs: nextCustomerRefs.length > 1 ? nextCustomerRefs : undefined,
+        }, 'order');
+    } catch (error) {
+        if (isMutationConflictError(error)) {
+            return NextResponse.json(
+                { error: 'Order berubah karena ada update lain. Refresh lalu coba lagi.' },
+                { status: 409 }
+            );
+        }
+        throw error;
+    }
+
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'orders',
+        id,
+        `Tambah customer ${addedCustomer?.name || nextCustomerRef} pada order ${order.masterResi || id} setelah Surat Jalan terbit (${propagatedDeliveryOrders} trip ikut diperbarui)`
+    );
+    return NextResponse.json({ data: { _id: id, customerRefs: nextCustomerRefs }, id, propagatedDeliveryOrders });
+}
+
+/**
+ * Remove-only counterpart of handleOrderCustomerAppend: a secondary customer
+ * can leave the trip at any time. The primary can never be removed. Per-SJ and
+ * per-drop billing tags pointing at the removed customer are cleared so those
+ * rows fall back to the remaining customers; already-billed history is never
+ * touched (Rule 4 consumption is global and stays valid).
+ */
+export async function handleOrderCustomerRemove(
+    session: ApiSession,
+    data: Record<string, unknown>,
+    addAuditLog: AuditLogFn
+) {
+    const id = normalizeText(data.id);
+    if (!id) {
+        return NextResponse.json({ error: 'Order tidak valid' }, { status: 400 });
+    }
+
+    const order = await getDocumentById<{
+        _id: string;
+        _rev?: string;
+        masterResi?: string;
+        status?: string;
+        customerRef?: unknown;
+        customerRefs?: string[];
+    }>(id, 'order');
+    if (!order) {
+        return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
+    }
+    if (order.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'Customer tidak bisa dihapus dari order yang sudah dibatalkan.' }, { status: 409 });
+    }
+    const primaryCustomerRef = normalizeText(order.customerRef);
+    if (!primaryCustomerRef) {
+        return NextResponse.json({ error: 'Customer utama order tidak valid' }, { status: 409 });
+    }
+    const targetCustomerRef = normalizeOptionalText(data.customerRef);
+    if (!targetCustomerRef) {
+        return NextResponse.json({ error: 'Pilih customer yang akan dihapus' }, { status: 400 });
+    }
+    if (targetCustomerRef === primaryCustomerRef) {
+        return NextResponse.json({ error: 'Customer utama tidak bisa dihapus dari order.' }, { status: 409 });
+    }
+    if (!order._rev && !isSupabaseBackendEnabled()) {
+        return NextResponse.json({ error: 'Revisi order tidak tersedia. Refresh lalu coba lagi.' }, { status: 409 });
+    }
+
+    const currentRefs = normalizeOrderCustomerRefs(primaryCustomerRef, order.customerRefs);
+    if (!currentRefs.includes(targetCustomerRef)) {
+        return NextResponse.json({ data: { _id: id, customerRefs: currentRefs }, id });
+    }
+    const targetCustomer = await getDocumentById<{ _id: string; name?: string }>(targetCustomerRef, 'customer');
+
+    const relatedDeliveryOrders = await listDocumentsByFilter<{
+        _id: string;
+        status?: string;
+        customerRef?: unknown;
+        customerRefs?: string[];
+        shipperReferences?: Array<{ billingCustomerRef?: unknown }>;
+        actualDropPoints?: Array<{ billingCustomerRef?: unknown }>;
+    }>('deliveryOrder', { orderRef: id });
+
+    const nextCustomerRefs = currentRefs.filter(ref => ref !== targetCustomerRef);
+    const activeDeliveryOrders = relatedDeliveryOrders.filter(item => item.status !== 'CANCELLED');
+    let propagatedDeliveryOrders = 0;
+    try {
+        for (const deliveryOrder of activeDeliveryOrders) {
+            const clearedShipperReferences = (deliveryOrder.shipperReferences || []).map(reference => (
+                normalizeOptionalText(reference.billingCustomerRef) === targetCustomerRef
+                    ? { ...reference, billingCustomerRef: undefined, billingCustomerName: undefined }
+                    : reference
+            ));
+            const clearedDropPoints = (deliveryOrder.actualDropPoints || []).map(point => (
+                normalizeOptionalText(point.billingCustomerRef) === targetCustomerRef
+                    ? { ...point, billingCustomerRef: undefined, billingCustomerName: undefined }
+                    : point
+            ));
+            const mergedRefs = normalizeOrderCustomerRefs(
+                normalizeText(deliveryOrder.customerRef) || primaryCustomerRef,
+                (deliveryOrder.customerRefs || []).filter(ref => ref !== targetCustomerRef)
+            );
+            await updateDocument(deliveryOrder._id, {
+                customerRefs: mergedRefs.length > 1 ? mergedRefs : undefined,
+                shipperReferences: clearedShipperReferences,
+                actualDropPoints: clearedDropPoints,
+            }, 'deliveryOrder');
+            propagatedDeliveryOrders += 1;
+        }
+        await updateDocument(id, {
+            customerRefs: nextCustomerRefs.length > 1 ? nextCustomerRefs : undefined,
+        }, 'order');
+    } catch (error) {
+        if (isMutationConflictError(error)) {
+            return NextResponse.json(
+                { error: 'Order berubah karena ada update lain. Refresh lalu coba lagi.' },
+                { status: 409 }
+            );
+        }
+        throw error;
+    }
+
+    await addAuditLog(
+        session,
+        'UPDATE',
+        'orders',
+        id,
+        `Hapus customer ${targetCustomer?.name || targetCustomerRef} dari order ${order.masterResi || id} (${propagatedDeliveryOrders} trip ikut diperbarui, tagihan yang sudah aktif tidak diubah)`
+    );
+    return NextResponse.json({ data: { _id: id, customerRefs: nextCustomerRefs }, id, propagatedDeliveryOrders });
 }
 
 export async function handleOrderTripPlanAppend(
@@ -1754,7 +2050,7 @@ export async function handleOrderTargetRevision(
         return NextResponse.json({ error: 'Alasan revisi order wajib diisi' }, { status: 400 });
     }
 
-    const order = await getDocumentById<{ _id: string; _rev?: string; masterResi?: string; notes?: string; cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER' }>(id, 'order');
+    const order = await getDocumentById<{ _id: string; _rev?: string; masterResi?: string; notes?: string; cargoEntryMode?: 'ORDER' | 'DELIVERY_ORDER'; customerRef?: unknown; customerRefs?: string[] }>(id, 'order');
     if (!order) {
         return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
@@ -1943,13 +2239,43 @@ export async function handleOrderTargetRevision(
         }
         throw error;
     }
+    let propagatedCustomerTrips = 0;
+    if (Object.prototype.hasOwnProperty.call(data, 'customerRefs')) {
+        const storedPrimaryRef = normalizeText(order.customerRef);
+        let nextOrderCustomerRefs: string[];
+        try {
+            nextOrderCustomerRefs = normalizeOrderCustomerRefs(storedPrimaryRef, data.customerRefs);
+            await assertOrderAdditionalCustomers(nextOrderCustomerRefs, storedPrimaryRef);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Customer tambahan tidak valid';
+            const status = message.includes('tidak ditemukan') ? 404 : message.includes('tidak aktif') || message.includes('Maksimal') ? 409 : 400;
+            return NextResponse.json({ error: message }, { status });
+        }
+        const storedRefs = normalizeOrderCustomerRefs(storedPrimaryRef, order.customerRefs);
+        if (nextOrderCustomerRefs.join('|') !== storedRefs.join('|')) {
+            try {
+                await updateDocument(id, {
+                    customerRefs: nextOrderCustomerRefs.length > 1 ? nextOrderCustomerRefs : undefined,
+                }, 'order');
+                propagatedCustomerTrips = await syncOrderCustomerRefsToDeliveryOrders(id, nextOrderCustomerRefs, storedPrimaryRef);
+            } catch (error) {
+                if (isMutationConflictError(error)) {
+                    return NextResponse.json(
+                        { error: 'Data order atau target item berubah karena ada update lain. Refresh lalu coba lagi.' },
+                        { status: 409 }
+                    );
+                }
+                throw error;
+            }
+        }
+    }
     await syncOrderStatusFromItems(id, session, addAuditLog);
     await addAuditLog(
         session,
         'UPDATE',
         'orders',
         id,
-        `Revisi order ${order.masterResi || id}: ${revisionReason}${revisionSummaries.length > 0 ? ` | ${revisionSummaries.join('; ')}` : ''}`
+        `Revisi order ${order.masterResi || id}: ${revisionReason}${revisionSummaries.length > 0 ? ` | ${revisionSummaries.join('; ')}` : ''}${propagatedCustomerTrips > 0 ? `; customer order disinkron ke ${propagatedCustomerTrips} trip` : ''}`
     );
 
     const updatedOrder = await getDocumentById(id, 'order');
