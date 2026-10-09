@@ -5,27 +5,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../../shared/format.dart';
 import '../domain/models.dart';
 import 'mobile_action_feedback.dart';
 
-const _jakartaUtcOffset = Duration(hours: 7);
 final _dateOnlyPattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
 DateTime _toJakartaDateTime(DateTime value) {
-  return value.toUtc().add(_jakartaUtcOffset);
-}
-
-String formatRupiah(num value) {
-  final rounded = value.round().toString();
-  final buffer = StringBuffer();
-  for (var index = 0; index < rounded.length; index++) {
-    final remaining = rounded.length - index;
-    buffer.write(rounded[index]);
-    if (remaining > 1 && remaining % 3 == 1) {
-      buffer.write('.');
-    }
-  }
-  return 'Rp ${buffer.toString()}';
+  return toJakartaDateTime(value);
 }
 
 String _formatDateText(String? value) {
@@ -301,6 +288,184 @@ Future<void> showDriverVoucherPreviewDialog(
     context: context,
     builder: (context) => DriverVoucherPreviewDialog(voucher: voucher),
   );
+}
+
+// ── Placeholder & skeleton ─────────────────────────────────
+/// Kartu kosong untuk tab Uang Jalan: dipakai saat belum ada trip yang dipilih
+/// atau bon untuk trip itu belum diterbitkan.
+class VoucherPlaceholderCard extends StatelessWidget {
+  const VoucherPlaceholderCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: scheme.onSurface.withValues(alpha: 0.35),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.58),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.local_shipping_outlined, size: 16),
+                label: Text(actionLabel!),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Placeholder saat tab Uang Jalan masih memuat data.
+class VoucherListSkeleton extends StatelessWidget {
+  const VoucherListSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: const [
+        VoucherSkeletonCard(),
+        SizedBox(height: 10),
+        VoucherSkeletonCard(),
+      ],
+    );
+  }
+}
+
+class VoucherSkeletonCard extends StatelessWidget {
+  const VoucherSkeletonCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Row(
+              children: [
+                _VoucherSkeletonBlock(width: 42, height: 42, radius: 14),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _VoucherSkeletonBlock(width: 160, height: 15, radius: 8),
+                      SizedBox(height: 8),
+                      _VoucherSkeletonBlock(width: 120, height: 12, radius: 8),
+                    ],
+                  ),
+                ),
+                _VoucherSkeletonBlock(width: 86, height: 28, radius: 999),
+              ],
+            ),
+            SizedBox(height: 16),
+            _VoucherSkeletonBlock(
+              width: double.infinity,
+              height: 12,
+              radius: 8,
+            ),
+            SizedBox(height: 8),
+            _VoucherSkeletonBlock(width: 210, height: 12, radius: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoucherSkeletonBlock extends StatelessWidget {
+  const _VoucherSkeletonBlock({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: LinearGradient(
+            colors: [
+              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+              scheme.surfaceContainerHighest.withValues(alpha: 0.38),
+              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+            ],
+            stops: const [0.05, 0.48, 0.95],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Voucher card ───────────────────────────────────────────

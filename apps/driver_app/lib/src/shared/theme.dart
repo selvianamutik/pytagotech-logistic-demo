@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+/// Skala spasi yang dipakai di seluruh app. Dipindah ke sini supaya
+/// halaman baru tidak mengarang angka sendiri per file.
+abstract final class AppSpacing {
+  static const double xxs = 4;
+  static const double xs = 8;
+  static const double sm = 12;
+  static const double md = 16;
+  static const double lg = 24;
+  static const double xl = 32;
+}
 
 ThemeData buildAppTheme() {
   const base = Color(0xFFB91C1C);
   const surface = Color(0xFFF6F7F9);
   const outline = Color(0xFFD8DEE7);
 
-  return ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: base,
-      brightness: Brightness.light,
-    ),
-    scaffoldBackgroundColor: surface,
-    useMaterial3: true,
-    textTheme: const TextTheme(
+  // Ukuran dan weight tetap sama seperti sebelumnya; hanya family yang
+  // diganti ke Inter. Font-nya dibundel (lihat pubspec.yaml) jadi tidak ada
+  // fetch jaringan saat app dibuka.
+  final textTheme = GoogleFonts.interTextTheme(
+    const TextTheme(
       headlineMedium: TextStyle(
         fontSize: 28,
         fontWeight: FontWeight.w800,
@@ -23,6 +32,17 @@ ThemeData buildAppTheme() {
       bodyMedium: TextStyle(fontSize: 14, height: 1.45),
       bodySmall: TextStyle(fontSize: 12, height: 1.4),
     ),
+  );
+
+  return ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: base,
+      brightness: Brightness.light,
+    ),
+    scaffoldBackgroundColor: surface,
+    useMaterial3: true,
+    fontFamily: GoogleFonts.inter().fontFamily,
+    textTheme: textTheme,
     appBarTheme: const AppBarTheme(
       centerTitle: false,
       backgroundColor: Colors.transparent,

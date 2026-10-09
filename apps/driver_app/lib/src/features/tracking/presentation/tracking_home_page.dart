@@ -5,10 +5,10 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../app.dart';
 import '../../../shared/branding.dart';
-import '../../auth/presentation/account_settings_page.dart';
 import '../data/driver_access_service.dart';
 import '../data/delivery_order_service.dart';
 import '../data/driver_tracking_service.dart';
+import '../data/tracking_controller.dart';
 import '../domain/models.dart';
 import 'delivery_completion_page.dart';
 import 'delivery_manifest_page.dart';
@@ -17,22 +17,24 @@ import 'mobile_numeric_input_formatter.dart';
 import 'trip_picker_page.dart';
 import 'trip_widgets.dart';
 
-import 'voucher_history_page.dart';
-import 'voucher_widgets.dart';
-
-enum _DriverHomeSection { trips, vouchers }
-
 class TrackingHomePage extends StatefulWidget {
   const TrackingHomePage({
     super.key,
     required this.session,
     required this.onSessionRefreshed,
     required this.onLogout,
+    this.sharedController,
   });
 
   final DriverAppSession session;
   final FutureOr<void> Function(DriverAppSession session) onSessionRefreshed;
   final VoidCallback onLogout;
+
+  /// Sumber data bersama milik shell.
+  ///
+  /// Kalau null (misalnya halaman ini dibuka sendiri di test), dashboard
+  /// membuat controller sendiri sehingga perilakunya tetap sama.
+  final TrackingController? sharedController;
 
   @override
   State<TrackingHomePage> createState() => _TrackingHomePageState();
@@ -53,8 +55,6 @@ class _TrackingHomePageState extends State<TrackingHomePage>
   List<CustomerRecipientOption> _customerRecipients = const [];
   List<DriverTripVoucher> _driverVouchers = const [];
   List<DriverIncident> _driverIncidents = const [];
-  final Set<String> _createdShipperReferenceStatusOverrides = <String>{};
-  _DriverHomeSection _activeSection = _DriverHomeSection.trips;
   DeliveryTrip? _selectedTrip;
   DeliveryTrip? _activeTrip;
   LocationSnapshot? _latestLocation;
@@ -76,51 +76,41 @@ class _TrackingHomePageState extends State<TrackingHomePage>
   Timer? _pingCounterTimer;
   Timer? _noticePollTimer;
   String? _trackingDeliveryOrderId;
+
+  late final TrackingController _sharedController =
+      widget.sharedController ?? TrackingController();
+  late final bool _ownsSharedController = widget.sharedController == null;
+
   DriverAppSession get _session => _activeSession ?? widget.session;
 
-  List<DriverTripVoucher> get _visibleDriverVouchers {
-    final vouchers = <DriverTripVoucher>[];
-    final seenKeys = <String>{};
-    for (final voucher in _driverVouchers) {
-      final key = voucher.id.trim().isNotEmpty ? voucher.id : voucher.bonNumber;
-      if (seenKeys.add(key)) {
-        vouchers.add(voucher);
-      }
-    }
-    return vouchers;
-  }
-
-  /// The single bon issued for [trip]. The admin enforces one bon per DO
-  /// (`driver-workflows.ts` returns 409 on a second create), so at most one
-  /// match is expected; the first is returned defensively.
-  DriverTripVoucher? _voucherForTrip(DeliveryTrip trip) {
-    final vouchers = _visibleDriverVouchers;
-    final deliveryOrderRef = trip.deliveryOrderId.trim();
-    if (deliveryOrderRef.isNotEmpty) {
-      for (final voucher in vouchers) {
-        if ((voucher.deliveryOrderRef ?? '').trim() == deliveryOrderRef) {
-          return voucher;
-        }
-      }
-    }
-    final doNumber = trip.doNumber.trim().toLowerCase();
-    if (doNumber.isEmpty) return null;
-    for (final voucher in vouchers) {
-      if ((voucher.doNumber ?? '').trim().toLowerCase() == doNumber) {
-        return voucher;
-      }
-    }
-    return null;
-  }
-
-  /// Bon milik trip yang sedang dipilih, dipakai oleh tab "Uang Jalan".
-  DriverTripVoucher? get _selectedTripVoucher {
-    final trip = _selectedTrip;
-    return trip == null ? null : _voucherForTrip(trip);
+  /// Teruskan hasil load ke tab lain lewat controller bersama.
+  ///
+  /// Dashboard tetap pemanggil endpoint tunggal supaya access notice,
+  /// auto-tracking, dan polling tidak terduplikasi.
+  void _publishToSharedController({
+    bool? loading,
+    String? error,
+    bool clearError = false,
+  }) {
+    _sharedController.syncPortalData(
+      trips: _trips,
+      plannedTrips: _plannedTrips,
+      customerProducts: _customerProducts,
+      customerRecipients: _customerRecipients,
+      driverVouchers: _driverVouchers,
+      driverIncidents: _driverIncidents,
+      selectedTrip: _selectedTrip,
+      loading: loading,
+      error: error,
+      clearError: clearError,
+    );
   }
 
   // Search + filter status + pagination untuk daftar trip sudah pindah ke
   // TripPickerPage (trip_picker_page.dart).
+  //
+  // Pencarian bon juga pindah ke tab "Uang Jalan"; halaman ini hanya menyimpan
+  // data dan meneruskannya ke [TrackingController].
 
   void _showSuccess(String message) {
     showMobileFeedback(
@@ -177,6 +167,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           sessionToken: refreshedSession.token ?? '',
         );
       });
+      _sharedController.updateSession(refreshedSession);
       await widget.onSessionRefreshed(refreshedSession);
       if (shouldRestartTracking) {
         _startTracking(initialAction: 'heartbeat');
@@ -217,6 +208,10 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     _trackingService = DriverTrackingService(
       sessionToken: _session.token ?? '',
     );
+    _sharedController.updateSession(_session);
+    // Tab lain asking refresh harus lewat pemuat ini supaya tidak ada dua
+    // request paralel yang menulis data berbeda ke state yang sama.
+    _sharedController.attachReload(this, _reloadPortal);
     unawaited(_bootstrapPage());
     WidgetsBinding.instance.addObserver(this);
     _noticePollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -237,9 +232,13 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           _trackingEnabled;
       _trackingService?.stop();
       _activeSession = widget.session;
+      _accessNotice = _session.accessNotice;
       _trackingService = DriverTrackingService(
         sessionToken: _session.token ?? '',
       );
+      // Tab lain butuh token terbaru juga, kalau tidak akan kena 401.
+      _sharedController.updateSession(_session);
+      unawaited(_bootstrapPage());
       if (shouldRestartTracking) {
         _startTracking(initialAction: 'heartbeat');
       }
@@ -267,6 +266,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
             _accessNotice = notice;
             _loadingTrips = false;
           });
+          _publishToSharedController(loading: false, clearError: true);
         }
       } else {
         if (_accessNotice?.scoreId != notice.scoreId ||
@@ -299,6 +299,9 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     return isBlocking;
   }
 
+  /// Dipakai [TrackingController.refresh] dari tab lain.
+  Future<void> _reloadPortal() => _loadTrips(skipAccessRefresh: true);
+
   Future<void> _bootstrapPage() async {
     final sessionToken = _session.token;
     if (sessionToken == null || sessionToken.isEmpty) {
@@ -307,6 +310,10 @@ class _TrackingHomePageState extends State<TrackingHomePage>
         _loadingTrips = false;
         _loadError = 'Sesi driver tidak valid. Silakan login ulang.';
       });
+      _publishToSharedController(
+        loading: false,
+        error: 'Sesi driver tidak valid. Silakan login ulang.',
+      );
       return;
     }
 
@@ -321,6 +328,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           _loadingTrips = false;
           _loadError = null;
         });
+        _publishToSharedController(loading: false, clearError: true);
         return;
       }
       setState(() => _accessNotice = notice);
@@ -331,24 +339,29 @@ class _TrackingHomePageState extends State<TrackingHomePage>
       // Keep any session-level blocking notice visible.
       if (_isNoticeBlocking(_accessNotice)) {
         setState(() => _loadingTrips = false);
+        _publishToSharedController(loading: false);
       } else {
         setState(() {
           _loadingTrips = false;
           _loadError = err.message;
         });
+        _publishToSharedController(loading: false, error: err.message);
       }
     } catch (_) {
       // Network / parse errors — do not swallow silently.
       if (!mounted) return;
+      const message =
+          'Gagal terhubung ke server. Tarik ke bawah untuk refresh.';
       if (_isNoticeBlocking(_accessNotice)) {
         // Session has a blocking notice — keep showing it, stop spinner.
         setState(() => _loadingTrips = false);
+        _publishToSharedController(loading: false);
       } else {
         setState(() {
           _loadingTrips = false;
-          _loadError =
-              'Gagal terhubung ke server. Tarik ke bawah untuk refresh.';
+          _loadError = message;
         });
+        _publishToSharedController(loading: false, error: message);
       }
     }
   }
@@ -359,6 +372,8 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     _noticePollTimer?.cancel();
     _pingCounterTimer?.cancel();
     _trackingService?.stop();
+    _sharedController.detachReload(this);
+    if (_ownsSharedController) _sharedController.dispose();
     super.dispose();
   }
 
@@ -367,10 +382,12 @@ class _TrackingHomePageState extends State<TrackingHomePage>
   Future<void> _loadTrips({bool skipAccessRefresh = false}) async {
     final sessionToken = _session.token;
     if (sessionToken == null || sessionToken.isEmpty) {
+      const message = 'Sesi driver tidak valid. Silakan login ulang.';
       setState(() {
         _loadingTrips = false;
-        _loadError = 'Sesi driver tidak valid. Silakan login ulang.';
+        _loadError = message;
       });
+      _publishToSharedController(loading: false, error: message);
       return;
     }
 
@@ -386,6 +403,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
             _loadingTrips = false;
             _loadError = null;
           });
+          _publishToSharedController(loading: false, clearError: true);
           return;
         }
         setState(() => _accessNotice = notice);
@@ -395,6 +413,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           _loadingTrips = false;
           _loadError = err.message;
         });
+        _publishToSharedController(loading: false, error: err.message);
         return;
       }
     }
@@ -403,6 +422,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
       _loadingTrips = true;
       _loadError = null;
     });
+    _publishToSharedController(loading: true, clearError: true);
     try {
       final portalData = await _deliveryOrderService.fetchDriverPortalData(
         sessionToken: sessionToken,
@@ -416,7 +436,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
         // Incident status is supplementary; do not block the driver's trip list
         // if this lightweight refresh fails.
       }
-      final trips = _applyCreatedShipperReferenceStatusOverrides(
+      final trips = _sharedController.applyCreatedStatusOverrides(
         portalData.trips,
       );
       if (!mounted) return;
@@ -442,6 +462,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
             (trips.isNotEmpty ? trips.first : null);
         _loadingTrips = false;
       });
+      _publishToSharedController(loading: false, clearError: true);
       unawaited(_syncAutoTracking(nextActiveTrip));
     } on DeliveryOrderException catch (err) {
       if (!mounted) return;
@@ -461,129 +482,15 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           );
         }
       });
+      _publishToSharedController(loading: false, error: err.message);
     } catch (_) {
       if (!mounted) return;
+      const message = 'Tidak bisa memuat trip driver dari server';
       setState(() {
         _loadingTrips = false;
-        _loadError = 'Tidak bisa memuat trip driver dari server';
+        _loadError = message;
       });
-    }
-  }
-
-  List<DeliveryTrip> _applyCreatedShipperReferenceStatusOverrides(
-    List<DeliveryTrip> trips,
-  ) {
-    if (_createdShipperReferenceStatusOverrides.isEmpty) return trips;
-
-    return trips
-        .map((trip) {
-          if (trip.shipperReferences.isEmpty) return trip;
-          var changed = false;
-          final references = trip.shipperReferences
-              .map((reference) {
-                final shouldForceCreated = _referenceIdentityCandidates(
-                  trip.deliveryOrderId,
-                  documentId: reference.documentId,
-                  referenceKey: reference.key,
-                  referenceNumber: reference.referenceNumber,
-                ).any(_createdShipperReferenceStatusOverrides.contains);
-                if (!shouldForceCreated) return reference;
-                if ((reference.tripStatus ?? '').trim().toUpperCase() ==
-                    'CREATED') {
-                  return reference;
-                }
-                changed = true;
-                return reference.copyWith(tripStatus: 'CREATED');
-              })
-              .toList(growable: false);
-          return changed ? trip.copyWith(shipperReferences: references) : trip;
-        })
-        .toList(growable: false);
-  }
-
-  Set<String> _referenceIdentityCandidates(
-    String deliveryOrderId, {
-    String? documentId,
-    String? referenceKey,
-    String? referenceNumber,
-  }) {
-    final normalizedOrderId = deliveryOrderId.trim();
-    final normalizedDocumentId = documentId?.trim();
-    final normalizedKey = referenceKey?.trim();
-    final normalizedNumber = referenceNumber?.trim().toUpperCase();
-    return <String>{
-      if (normalizedDocumentId?.isNotEmpty == true) normalizedDocumentId!,
-      if (normalizedOrderId.isNotEmpty && normalizedKey?.isNotEmpty == true)
-        '$normalizedOrderId:$normalizedKey',
-      if (normalizedOrderId.isNotEmpty && normalizedNumber?.isNotEmpty == true)
-        '$normalizedOrderId:$normalizedNumber',
-      if (normalizedKey?.isNotEmpty == true) normalizedKey!,
-      if (normalizedNumber?.isNotEmpty == true) normalizedNumber!,
-    };
-  }
-
-  Set<String> _newShipperReferenceStatusOverrideKeys(
-    DeliveryTrip trip,
-    List<DriverManifestShipperReferenceInput> nextReferences,
-  ) {
-    final existingKeys = <String>{};
-    for (final reference in trip.shipperReferences) {
-      existingKeys.addAll(
-        _referenceIdentityCandidates(
-          trip.deliveryOrderId,
-          documentId: reference.documentId,
-          referenceKey: reference.key,
-          referenceNumber: reference.referenceNumber,
-        ),
-      );
-    }
-
-    final newKeys = <String>{};
-    for (final reference in nextReferences) {
-      final candidates = _referenceIdentityCandidates(
-        trip.deliveryOrderId,
-        referenceKey: reference.key,
-        referenceNumber: reference.referenceNumber,
-      );
-      if (candidates.isEmpty ||
-          candidates.any(existingKeys.contains) ||
-          _createdShipperReferenceStatusOverrides.any(candidates.contains)) {
-        continue;
-      }
-      newKeys.addAll(candidates);
-    }
-    return newKeys;
-  }
-
-  void _clearCreatedStatusOverridesForRefs(
-    DeliveryTrip trip,
-    Iterable<String> targetRefs,
-  ) {
-    for (final targetRef in targetRefs) {
-      final normalizedTarget = targetRef.trim();
-      if (normalizedTarget.isEmpty) continue;
-      final reference = trip.shipperReferences.firstWhereOrNull(
-        (item) => _referenceIdentityCandidates(
-          trip.deliveryOrderId,
-          documentId: item.documentId,
-          referenceKey: item.key,
-          referenceNumber: item.referenceNumber,
-        ).contains(normalizedTarget),
-      );
-      final candidates = reference == null
-          ? _referenceIdentityCandidates(
-              trip.deliveryOrderId,
-              documentId: normalizedTarget,
-              referenceKey: normalizedTarget,
-              referenceNumber: normalizedTarget,
-            )
-          : _referenceIdentityCandidates(
-              trip.deliveryOrderId,
-              documentId: reference.documentId,
-              referenceKey: reference.key,
-              referenceNumber: reference.referenceNumber,
-            );
-      _createdShipperReferenceStatusOverrides.removeAll(candidates);
+      _publishToSharedController(loading: false, error: message);
     }
   }
 
@@ -989,10 +896,8 @@ class _TrackingHomePageState extends State<TrackingHomePage>
       return;
     }
 
-    final newStatusOverrideKeys = _newShipperReferenceStatusOverrideKeys(
-      trip,
-      result.shipperReferences,
-    );
+    final newStatusOverrideKeys = _sharedController
+        .newSuratJalanStatusOverrideKeys(trip, result.shipperReferences);
     setState(() => _submittingManifest = true);
     try {
       for (final itemId in result.deletedCargoItemIds) {
@@ -1023,7 +928,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           cargoItems: result.cargoItems,
         );
       }
-      _createdShipperReferenceStatusOverrides.addAll(newStatusOverrideKeys);
+      _sharedController.noteCreatedSuratJalanStatuses(newStatusOverrideKeys);
       await _loadTrips();
       if (!mounted) return;
       _showSuccess(
@@ -1232,7 +1137,10 @@ class _TrackingHomePageState extends State<TrackingHomePage>
           note: _statusNoteForUpdate(result.status),
         ),
       );
-      _clearCreatedStatusOverridesForRefs(trip, result.targetSuratJalanRefs);
+      _sharedController.clearCreatedStatusOverrides(
+        trip,
+        result.targetSuratJalanRefs,
+      );
       await _loadTrips();
       if (!mounted) return;
       final refreshedTrip = _trips.firstWhereOrNull(
@@ -2269,16 +2177,6 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     return null;
   }
 
-  Future<void> _openAccountSettings() async {
-    final nameChanged = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => AccountSettingsPage(session: _session)),
-    );
-    if (nameChanged != true || !mounted) return;
-    await _refreshDriverSession();
-    if (!mounted) return;
-    _showSuccess('Nama akun berhasil diperbarui.');
-  }
-
   Future<void> _confirmLogout() async {
     final lockedTrip = _trips.firstWhereOrNull(
       (trip) =>
@@ -2389,14 +2287,6 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 _DriverCard(
                   session: _session,
                   tripCount: _trips.length + pendingTripPlans.length,
-                  onTap: _openAccountSettings,
-                ),
-                const SizedBox(height: 12),
-                _DriverSectionSwitcher(
-                  activeSection: _activeSection,
-                  onChanged: (section) => setState(() {
-                    _activeSection = section;
-                  }),
                 ),
                 const SizedBox(height: 16),
                 if (!hasBlockingNotice && accessNotice != null) ...[
@@ -2407,191 +2297,172 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ),
                   const SizedBox(height: 16),
                 ],
-                if (_activeSection == _DriverHomeSection.trips) ...[
-                  if (!hasBlockingNotice && pendingTripPlans.isNotEmpty) ...[
-                    _SectionHeader(
-                      title: 'Trip siap input SJ',
-                      count: pendingTripPlans.length,
-                    ),
-                    const SizedBox(height: 10),
-                    ...pendingTripPlans.map(
-                      (tripPlan) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _PlannedTripCard(
-                          tripPlan: tripPlan,
-                          busy: _submittingManifest,
-                          onPressed: () =>
-                              unawaited(_openTripManifestPlan(tripPlan)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                  _SectionHeader(title: 'Trip', count: _trips.length),
+                if (!hasBlockingNotice && pendingTripPlans.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: 'Trip siap input SJ',
+                    count: pendingTripPlans.length,
+                  ),
                   const SizedBox(height: 10),
-                  _buildTripPickerEntry(scheme),
-                  if (_selectedTrip != null) ...[
-                    const SizedBox(height: 20),
-                    const _SectionHeader(title: 'Trip dipilih'),
-                    const SizedBox(height: 10),
-                    _TripDetailCard(trip: _selectedTrip!),
-                    const SizedBox(height: 12),
-                    _ManifestSummaryCard(trip: _selectedTrip!),
-                    if (_incidentsForTrip(_selectedTrip!).isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _DriverIncidentCard(
-                        incidents: _incidentsForTrip(_selectedTrip!),
-                        busy: _submittingIncidentResolution,
-                        onAddCost: (incident) => unawaited(
-                          _openIncidentCostSubmission(_selectedTrip!, incident),
-                        ),
-                        onSubmitResolution: (incident) => unawaited(
-                          _openIncidentResolution(_selectedTrip!, incident),
-                        ),
+                  ...pendingTripPlans.map(
+                    (tripPlan) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _PlannedTripCard(
+                        tripPlan: tripPlan,
+                        busy: _submittingManifest,
+                        onPressed: () =>
+                            unawaited(_openTripManifestPlan(tripPlan)),
                       ),
-                    ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                _SectionHeader(title: 'Trip', count: _trips.length),
+                const SizedBox(height: 10),
+                _buildTripPickerEntry(scheme),
+                if (_selectedTrip != null) ...[
+                  const SizedBox(height: 20),
+                  const _SectionHeader(title: 'Trip dipilih'),
+                  const SizedBox(height: 10),
+                  _TripDetailCard(trip: _selectedTrip!),
+                  const SizedBox(height: 12),
+                  _ManifestSummaryCard(trip: _selectedTrip!),
+                  if (_incidentsForTrip(_selectedTrip!).isNotEmpty) ...[
                     const SizedBox(height: 12),
+                    _DriverIncidentCard(
+                      incidents: _incidentsForTrip(_selectedTrip!),
+                      busy: _submittingIncidentResolution,
+                      onAddCost: (incident) => unawaited(
+                        _openIncidentCostSubmission(_selectedTrip!, incident),
+                      ),
+                      onSubmitResolution: (incident) => unawaited(
+                        _openIncidentResolution(_selectedTrip!, incident),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed:
+                          _submittingManifest ||
+                              !_canManageManifest(_selectedTrip!)
+                          ? null
+                          : () => unawaited(
+                              _openDeliveryManifest(_selectedTrip!),
+                            ),
+                      icon: _submittingManifest
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator.adaptive(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(
+                                  scheme.primary,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.inventory_2_outlined),
+                      label: Text(
+                        _selectedTrip!.allowsDirectCargoInput
+                            ? 'Kelola SJ & Barang'
+                            : 'Kelola SJ',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _TripStatusActionsCard(
+                    buttonLabel: 'Update Status SJ',
+                    helperText: _suratJalanStatusHelperText(_selectedTrip!),
+                    enabled: _canUpdateSuratJalanStatus(_selectedTrip!),
+                    busy: _updatingBatchStatus,
+                    onPressed: () =>
+                        unawaited(_openSuratJalanStatus(_selectedTrip!)),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_incidentReportBlockMessage(_selectedTrip!) != null) ...[
+                    _ErrorBanner(
+                      icon: Icons.report_problem_outlined,
+                      message: _incidentReportBlockMessage(_selectedTrip!)!,
+                      isWarning: true,
+                    ),
+                  ] else ...[
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.tonalIcon(
-                        onPressed:
-                            _submittingManifest ||
-                                !_canManageManifest(_selectedTrip!)
+                      child: OutlinedButton.icon(
+                        onPressed: _reportingIncident
                             ? null
                             : () => unawaited(
-                                _openDeliveryManifest(_selectedTrip!),
+                                _openIncidentReport(_selectedTrip!),
                               ),
-                        icon: _submittingManifest
-                            ? SizedBox(
+                        icon: _reportingIncident
+                            ? const SizedBox(
                                 width: 16,
                                 height: 16,
                                 child: CircularProgressIndicator.adaptive(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    scheme.primary,
-                                  ),
                                 ),
                               )
-                            : const Icon(Icons.inventory_2_outlined),
+                            : const Icon(Icons.report_problem_outlined),
                         label: Text(
-                          _selectedTrip!.allowsDirectCargoInput
-                              ? 'Kelola SJ & Barang'
-                              : 'Kelola SJ',
+                          _reportingIncident
+                              ? 'Mengirim laporan...'
+                              : 'Lapor Insiden',
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    _TripStatusActionsCard(
-                      buttonLabel: 'Update Status SJ',
-                      helperText: _suratJalanStatusHelperText(_selectedTrip!),
-                      enabled: _canUpdateSuratJalanStatus(_selectedTrip!),
-                      busy: _updatingBatchStatus,
-                      onPressed: () =>
-                          unawaited(_openSuratJalanStatus(_selectedTrip!)),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_incidentReportBlockMessage(_selectedTrip!) !=
-                        null) ...[
-                      _ErrorBanner(
-                        icon: Icons.report_problem_outlined,
-                        message: _incidentReportBlockMessage(_selectedTrip!)!,
-                        isWarning: true,
-                      ),
-                    ] else ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _reportingIncident
-                              ? null
-                              : () => unawaited(
-                                  _openIncidentReport(_selectedTrip!),
-                                ),
-                          icon: _reportingIncident
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator.adaptive(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.report_problem_outlined),
-                          label: Text(
-                            _reportingIncident
-                                ? 'Mengirim laporan...'
-                                : 'Lapor Insiden',
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    if (_locationError != null) ...[
-                      _ErrorBanner(
-                        icon: Icons.location_off_rounded,
-                        message: _locationError!,
-                        onRetry: _retryAutoTracking,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_pingError != null) ...[
-                      _ErrorBanner(
-                        icon: Icons.cloud_off_rounded,
-                        message: _pingError!,
-                        isWarning: true,
-                        onRetry: _retryAutoTracking,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_selectedTrip!.isAwaitingAdminApproval) ...[
-                      _ErrorBanner(
-                        icon: Icons.admin_panel_settings_rounded,
-                        message: _selectedTrip!.hasBlockingAdminApproval
-                            ? 'Trip ini menunggu approval admin.'
-                            : 'Sebagian SJ menunggu approval admin. SJ lain tetap bisa diajukan selesai.',
-                        isWarning: true,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_selectedTrip!.isTripClosedByAdmin) ...[
-                      const _ErrorBanner(
-                        icon: Icons.lock_clock_rounded,
-                        message:
-                            'Trip sudah ditutup admin. Tambah SJ dan edit muatan dikunci sampai trip dibuka kembali.',
-                        isWarning: true,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    _TrackingCard(
-                      trackingEnabled: _trackingEnabled,
-                      location: _latestLocation,
-                      pingCount: _pingCount,
-                    ),
-                    if (_selectedTrip!.status == TripStatus.delivered &&
-                        !_selectedTrip!.isAwaitingAdminApproval &&
-                        !_selectedTrip!.isTripClosedByAdmin) ...[
-                      const SizedBox(height: 12),
-                      _CloseTripButton(
-                        onPressed: _updatingStatus
-                            ? null
-                            : () => unawaited(_openTripClosure(_selectedTrip!)),
-                      ),
-                    ],
                   ],
-                ] else ...[
-                  _SectionHeader(
-                    title: 'Uang Jalan',
-                    count: _selectedTripVoucher == null ? 0 : 1,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildSelectedTripVoucher(scheme),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _loadingTrips ? null : _openVoucherHistory,
-                      icon: const Icon(Icons.history_rounded, size: 18),
-                      label: const Text('Lihat Riwayat'),
+                  if (_locationError != null) ...[
+                    _ErrorBanner(
+                      icon: Icons.location_off_rounded,
+                      message: _locationError!,
+                      onRetry: _retryAutoTracking,
                     ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_pingError != null) ...[
+                    _ErrorBanner(
+                      icon: Icons.cloud_off_rounded,
+                      message: _pingError!,
+                      isWarning: true,
+                      onRetry: _retryAutoTracking,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_selectedTrip!.isAwaitingAdminApproval) ...[
+                    _ErrorBanner(
+                      icon: Icons.admin_panel_settings_rounded,
+                      message: _selectedTrip!.hasBlockingAdminApproval
+                          ? 'Trip ini menunggu approval admin.'
+                          : 'Sebagian SJ menunggu approval admin. SJ lain tetap bisa diajukan selesai.',
+                      isWarning: true,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_selectedTrip!.isTripClosedByAdmin) ...[
+                    const _ErrorBanner(
+                      icon: Icons.lock_clock_rounded,
+                      message:
+                          'Trip sudah ditutup admin. Tambah SJ dan edit muatan dikunci sampai trip dibuka kembali.',
+                      isWarning: true,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  _TrackingCard(
+                    trackingEnabled: _trackingEnabled,
+                    location: _latestLocation,
+                    pingCount: _pingCount,
                   ),
+                  if (_selectedTrip!.status == TripStatus.delivered &&
+                      !_selectedTrip!.isAwaitingAdminApproval &&
+                      !_selectedTrip!.isTripClosedByAdmin) ...[
+                    const SizedBox(height: 12),
+                    _CloseTripButton(
+                      onPressed: _updatingStatus
+                          ? null
+                          : () => unawaited(_openTripClosure(_selectedTrip!)),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -2735,6 +2606,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
     );
     if (picked == null || !mounted) return;
     setState(() => _selectedTrip = picked);
+    _sharedController.selectTrip(picked);
   }
 
   Widget _buildTripPickerEntry(ColorScheme scheme) {
@@ -2833,77 +2705,6 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 ),
               ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedTripVoucher(ColorScheme scheme) {
-    if (_loadingTrips) {
-      return const _DriverVoucherListSkeleton();
-    }
-    if (_loadError != null) {
-      return _ErrorCard(message: _loadError!, onRetry: _loadTrips);
-    }
-
-    final trip = _selectedTrip;
-    if (trip == null) {
-      return _VoucherPlaceholderCard(
-        icon: Icons.touch_app_outlined,
-        title: 'Pilih trip dulu',
-        message:
-            'Uang Jalan ditampilkan untuk trip yang dipilih di menu Cek Trip.',
-        actionLabel: 'Buka Cek Trip',
-        onAction: () =>
-            setState(() => _activeSection = _DriverHomeSection.trips),
-      );
-    }
-
-    final voucher = _selectedTripVoucher;
-    if (voucher == null) {
-      return _VoucherPlaceholderCard(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'Belum ada uang jalan untuk ${trip.doNumber}',
-        message:
-            'Bon akan muncul di sini setelah admin menerbitkannya untuk trip ini.',
-      );
-    }
-
-    return DriverVoucherCard(
-      voucher: voucher,
-      onPreview: () => _openVoucherPreview(voucher),
-    );
-  }
-
-  void _openVoucherPreview(DriverTripVoucher voucher) {
-    showDriverVoucherPreviewDialog(context, voucher);
-  }
-
-  Future<List<DriverTripVoucher>> _refreshDriverVouchers() async {
-    final portalData = await _withFreshSession(
-      (sessionToken) => _deliveryOrderService.fetchDriverPortalData(
-        sessionToken: sessionToken,
-      ),
-    );
-    if (mounted) {
-      setState(() {
-        _trips = portalData.trips;
-        _plannedTrips = portalData.plannedTrips;
-        _customerProducts = portalData.customerProducts;
-        _customerRecipients = portalData.customerRecipients;
-        _driverVouchers = portalData.driverVouchers;
-        _driverIncidents = portalData.incidents;
-      });
-    }
-    return _visibleDriverVouchers;
-  }
-
-  void _openVoucherHistory() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => VoucherHistoryPage(
-          initialVouchers: _visibleDriverVouchers,
-          onRefresh: _refreshDriverVouchers,
         ),
       ),
     );
@@ -3182,14 +2983,9 @@ String _formatKm(num value) {
 }
 
 class _DriverCard extends StatelessWidget {
-  const _DriverCard({
-    required this.session,
-    required this.tripCount,
-    this.onTap,
-  });
+  const _DriverCard({required this.session, required this.tripCount});
   final DriverAppSession session;
   final int tripCount;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3198,154 +2994,72 @@ class _DriverCard extends StatelessWidget {
     final tripLabel = tripCount == 1 ? '1 trip' : '$tripCount trip';
     return Card(
       margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: EdgeInsets.all(compact ? 14 : 16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: compact ? 42 : 46,
-                height: compact ? 42 : 46,
-                decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.person_pin_circle_rounded,
-                  color: scheme.primary,
-                  size: compact ? 22 : 24,
-                ),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: compact ? 42 : 46,
+              height: compact ? 42 : 46,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(14),
               ),
-              SizedBox(width: compact ? 12 : 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      session.driverName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: compact ? 14 : 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      session.role,
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.5),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+              child: Icon(
+                Icons.person_pin_circle_rounded,
+                color: scheme.primary,
+                size: compact ? 22 : 24,
               ),
-              const SizedBox(width: 10),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 10 : 12,
-                  vertical: compact ? 5 : 6,
-                ),
-                decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  tripLabel,
-                  style: TextStyle(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: compact ? 12 : 13,
+            ),
+            SizedBox(width: compact ? 12 : 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.driverName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: compact ? 14 : 15,
+                    ),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    session.role,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 10 : 12,
+                vertical: compact ? 5 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                tripLabel,
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: compact ? 12 : 13,
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: scheme.onSurface.withValues(alpha: 0.35),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-// ── Section header ─────────────────────────────────────────
-class _DriverSectionSwitcher extends StatelessWidget {
-  const _DriverSectionSwitcher({
-    required this.activeSection,
-    required this.onChanged,
-  });
-
-  final _DriverHomeSection activeSection;
-  final ValueChanged<_DriverHomeSection> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    Widget buildButton({
-      required _DriverHomeSection section,
-      required IconData icon,
-      required String label,
-    }) {
-      final selected = activeSection == section;
-      final content = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 8),
-          Flexible(child: Text(label)),
-        ],
-      );
-      final shape = RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      );
-
-      return Expanded(
-        child: selected
-            ? FilledButton(
-                onPressed: () => onChanged(section),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: shape,
-                ),
-                child: content,
-              )
-            : OutlinedButton(
-                onPressed: () => onChanged(section),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: scheme.onSurface,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: shape,
-                ),
-                child: content,
-              ),
-      );
-    }
-
-    return Row(
-      children: [
-        buildButton(
-          section: _DriverHomeSection.trips,
-          icon: Icons.local_shipping_outlined,
-          label: 'Cek Trip',
-        ),
-        const SizedBox(width: 10),
-        buildButton(
-          section: _DriverHomeSection.vouchers,
-          icon: Icons.account_balance_wallet_outlined,
-          label: 'Uang Jalan',
-        ),
-      ],
     );
   }
 }
@@ -3362,21 +3076,6 @@ class _DriverTripListSkeleton extends StatelessWidget {
         _DriverTripSkeletonCard(),
         SizedBox(height: 10),
         _DriverTripSkeletonCard(compact: true),
-      ],
-    );
-  }
-}
-
-class _DriverVoucherListSkeleton extends StatelessWidget {
-  const _DriverVoucherListSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: const [
-        _DriverVoucherSkeletonCard(),
-        SizedBox(height: 10),
-        _DriverVoucherSkeletonCard(),
       ],
     );
   }
@@ -3426,45 +3125,6 @@ class _DriverTripSkeletonCard extends StatelessWidget {
               height: 12,
               radius: 8,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DriverVoucherSkeletonCard extends StatelessWidget {
-  const _DriverVoucherSkeletonCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Row(
-              children: [
-                _DriverSkeletonBlock(width: 42, height: 42, radius: 14),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DriverSkeletonBlock(width: 160, height: 15, radius: 8),
-                      SizedBox(height: 8),
-                      _DriverSkeletonBlock(width: 120, height: 12, radius: 8),
-                    ],
-                  ),
-                ),
-                _DriverSkeletonBlock(width: 86, height: 28, radius: 999),
-              ],
-            ),
-            SizedBox(height: 16),
-            _DriverSkeletonBlock(width: double.infinity, height: 12, radius: 8),
-            SizedBox(height: 8),
-            _DriverSkeletonBlock(width: 210, height: 12, radius: 8),
           ],
         ),
       ),
@@ -3545,86 +3205,6 @@ class _SectionHeader extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-// -- Uang jalan placeholder --
-class _VoucherPlaceholderCard extends StatelessWidget {
-  const _VoucherPlaceholderCard({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8E4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: scheme.onSurface.withValues(alpha: 0.35),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      message,
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.58),
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onAction,
-                icon: const Icon(Icons.local_shipping_outlined, size: 16),
-                label: Text(actionLabel!),
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

@@ -6,9 +6,28 @@ import '../data/driver_auth_service.dart';
 import '../../tracking/presentation/mobile_action_feedback.dart';
 
 class AccountSettingsPage extends StatefulWidget {
-  const AccountSettingsPage({super.key, required this.session});
+  const AccountSettingsPage({
+    super.key,
+    required this.session,
+    this.embedded = false,
+    this.footer,
+    this.onNameSaved,
+  });
 
   final DriverAppSession session;
+
+  /// When true the page renders only its scrollable content, without Scaffold
+  /// or AppBar, so it can sit inside the driver shell's `IndexedStack`.
+  final bool embedded;
+
+  /// Extra content appended below the account cards (e.g. a logout button).
+  final Widget? footer;
+
+  /// Dipanggil setelah nama akun tersimpan saat [embedded] aktif.
+  ///
+  /// Tanpa callback ini halaman harus `Navigator.pop(true)` supaya parent tahu
+  /// sesi berubah; di dalam shell tidak ada route untuk dipop.
+  final VoidCallback? onNameSaved;
 
   @override
   State<AccountSettingsPage> createState() => _AccountSettingsPageState();
@@ -48,7 +67,11 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
   }
 
   void _showSuccess(String message) {
-    showMobileFeedback(context, type: MobileFeedbackType.success, message: message);
+    showMobileFeedback(
+      context,
+      type: MobileFeedbackType.success,
+      message: message,
+    );
   }
 
   Future<void> _saveName() async {
@@ -77,6 +100,12 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
         name: name,
       );
       if (!mounted) return;
+      final onNameSaved = widget.onNameSaved;
+      if (widget.embedded && onNameSaved != null) {
+        onNameSaved();
+        _showSuccess('Nama akun berhasil diperbarui.');
+        return;
+      }
       Navigator.of(context).pop(true);
     } on DriverAuthException catch (err) {
       if (!mounted) return;
@@ -99,7 +128,9 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     final newPassword = _newPasswordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
-    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
       setState(() => _passwordError = 'Semua kolom password wajib diisi.');
       return;
     }
@@ -113,7 +144,8 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     }
     if (newPassword == currentPassword) {
       setState(
-        () => _passwordError = 'Password baru harus berbeda dari password lama.',
+        () =>
+            _passwordError = 'Password baru harus berbeda dari password lama.',
       );
       return;
     }
@@ -148,159 +180,161 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Akun Saya')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _SectionCard(
-                title: 'Profil',
-                icon: Icons.person_outline_rounded,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _FieldLabel(label: 'Nama Akun'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _nameController,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.done,
-                      maxLength: 100,
-                      buildCounter:
-                          (
-                            context, {
-                            required currentLength,
-                            required isFocused,
-                            maxLength,
-                          }) => null,
-                      decoration: const InputDecoration(
-                        hintText: 'Nama akun login',
-                        prefixIcon: Icon(Icons.badge_outlined),
-                      ),
-                      onSubmitted: (_) {
-                        if (!_savingName) _saveName();
-                      },
+    final content = SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(16, widget.embedded ? 16 : 12, 16, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionCard(
+              title: 'Profil',
+              icon: Icons.person_outline_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _FieldLabel(label: 'Nama Akun'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.done,
+                    maxLength: 100,
+                    buildCounter:
+                        (
+                          context, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => null,
+                    decoration: const InputDecoration(
+                      hintText: 'Nama akun login',
+                      prefixIcon: Icon(Icons.badge_outlined),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Nama ini dipakai sebagai identitas akun login. Nama pada data supir dikelola oleh admin.',
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.55),
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
+                    onSubmitted: (_) {
+                      if (!_savingName) _saveName();
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Nama ini dipakai sebagai identitas akun login. Nama pada data supir dikelola oleh admin.',
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.55),
+                      fontSize: 12,
+                      height: 1.4,
                     ),
-                    if (_nameError != null) ...[
-                      const SizedBox(height: 10),
-                      _InlineError(message: _nameError!),
-                    ],
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _savingName ? null : _saveName,
-                        icon: _savingName
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator.adaptive(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.save_outlined, size: 17),
-                        label: Text(_savingName ? 'Menyimpan...' : 'Simpan Nama'),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    _ReadOnlyRow(
-                      icon: Icons.alternate_email_rounded,
-                      label: 'Email',
-                      value: widget.session.email,
-                    ),
+                  ),
+                  if (_nameError != null) ...[
                     const SizedBox(height: 10),
-                    _ReadOnlyRow(
-                      icon: Icons.local_shipping_outlined,
-                      label: 'Nama Supir (data master)',
-                      value: widget.session.driverName,
-                    ),
+                    _InlineError(message: _nameError!),
                   ],
-                ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _savingName ? null : _saveName,
+                      icon: _savingName
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator.adaptive(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined, size: 17),
+                      label: Text(_savingName ? 'Menyimpan...' : 'Simpan Nama'),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _ReadOnlyRow(
+                    icon: Icons.alternate_email_rounded,
+                    label: 'Email',
+                    value: widget.session.email,
+                  ),
+                  const SizedBox(height: 10),
+                  _ReadOnlyRow(
+                    icon: Icons.local_shipping_outlined,
+                    label: 'Nama Supir (data master)',
+                    value: widget.session.driverName,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Ubah Password',
-                icon: Icons.lock_outline_rounded,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PasswordField(
-                      label: 'Password Lama',
-                      controller: _currentPasswordController,
-                      obscureText: _obscureCurrentPassword,
-                      onToggleVisibility:
-                          () => setState(
-                            () => _obscureCurrentPassword =
-                                !_obscureCurrentPassword,
-                          ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: 'Ubah Password',
+              icon: Icons.lock_outline_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _PasswordField(
+                    label: 'Password Lama',
+                    controller: _currentPasswordController,
+                    obscureText: _obscureCurrentPassword,
+                    onToggleVisibility: () => setState(
+                      () => _obscureCurrentPassword = !_obscureCurrentPassword,
                     ),
-                    const SizedBox(height: 14),
-                    _PasswordField(
-                      label: 'Password Baru',
-                      controller: _newPasswordController,
-                      obscureText: _obscureNewPassword,
-                      hint: 'Minimal 8 karakter',
-                      onToggleVisibility:
-                          () => setState(
-                            () =>
-                                _obscureNewPassword = !_obscureNewPassword,
-                          ),
+                  ),
+                  const SizedBox(height: 14),
+                  _PasswordField(
+                    label: 'Password Baru',
+                    controller: _newPasswordController,
+                    obscureText: _obscureNewPassword,
+                    hint: 'Minimal 8 karakter',
+                    onToggleVisibility: () => setState(
+                      () => _obscureNewPassword = !_obscureNewPassword,
                     ),
-                    const SizedBox(height: 14),
-                    _PasswordField(
-                      label: 'Konfirmasi Password Baru',
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirmPassword,
-                      onToggleVisibility:
-                          () => setState(
-                            () =>
-                                _obscureConfirmPassword =
-                                    !_obscureConfirmPassword,
-                          ),
+                  ),
+                  const SizedBox(height: 14),
+                  _PasswordField(
+                    label: 'Konfirmasi Password Baru',
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirmPassword,
+                    onToggleVisibility: () => setState(
+                      () => _obscureConfirmPassword = !_obscureConfirmPassword,
                     ),
-                    if (_passwordError != null) ...[
-                      const SizedBox(height: 10),
-                      _InlineError(message: _passwordError!),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _savingPassword ? null : _changePassword,
-                        icon: _savingPassword
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator.adaptive(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.key_rounded, size: 17),
-                        label: Text(
-                          _savingPassword ? 'Menyimpan...' : 'Ubah Password',
-                        ),
+                  ),
+                  if (_passwordError != null) ...[
+                    const SizedBox(height: 10),
+                    _InlineError(message: _passwordError!),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _savingPassword ? null : _changePassword,
+                      icon: _savingPassword
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator.adaptive(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.key_rounded, size: 17),
+                      label: Text(
+                        _savingPassword ? 'Menyimpan...' : 'Ubah Password',
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+            if (widget.footer != null) ...[
+              const SizedBox(height: 16),
+              widget.footer!,
             ],
-          ),
+          ],
         ),
       ),
     );
+
+    if (!widget.embedded) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Akun Saya')),
+        body: content,
+      );
+    }
+    return content;
   }
 }
 
