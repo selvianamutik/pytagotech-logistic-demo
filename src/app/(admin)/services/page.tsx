@@ -71,7 +71,7 @@ export default function ServicesPage() {
     const [saving, setSaving] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [pendingAxleDeleteIndex, setPendingAxleDeleteIndex] = useState<number | null>(null);
+    const [axleDeleteIndex, setAxleDeleteIndex] = useState<number | null>(null);
     const [form, setForm] = useState<ServiceFormState>(createDefaultServiceForm());
     const isOwner = user ? hasPermission(user, 'services', 'update') : false;
     const activeCount = totalItems - inactiveCount;
@@ -114,13 +114,13 @@ export default function ServicesPage() {
     const openNew = () => {
         setEditItem(null);
         setForm(createDefaultServiceForm());
-        setPendingAxleDeleteIndex(null);
+        setAxleDeleteIndex(null);
         setShowModal(true);
     };
     const openEdit = (s: Service) => {
         setEditItem(s);
         setForm(createDefaultServiceForm(s));
-        setPendingAxleDeleteIndex(null);
+        setAxleDeleteIndex(null);
         setShowModal(true);
     };
 
@@ -152,7 +152,7 @@ export default function ServicesPage() {
                 }
                 addToast('success', 'Kategori armada ditambahkan');
             }
-            setPendingAxleDeleteIndex(null);
+            setAxleDeleteIndex(null);
             setShowModal(false);
         } catch {
             addToast('error', editItem ? 'Gagal memperbarui kategori armada' : 'Gagal menambah kategori armada');
@@ -182,8 +182,6 @@ export default function ServicesPage() {
                 await loadServices();
             }
             setDeleteId(null);
-            // The delete may have been triggered from the Edit modal: close it
-            // too, since its item no longer exists.
             setShowModal(false);
             addToast('success', 'Kategori armada dihapus');
         } catch {
@@ -232,8 +230,8 @@ export default function ServicesPage() {
                 )}
             </div>
             {showModal && (
-                <div className="modal-overlay" onClick={() => { if (!saving) { setPendingAxleDeleteIndex(null); setShowModal(false); } }}><div className="modal" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header"><h3 className="modal-title">{editItem ? 'Edit' : 'Tambah'} Kategori Armada</h3><button className="modal-close" onClick={() => { setPendingAxleDeleteIndex(null); setShowModal(false); }} disabled={saving}><X size={20} /></button></div>
+                <div className="modal-overlay" onClick={() => { if (!saving) { setAxleDeleteIndex(null); setShowModal(false); } }}><div className="modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal-header"><h3 className="modal-title">{editItem ? 'Edit' : 'Tambah'} Kategori Armada</h3><button className="modal-close" onClick={() => { setAxleDeleteIndex(null); setShowModal(false); }} disabled={saving}><X size={20} /></button></div>
                     <div className="modal-body">
                         <div className="form-group">
                             <label className="form-label">Kode Kategori</label>
@@ -291,7 +289,6 @@ export default function ServicesPage() {
                                         spareCount: 0,
                                     }).roadSlots;
                                     const canRemoveAxle = form.tireLayoutConfig.axleLayouts.length > 2;
-                                    const isDeleteConfirming = pendingAxleDeleteIndex === index;
                                     return (
                                         <div key={axleNumber} style={{ border: '1px solid var(--color-gray-200)', borderRadius: '0.85rem', padding: '0.85rem 1rem', background: 'var(--color-white)' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.55rem', flexWrap: 'wrap' }}>
@@ -306,12 +303,12 @@ export default function ServicesPage() {
                                                 {canRemoveAxle && (
                                                     <button
                                                         type="button"
-                                                        className={`btn btn-sm ${isDeleteConfirming ? 'btn-danger' : 'btn-secondary'}`}
+                                                        className="btn btn-sm btn-danger"
                                                         onClick={() => {
-                                                            setPendingAxleDeleteIndex(index);
+                                                            setAxleDeleteIndex(index);
                                                         }}
                                                     >
-                                                        <Trash2 size={14} /> {isDeleteConfirming ? 'Konfirmasi Di Bawah' : 'Hapus As'}
+                                                        <Trash2 size={14} /> Hapus As
                                                     </button>
                                                 )}
                                             </div>
@@ -334,41 +331,6 @@ export default function ServicesPage() {
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.45rem' }}>
                                                 {TIRE_AXLE_LAYOUT_OPTIONS.find(option => option.value === layoutValue)?.description}
                                             </div>
-                                            {isDeleteConfirming && (
-                                                <div style={{ marginTop: '0.75rem', padding: '0.75rem 0.85rem', borderRadius: '0.75rem', border: '1px solid #fecaca', background: '#fef2f2', display: 'grid', gap: '0.65rem' }}>
-                                                    <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'flex-start', color: '#991b1b', fontSize: '0.78rem' }}>
-                                                        <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                                                        <div>
-                                                            As {axleNumber} akan dihapus, dan nomor as setelahnya akan ikut bergeser.
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-secondary btn-sm"
-                                                            onClick={() => setPendingAxleDeleteIndex(null)}
-                                                        >
-                                                            Batal
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-danger btn-sm"
-                                                            onClick={() => {
-                                                                setForm(previous => ({
-                                                                    ...previous,
-                                                                    tireLayoutConfig: {
-                                                                        ...previous.tireLayoutConfig,
-                                                                        axleLayouts: previous.tireLayoutConfig.axleLayouts.filter((_, itemIndex) => itemIndex !== index),
-                                                                    },
-                                                                }));
-                                                                setPendingAxleDeleteIndex(null);
-                                                            }}
-                                                        >
-                                                            Konfirmasi Hapus
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })}
@@ -414,7 +376,32 @@ export default function ServicesPage() {
                         </div>
                         <div className="form-group"><label className="form-checkbox"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Aktif</label></div>
                     </div>
-                    <div className="modal-footer">{isOwner && editItem && (<button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => setDeleteId(editItem._id)} disabled={saving}><Trash2 size={16} /> Hapus</button>)}<button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
+                    <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>Batal</button><button className="btn btn-primary" onClick={handleSave} disabled={saving}><Save size={16} /> {saving ? 'Menyimpan...' : 'Simpan'}</button></div>
+                </div></div>
+            )}
+            {axleDeleteIndex !== null && (
+                <div className="modal-overlay" onClick={() => setAxleDeleteIndex(null)}><div className="modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal-header"><h3 className="modal-title">Hapus As {axleDeleteIndex + 1}?</h3></div>
+                    <div className="modal-body">
+                        <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'flex-start', color: '#991b1b', fontSize: '0.85rem' }}>
+                            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <div>
+                                As {axleDeleteIndex + 1} akan dihapus, dan nomor as setelahnya akan ikut bergeser.
+                            </div>
+                        </div>
+                    </div>
+                    <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setAxleDeleteIndex(null)}>Batal</button><button className="btn btn-danger" onClick={() => {
+                        const target = axleDeleteIndex;
+                        if (target === null) return;
+                        setForm(previous => ({
+                            ...previous,
+                            tireLayoutConfig: {
+                                ...previous.tireLayoutConfig,
+                                axleLayouts: previous.tireLayoutConfig.axleLayouts.filter((_, itemIndex) => itemIndex !== target),
+                            },
+                        }));
+                        setAxleDeleteIndex(null);
+                    }}><Trash2 size={16} /> Hapus</button></div>
                 </div></div>
             )}
             {isOwner && deleteId && (
