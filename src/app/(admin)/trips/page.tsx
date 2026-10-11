@@ -17,7 +17,7 @@ import { useApp, useToast } from '../layout';
 import Combobox from '@/components/Combobox';
 
 type TripBonStatusMeta = { label: string; color: string };
-type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'completed' | 'bon-open';
+type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'unclosed' | 'completed' | 'bon-open';
 
 type DraftTripPlanRow = {
     id: string;
@@ -137,6 +137,7 @@ function matchesTripCondition(trip: Trip, voucher: DriverVoucher | undefined, co
     if (conditionFilter === 'multi-sj') return trip.shipperReferenceCount > 1;
     if (conditionFilter === 'no-sj') return trip.shipperReferenceCount === 0;
     if (conditionFilter === 'unfinished') return !isTripFinal(trip) && trip.status !== 'CANCELLED';
+    if (conditionFilter === 'unclosed') return trip.status === 'DELIVERED' && !trip.tripClosedByAdminAt;
     if (conditionFilter === 'completed') return isTripFinal(trip);
     if (conditionFilter === 'bon-open') return trip.status !== 'CANCELLED' && voucher?.status !== 'SETTLED';
     return true;
@@ -259,6 +260,19 @@ export default function TripsPage() {
     useEffect(() => {
         void loadTrips();
     }, [loadTrips]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const requestedCondition = params.get('condition');
+        if (requestedCondition === 'driver-approval' || requestedCondition === 'has-hold' || requestedCondition === 'multi-sj' || requestedCondition === 'no-sj' || requestedCondition === 'unfinished' || requestedCondition === 'unclosed' || requestedCondition === 'completed' || requestedCondition === 'bon-open') {
+            setConditionFilter(requestedCondition);
+        }
+        const requestedStatus = params.get('status');
+        if (requestedStatus && Object.prototype.hasOwnProperty.call(DO_STATUS_MAP, requestedStatus)) {
+            setStatusFilter(requestedStatus);
+        }
+    }, []);
 
     useEffect(() => {
         setPage(1);
@@ -427,7 +441,7 @@ export default function TripsPage() {
                             <Combobox
                                 value={conditionFilter}
                                 onChange={(v: string) => setConditionFilter(v as TripConditionFilter)}
-                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
+                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "unclosed", label: "Belum ditutup" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
                                 placeholder="Semua Kondisi"
                                 className="form-select"
                             />
@@ -487,7 +501,12 @@ export default function TripsPage() {
                                             {renderTripSuratJalanLinks(item)}
                                             <div className="text-muted text-sm" style={{ marginTop: 4 }}>{renderTripCargoSummary(item)}</div>
                                         </td>
-                                        <td><span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span></td>
+                                        <td>
+                                            <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
+                                            {item.status === 'DELIVERED' && !item.tripClosedByAdminAt && (
+                                                <div style={{ marginTop: 4 }}><span className="badge badge-info"><span className="badge-dot" /> Belum ditutup</span></div>
+                                            )}
+                                        </td>
                                         <td>
                                             {isMitraTrip(item) && !voucher ? (
                                                 <span className="text-muted">Tidak ada (Mitra)</span>
@@ -525,6 +544,7 @@ export default function TripsPage() {
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                         <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
                                         {isMitraTrip(item) && <span className="badge badge-info">Mitra</span>}
+                                        {item.status === 'DELIVERED' && !item.tripClosedByAdminAt && <span className="badge badge-info"><span className="badge-dot" /> Belum ditutup</span>}
                                     </div>
                                 </div>
                                 <div className="mobile-card-body">

@@ -6,8 +6,8 @@ import {
     Package, Truck, FileText, AlertTriangle, Wrench, DollarSign,
     TrendingUp, Clock, ArrowUpRight
 } from 'lucide-react';
-import { getDashboardNotaNetAmount, getRecentNotaAction, getRecentOrderAction, type DashboardData } from '@/lib/dashboard-page-support';
-import { formatCurrency, formatDate, ORDER_STATUS_MAP, INVOICE_STATUS_MAP } from '@/lib/utils';
+import { getDashboardNotaNetAmount, getRecentNotaAction, getRecentOrderAction, emptyDashboardAttention, type DashboardData } from '@/lib/dashboard-page-support';
+import { formatCurrency, formatDate, formatDateTime, DO_STATUS_MAP, INCIDENT_STATUS_MAP, ORDER_STATUS_MAP, INVOICE_STATUS_MAP } from '@/lib/utils';
 import Link from 'next/link';
 import { hasPageAccess, hasPermission } from '@/lib/rbac';
 import { useSearchParams } from 'next/navigation';
@@ -133,6 +133,11 @@ export default function DashboardPage() {
     const canViewIncidents = user ? hasPermission(user, 'incidents', 'view') : false;
     const canViewMaintenance = user ? hasPermission(user, 'maintenance', 'view') : false;
     const canViewTripCash = user ? hasPermission(user, 'driverVouchers', 'view') : false;
+    const attention = data.attention ?? emptyDashboardAttention();
+    const hasAttentionScope = canViewOrders || canViewDeliveryOrders || canViewInvoices || canViewIncidents || canViewMaintenance || canViewTripCash;
+    const isAllClear =
+        (!canViewDeliveryOrders || (attention.trips.total === 0 && attention.tripApprovals.total === 0)) &&
+        (!canViewIncidents || attention.incidentApprovals.total === 0);
 
     return (
         <div>
@@ -231,6 +236,140 @@ export default function DashboardPage() {
                     </div>
                 </Link>}
             </div>
+
+            {/* Perhatian butuh tindakan */}
+            {hasAttentionScope && (
+            <div className="chart-grid">
+                {canViewDeliveryOrders && attention.trips.total > 0 && (
+                    <div className="card">
+                        <div className="card-header">
+                            <span className="card-header-title">Trip Perlu Perhatian</span>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span className="badge badge-warning" role="status">{attention.trips.total} trip perlu perhatian</span>
+                                <Link href="/trips" className="btn btn-ghost btn-sm">
+                                    Lihat Semua <ArrowUpRight size={14} />
+                                </Link>
+                            </div>
+                        </div>
+                        <div className="card-body">
+                            <ul className="reminder-list">
+                                {attention.trips.items.map(trip => (
+                                    <li key={trip._id} className="reminder-item">
+                                        <div className="reminder-icon warning"><Truck size={16} /></div>
+                                        <div>
+                                            <Link href={`/trips/${trip._id}`} className="font-medium">{trip.doNumber || trip.masterResi || 'Trip'}</Link>
+                                            {(trip.driverName || trip.vehiclePlate) && (
+                                                <div className="text-muted text-sm">{[trip.driverName, trip.vehiclePlate].filter(Boolean).join(' · ')}</div>
+                                            )}
+                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                                                <span className={`badge badge-${DO_STATUS_MAP[trip.status || '']?.color || 'gray'}`}>{DO_STATUS_MAP[trip.status || '']?.label || trip.status}</span>
+                                                {trip.attentionKind === 'unclosed' && <span className="badge badge-info">Belum ditutup</span>}
+                                            </div>
+                                        </div>
+                                    </li>
+                                ))}
+                                {attention.trips.total > attention.trips.items.length && (
+                                    <li className="reminder-item">
+                                        <div className="text-muted text-sm">+{attention.trips.total - attention.trips.items.length} lainnya — <Link href="/trips">lihat semua di daftar trip</Link></div>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                {canViewDeliveryOrders && attention.tripApprovals.total > 0 && (
+                    <div className="card">
+                        <div className="card-header">
+                            <span className="card-header-title">Trip Menunggu Approval</span>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span className="badge badge-warning" role="status">{attention.tripApprovals.total} menunggu approval</span>
+                                <Link href="/trips?condition=driver-approval" className="btn btn-ghost btn-sm">
+                                    Lihat Semua <ArrowUpRight size={14} />
+                                </Link>
+                            </div>
+                        </div>
+                        <div className="card-body">
+                            <ul className="reminder-list">
+                                {attention.tripApprovals.items.map(trip => (
+                                    <li key={trip._id} className="reminder-item">
+                                        <div className="reminder-icon warning"><Clock size={16} /></div>
+                                        <div>
+                                            <Link href={`/trips/${trip._id}`} className="font-medium">{trip.doNumber || trip.masterResi || 'Trip'}</Link>
+                                            {trip.pendingLabel && <div className="text-sm">{trip.pendingLabel}</div>}
+                                            {(trip.pendingRequestedByName || trip.pendingRequestedAt) && (
+                                                <div className="text-muted text-sm">{[trip.pendingRequestedByName, trip.pendingRequestedAt ? formatDateTime(trip.pendingRequestedAt) : ''].filter(Boolean).join(' · ')}</div>
+                                            )}
+                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                                                <span className={`badge badge-${DO_STATUS_MAP[trip.status || '']?.color || 'gray'}`}>{DO_STATUS_MAP[trip.status || '']?.label || trip.status}</span>
+                                            </div>
+                                        </div>
+                                    </li>
+                                ))}
+                                {attention.tripApprovals.total > attention.tripApprovals.items.length && (
+                                    <li className="reminder-item">
+                                        <div className="text-muted text-sm">+{attention.tripApprovals.total - attention.tripApprovals.items.length} lainnya — <Link href="/trips?condition=driver-approval">lihat semua</Link></div>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                {canViewIncidents && attention.incidentApprovals.total > 0 && (
+                    <div className="card">
+                        <div className="card-header">
+                            <span className="card-header-title">Insiden Menunggu Approval</span>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span className="badge badge-danger" role="status">{attention.incidentApprovals.total} menunggu approval</span>
+                                <Link href="/fleet/incidents" className="btn btn-ghost btn-sm">
+                                    Lihat Semua <ArrowUpRight size={14} />
+                                </Link>
+                            </div>
+                        </div>
+                        <div className="card-body">
+                            <ul className="reminder-list">
+                                {attention.incidentApprovals.items.map(incident => (
+                                    <li key={incident._id} className="reminder-item">
+                                        <div className="reminder-icon danger"><AlertTriangle size={16} /></div>
+                                        <div>
+                                            <Link href={`/fleet/incidents/${incident._id}`} className="font-medium">{incident.incidentNumber || 'Insiden'}</Link>
+                                            {(incident.driverName || incident.vehiclePlate) && (
+                                                <div className="text-muted text-sm">{[incident.driverName, incident.vehiclePlate].filter(Boolean).join(' · ')}</div>
+                                            )}
+                                            {incident.pendingLabel && <div className="text-sm">{incident.pendingLabel}</div>}
+                                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                                                <span className={`badge badge-${INCIDENT_STATUS_MAP[incident.status || '']?.color || 'gray'}`}>{INCIDENT_STATUS_MAP[incident.status || '']?.label || incident.status}</span>
+                                            </div>
+                                        </div>
+                                    </li>
+                                ))}
+                                {attention.incidentApprovals.total > attention.incidentApprovals.items.length && (
+                                    <li className="reminder-item">
+                                        <div className="text-muted text-sm">+{attention.incidentApprovals.total - attention.incidentApprovals.items.length} lainnya — <Link href="/fleet/incidents">lihat semua</Link></div>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                {isAllClear && (
+                    <div className="card">
+                        <div className="card-body">
+                            <ul className="reminder-list">
+                                <li className="reminder-item">
+                                    <div className="reminder-icon" style={{ background: 'var(--color-success-light)', color: 'var(--color-success)' }}>
+                                        <TrendingUp size={16} />
+                                    </div>
+                                    <div>Operasional cukup aman. Tidak ada tindak lanjut mendesak saat ini.</div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                )}
+            </div>
+            )}
 
             {/* Tables */}
             <div className="chart-grid">
@@ -389,69 +528,6 @@ export default function DashboardPage() {
                         )}
                     </div>
                 </div>}
-            </div>
-
-            {/* Reminders */}
-            <div className="card mt-6">
-                <div className="card-header">
-                    <span className="card-header-title">Tindak Lanjut Hari Ini</span>
-                </div>
-                <div className="card-body">
-                    <ul className="reminder-list">
-                        {canViewOrders && data.orderStats.onHold > 0 && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon warning"><Clock size={16} /></div>
-                                <div>
-                                    <strong>{data.orderStats.onHold} order</strong> masih tertahan dan perlu keputusan lanjut
-                                </div>
-                            </li>
-                        )}
-                        {canViewInvoices && data.notaStats.unpaid > 0 && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon danger"><FileText size={16} /></div>
-                                <div>
-                        <strong>{data.notaStats.unpaid} invoice</strong> masih menunggu pelunasan{canSeeFinancialTotals ? ` (${formatCurrency(data.notaStats.totalOutstanding)})` : ''}
-                                </div>
-                            </li>
-                        )}
-                        {canViewTripCash && data.voucherStats.unsettled > 0 && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon info"><DollarSign size={16} /></div>
-                                <div>
-                                    <strong>{data.voucherStats.unsettled} trip</strong> masih menunggu penyelesaian uang jalan{canSeeFinancialTotals ? ` (${formatCurrency(data.voucherStats.totalIssued)} sudah dicairkan)` : ''}
-                                </div>
-                            </li>
-                        )}
-                        {canViewMaintenance && data.fleetStats.maintenanceDue > 0 && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon info"><Wrench size={16} /></div>
-                                <div>
-                                    <strong>{data.fleetStats.maintenanceDue} kendaraan</strong> perlu servis
-                                </div>
-                            </li>
-                        )}
-                        {canViewIncidents && data.fleetStats.openIncidents > 0 && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon danger"><AlertTriangle size={16} /></div>
-                                <div>
-                                    <strong>{data.fleetStats.openIncidents} insiden</strong> masih terbuka
-                                </div>
-                            </li>
-                        )}
-                        {(!canViewOrders || data.orderStats.onHold === 0) &&
-                            (!canViewInvoices || data.notaStats.unpaid === 0) &&
-                            (!canViewTripCash || data.voucherStats.unsettled === 0) &&
-                            (!canViewMaintenance || data.fleetStats.maintenanceDue === 0) &&
-                            (!canViewIncidents || data.fleetStats.openIncidents === 0) && (
-                            <li className="reminder-item">
-                                <div className="reminder-icon" style={{ background: 'var(--color-success-light)', color: 'var(--color-success)' }}>
-                                    <TrendingUp size={16} />
-                                </div>
-                                <div>Operasional cukup aman. Tidak ada tindak lanjut mendesak saat ini.</div>
-                            </li>
-                        )}
-                    </ul>
-                </div>
             </div>
         </div>
     );

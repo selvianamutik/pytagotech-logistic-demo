@@ -19,6 +19,11 @@ import {
     listDocumentsByFilter,
 } from '../src/lib/repositories/document-store';
 import { getCustomerOverpaymentRefundTotals, getFreightNotaPaymentTotals } from '../src/lib/customer-overpayments';
+import {
+    buildDashboardAttention,
+    type DashboardAttentionIncidentSource,
+    type DashboardAttentionTripSource,
+} from '../src/lib/dashboard-page-support';
 import { hasPageAccess, hasPermission } from '../src/lib/rbac';
 import { getDriverVoucherIssuedAmount, getReceivableNetAmount } from '../src/lib/utils';
 import { parseFormattedNumberish } from '../src/components/FormattedNumberInput.helpers';
@@ -189,6 +194,7 @@ async function buildExpectedSummary(role: InternalAuditRole): Promise<DashboardS
     const canViewInvoices = hasPermission(role, 'invoices', 'view');
     const canViewTripCash = hasPermission(role, 'driverVouchers', 'view');
     const canViewFleet = hasPermission(role, 'incidents', 'view') || hasPermission(role, 'maintenance', 'view');
+    const canViewIncidents = hasPermission(role, 'incidents', 'view');
     const canSeeBorongan = hasPermission(role, 'driverBorongans', 'view');
     const canSeeFinancialTotals = role === 'OWNER' || role === 'FINANCE';
 
@@ -200,6 +206,8 @@ async function buildExpectedSummary(role: InternalAuditRole): Promise<DashboardS
         vouchers,
         incidentRows,
         maintenanceRows,
+        attentionIncidentRows,
+        draftSettlementLines,
         recentOrderResult,
         recentNotaResult,
     ] = await Promise.all([
@@ -207,7 +215,11 @@ async function buildExpectedSummary(role: InternalAuditRole): Promise<DashboardS
             ? listDocumentFieldsByFilter<{ status?: string }>('order', ['status'], {})
             : Promise.resolve([]),
         canViewDeliveryOrders
-            ? listDocumentFieldsByFilter<{ status?: string }>('deliveryOrder', ['status'], {})
+            ? listDocumentFieldsByFilter<DashboardAttentionTripSource>('deliveryOrder', [
+                'status', 'tripClosedByAdminAt', 'doNumber', 'masterResi', 'driverName', 'vehiclePlate', 'date',
+                'pendingDriverStatus', 'pendingDriverStatusRequestedAt', 'pendingDriverStatusRequestedByName',
+                'pendingDriverRequests', 'tripEndOdometerKm', 'odometerConfirmedAt',
+            ], {})
             : Promise.resolve([]),
         canViewInvoices
             ? listDocumentFieldsByFilter<Pick<FreightNota, '_id' | 'status' | 'totalAmount' | 'totalAdjustmentAmount' | 'pph23Enabled' | 'pph23RatePercent' | 'pph23BaseMode' | 'pph23Amount' | 'netAmount'>>(
@@ -235,6 +247,15 @@ async function buildExpectedSummary(role: InternalAuditRole): Promise<DashboardS
             : Promise.resolve([]),
         canViewFleet
             ? listDocumentFieldsByFilter<Pick<Maintenance, 'status'>>('maintenance', ['status'], {})
+            : Promise.resolve([]),
+        canViewIncidents
+            ? listDocumentFieldsByFilter<DashboardAttentionIncidentSource>('incident', [
+                'incidentNumber', 'vehiclePlate', 'driverName', 'status', 'dateTime',
+                'pendingDriverResolutionRequestedAt', 'pendingDriverResolutionRequestedByName',
+            ], { status: ['OPEN', 'IN_PROGRESS', 'RESOLVED'] })
+            : Promise.resolve([]),
+        canViewIncidents
+            ? listDocumentFieldsByFilter<{ incidentRef?: string }>('incidentSettlementLine', ['incidentRef'], { status: 'DRAFT' })
             : Promise.resolve([]),
         canViewOrders
             ? listDocuments<DashboardSummary['recentOrders'][number]>('order', {
@@ -356,6 +377,11 @@ async function buildExpectedSummary(role: InternalAuditRole): Promise<DashboardS
                 maintenanceDue: maintenanceRows.filter(row => row.status === 'SCHEDULED').length,
             }
             : { openIncidents: 0, maintenanceDue: 0 },
+        attention: buildDashboardAttention(
+            canViewDeliveryOrders ? deliveryOrderRows : [],
+            canViewIncidents ? attentionIncidentRows : [],
+            canViewIncidents ? draftSettlementLines : [],
+        ),
         recentOrders: canViewOrders ? recentOrderResult.items : [],
         recentNotas: canViewInvoices ? recentNotasWithDerivedStatus : [],
     };
@@ -376,6 +402,8 @@ function assertDashboardSummary(role: InternalAuditRole, actual: DashboardSummar
     const canViewInvoices = hasPermission(role, 'invoices', 'view');
     const canViewTripCash = hasPermission(role, 'driverVouchers', 'view');
     const canViewOrders = hasPageAccess(role, 'orders');
+    const canViewDeliveryOrders = hasPermission(role, 'deliveryOrders', 'view');
+    const canViewIncidents = hasPermission(role, 'incidents', 'view');
 
     assertJsonEqual(actual.orderStats, expected.orderStats, `${role} orderStats`);
     assertJsonEqual(actual.doStats, expected.doStats, `${role} doStats`);
@@ -383,6 +411,7 @@ function assertDashboardSummary(role: InternalAuditRole, actual: DashboardSummar
     assertJsonEqual(actual.boronganStats, expected.boronganStats, `${role} boronganStats`);
     assertJsonEqual(actual.voucherStats, expected.voucherStats, `${role} voucherStats`);
     assertJsonEqual(actual.fleetStats, expected.fleetStats, `${role} fleetStats`);
+    assertJsonEqual(actual.attention, expected.attention, `${role} attention`);
     assertJsonEqual(recentIds(actual.recentOrders), recentIds(expected.recentOrders), `${role} recent order ids`);
     assertJsonEqual(
         actual.recentNotas.map(nota => ({ id: nota._id, status: nota.status })),
@@ -406,6 +435,13 @@ function assertDashboardSummary(role: InternalAuditRole, actual: DashboardSummar
     }
     if (!canViewTripCash) {
         assert(actual.voucherStats.unsettled === 0, `${role} tidak boleh melihat uang jalan dashboard`);
+    }
+    if (!canViewDeliveryOrders) {
+        assert(actual.attention.trips.total === 0, `${role} tidak boleh melihat trip perhatian dashboard`);
+        assert(actual.attention.tripApprovals.total === 0, `${role} tidak boleh melihat approval trip dashboard`);
+    }
+    if (!canViewIncidents) {
+        assert(actual.attention.incidentApprovals.total === 0, `${role} tidak boleh melihat approval insiden dashboard`);
     }
 }
 
@@ -431,10 +467,10 @@ function auditDashboardSourceGuards() {
     const dataSource = fs.readFileSync(path.join(root, 'src/lib/api/data-query-support.ts'), 'utf8');
 
     for (const [needle, label] of [
-        ["hasPageAccess(user.role, 'orders')", 'guard halaman order'],
-        ["hasPermission(user.role, 'deliveryOrders', 'view')", 'guard DO'],
-        ["hasPermission(user.role, 'invoices', 'view')", 'guard invoice'],
-        ["hasPermission(user.role, 'driverVouchers', 'view')", 'guard uang jalan'],
+        ["hasPageAccess(user, 'orders')", 'guard halaman order'],
+        ["hasPermission(user, 'trips', 'view')", 'guard DO'],
+        ["hasPermission(user, 'invoices', 'view')", 'guard invoice'],
+        ["hasPermission(user, 'driverVouchers', 'view')", 'guard uang jalan'],
         ['canSeeFinancialTotals &&', 'masking nominal finansial'],
         ['href="/orders"', 'link order'],
         ['href="/trips"', 'link DO'],
@@ -443,11 +479,14 @@ function auditDashboardSourceGuards() {
         ['href="/fleet/maintenance"', 'link maintenance'],
         ['href="/driver-vouchers"', 'link uang jalan'],
         ['data.orderStats.onHold > 0', 'reminder order tertahan'],
+        ['Trip Perlu Perhatian', 'seksi perhatian trip'],
+        ['/trips?condition=driver-approval', 'link approval trip'],
+        ['attention.incidentApprovals.total', 'badge approval insiden'],
     ] as const) {
         assertSourceContains(pageSource, needle, label);
     }
 
-    assertSourceContains(dataSource, "const canViewDeliveryOrders = hasPermission(session.role, 'deliveryOrders', 'view')", 'backend guard DO');
+    assertSourceContains(dataSource, "const canViewDeliveryOrders = hasPermission(session, 'deliveryOrders', 'view')", 'backend guard DO');
     assertSourceContains(dataSource, 'canViewDeliveryOrders', 'backend DO stats harus permission-aware');
     assertSourceContains(dataSource, "if (row.status === 'ON_HOLD') acc.onHold += 1;", 'backend order on-hold terpisah dari partial');
 }
