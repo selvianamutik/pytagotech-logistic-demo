@@ -2,33 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Truck, Eye, ClipboardList } from 'lucide-react';
+import { Search, Truck, Eye } from 'lucide-react';
 import AppPagination from '@/components/AppPagination';
 import SortableTableHeader, { type SortDirection } from '@/components/SortableTableHeader';
 import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
-import { fetchAllAdminCollectionData, fetchOptionalAdminCollectionData } from '@/lib/api/admin-client';
+import { fetchAllAdminCollectionData } from '@/lib/api/admin-client';
 import { DO_STATUS_MAP, formatDate } from '@/lib/utils';
 import { formatCargoSummary } from '@/lib/measurement';
 import type { CargoSummary, Trip } from '@/lib/trip-document-types';
-import type { DriverVoucher, Order, OrderPickupStop, OrderTripPlan } from '@/lib/types';
+import type { DriverVoucher } from '@/lib/types';
 import { normalizeTripOwnership } from '@/lib/types';
 import { hasPageAccess } from '@/lib/rbac';
 import { useApp, useToast } from '../layout';
 import Combobox from '@/components/Combobox';
 
 type TripBonStatusMeta = { label: string; color: string };
-type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'completed' | 'bon-open';
-
-type DraftTripPlanRow = {
-    id: string;
-    orderId: string;
-    masterResi: string;
-    customerName: string;
-    route: string;
-    plan: OrderTripPlan;
-};
-
-type DraftTripPlanOrder = Pick<Order, '_id' | 'masterResi' | 'customerName' | 'pickupStops' | 'tripPlans'>;
+type TripConditionFilter = '' | 'driver-approval' | 'has-hold' | 'multi-sj' | 'no-sj' | 'unfinished' | 'unclosed' | 'completed' | 'bon-open';
 
 function getTripBonStatusMeta(trip: Trip, voucher?: DriverVoucher): TripBonStatusMeta {
     if (trip.status === 'CANCELLED') {
@@ -52,57 +41,6 @@ function getTripBonStatusMeta(trip: Trip, voucher?: DriverVoucher): TripBonStatu
 
 function isMitraTrip(trip: Pick<Trip, 'tripOwnership'>) {
     return normalizeTripOwnership(trip.tripOwnership) === 'MITRA';
-}
-
-function isMitraTripPlan(plan: Pick<OrderTripPlan, 'tripOwnership'>) {
-    return normalizeTripOwnership(plan.tripOwnership) === 'MITRA';
-}
-
-function buildDraftTripPlanRows(orders: DraftTripPlanOrder[]): DraftTripPlanRow[] {
-    return orders.flatMap(order => (order.tripPlans || [])
-        .filter(plan => !plan.linkedDeliveryOrderRef)
-        .map(plan => ({
-            id: `${order._id}::${plan._key || plan.sequence}`,
-            orderId: order._id,
-            masterResi: order.masterResi || '',
-            customerName: order.customerName || '',
-            route: resolveDraftTripPlanRoute(plan, order.pickupStops || []),
-            plan,
-        })));
-}
-
-function resolveDraftTripPlanRoute(plan: OrderTripPlan, pickupStops: OrderPickupStop[]) {
-    if (plan.tripOriginArea && plan.tripDestinationArea) {
-        return `${plan.tripOriginArea} -> ${plan.tripDestinationArea}`;
-    }
-    const stopKeys = Array.isArray(plan.pickupStopKeys) ? plan.pickupStopKeys : [];
-    const stopLabels = pickupStops
-        .filter(stop => stop._key && stopKeys.includes(stop._key))
-        .map(stop => stop.pickupLabel || stop.pickupAddress)
-        .filter(Boolean);
-    if (stopLabels.length > 0) {
-        return stopLabels.join(' | ');
-    }
-    const origin = plan.tripOriginArea || '';
-    const destination = plan.tripDestinationArea || '';
-    if (origin || destination) {
-        return `${origin || '-'} -> ${destination || '-'}`;
-    }
-    return '-';
-}
-
-function matchesDraftTripPlanSearch(row: DraftTripPlanRow, search: string) {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return true;
-    return [
-        row.masterResi,
-        row.customerName,
-        `trip ${row.plan.sequence}`,
-        row.plan.vehiclePlate,
-        row.plan.driverName,
-        row.route,
-        row.plan.notes,
-    ].some(value => String(value || '').toLowerCase().includes(needle));
 }
 
 function matchesTripSearch(trip: Trip, search: string) {
@@ -137,6 +75,7 @@ function matchesTripCondition(trip: Trip, voucher: DriverVoucher | undefined, co
     if (conditionFilter === 'multi-sj') return trip.shipperReferenceCount > 1;
     if (conditionFilter === 'no-sj') return trip.shipperReferenceCount === 0;
     if (conditionFilter === 'unfinished') return !isTripFinal(trip) && trip.status !== 'CANCELLED';
+    if (conditionFilter === 'unclosed') return trip.status === 'DELIVERED' && !trip.tripClosedByAdminAt;
     if (conditionFilter === 'completed') return isTripFinal(trip);
     if (conditionFilter === 'bon-open') return trip.status !== 'CANCELLED' && voucher?.status !== 'SETTLED';
     return true;
@@ -195,30 +134,11 @@ export default function TripsPage() {
     const [page, setPage] = useState(1);
     const [dateSortDir, setDateSortDir] = useState<SortDirection | null>(null);
     const [voucherByDeliveryOrderRef, setVoucherByDeliveryOrderRef] = useState<Record<string, DriverVoucher>>({});
-    const [draftTripPlans, setDraftTripPlans] = useState<DraftTripPlanRow[]>([]);
     const canOpenSourceOrderPage = user ? hasPageAccess(user, 'orders') : false;
     const canOpenDriverVoucherPage = user ? hasPageAccess(user, 'driverVouchers') : false;
     const canOpenCustomerPage = user ? hasPageAccess(user, 'customers') : false;
     const canOpenVehiclePage = user ? hasPageAccess(user, 'vehicles') : false;
     const canOpenDriverPage = user ? hasPageAccess(user, 'drivers') : false;
-
-    const loadDraftTripPlans = useCallback(async () => {
-        if (!canOpenSourceOrderPage) {
-            setDraftTripPlans([]);
-            return;
-        }
-        const orders = await fetchOptionalAdminCollectionData<DraftTripPlanOrder>(
-            `/api/data?entity=orders&filter=${encodeURIComponent(JSON.stringify({ status: ['OPEN', 'PARTIAL'] }))}&sortPreset=work-queue`,
-            'Gagal memuat rencana trip',
-            200,
-            { silentAccessDenied: true }
-        );
-        setDraftTripPlans(buildDraftTripPlanRows(orders || []));
-    }, [canOpenSourceOrderPage]);
-
-    useEffect(() => {
-        void loadDraftTripPlans();
-    }, [loadDraftTripPlans]);
 
     const loadTrips = useCallback(async () => {
         setLoading(true);
@@ -261,6 +181,19 @@ export default function TripsPage() {
     }, [loadTrips]);
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const requestedCondition = params.get('condition');
+        if (requestedCondition === 'driver-approval' || requestedCondition === 'has-hold' || requestedCondition === 'multi-sj' || requestedCondition === 'no-sj' || requestedCondition === 'unfinished' || requestedCondition === 'unclosed' || requestedCondition === 'completed' || requestedCondition === 'bon-open') {
+            setConditionFilter(requestedCondition);
+        }
+        const requestedStatus = params.get('status');
+        if (requestedStatus && Object.prototype.hasOwnProperty.call(DO_STATUS_MAP, requestedStatus)) {
+            setStatusFilter(requestedStatus);
+        }
+    }, []);
+
+    useEffect(() => {
         setPage(1);
     }, [search, statusFilter, conditionFilter]);
 
@@ -277,10 +210,6 @@ export default function TripsPage() {
     const activeTripCount = items.filter(item => ['CREATED', 'ON_DELIVERY', 'ARRIVED'].includes(item.status)).length;
     const pendingApprovalCount = items.filter(item => item.pendingDriverStatus).length;
     const completedCount = items.filter(item => item.status === 'DELIVERED').length;
-    const visibleDraftTripPlans = useMemo(
-        () => draftTripPlans.filter(row => matchesDraftTripPlanSearch(row, search)),
-        [draftTripPlans, search]
-    );
 
     return (
         <div>
@@ -312,100 +241,7 @@ export default function TripsPage() {
                         <div className="kpi-value">{completedCount}</div>
                     </div>
                 </div>
-                <div className="kpi-card">
-                    <div className="kpi-icon warning"><ClipboardList size={20} /></div>
-                    <div className="kpi-content">
-                        <div className="kpi-label">Rencana Trip</div>
-                        <div className="kpi-value">{draftTripPlans.length}</div>
-                    </div>
-                </div>
             </div>
-
-            {draftTripPlans.length > 0 && (
-                <div className="card mb-6">
-                    <div className="card-header">
-                        <span className="card-header-title">Rencana Trip Belum Dimaterialisasi ({visibleDraftTripPlans.length}/{draftTripPlans.length})</span>
-                        <span className="text-muted text-sm">Trip baru dibuat dari rencana ini saat Input Surat Jalan di order/resi.</span>
-                    </div>
-                    <div className="card-body" style={{ display: 'grid', gap: '1rem' }}>
-                        {visibleDraftTripPlans.length === 0 ? (
-                            <div className="empty-state">
-                                <ClipboardList size={40} className="empty-state-icon" />
-                                <div className="empty-state-title">Tidak ada rencana trip yang cocok</div>
-                                <div className="empty-state-text">Ubah kata kunci pencarian.</div>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="table-wrapper table-desktop-only">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Order / Resi</th>
-                                                <th>Trip</th>
-                                                <th>Customer</th>
-                                                <th>Rute</th>
-                                                <th>Armada</th>
-                                                <th>Driver</th>
-                                                <th>Tanggal</th>
-                                                <th>Aksi</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {visibleDraftTripPlans.map(row => (
-                                                <tr key={row.id}>
-                                                    <td>
-                                                        <Link href={`/orders/${row.orderId}`} className="font-semibold" style={{ color: 'var(--color-primary)' }}>
-                                                            {row.masterResi || '-'}
-                                                        </Link>
-                                                    </td>
-                                                    <td>
-                                                        <span className="font-semibold">Trip {row.plan.sequence}</span>
-                                                        {isMitraTripPlan(row.plan) && <div><span className="badge badge-info">Mitra</span></div>}
-                                                    </td>
-                                                    <td>{row.customerName || '-'}</td>
-                                                    <td>{row.route}</td>
-                                                    <td>{isMitraTripPlan(row.plan) ? <span className="text-muted">Dikelola Mitra</span> : (row.plan.vehiclePlate || '-')}</td>
-                                                    <td>{isMitraTripPlan(row.plan) ? <span className="text-muted">Dikelola Mitra</span> : (row.plan.driverName || '-')}</td>
-                                                    <td>{formatDate(row.plan.date)}</td>
-                                                    <td>
-                                                        <Link className="table-action-btn" href={`/orders/${row.orderId}#order-surat-jalan-section`}>
-                                                            <Eye size={14} /> Input SJ
-                                                        </Link>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div className="mobile-card-list">
-                                    {visibleDraftTripPlans.map(row => (
-                                        <div className="mobile-data-card" key={row.id}>
-                                            <div className="mobile-card-header">
-                                                <span className="mobile-card-title">Trip {row.plan.sequence}</span>
-                                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                    <span className="badge badge-warning"><span className="badge-dot" /> Rencana</span>
-                                                    {isMitraTripPlan(row.plan) && <span className="badge badge-info">Mitra</span>}
-                                                </div>
-                                            </div>
-                                            <div className="mobile-card-body">
-                                                <div><strong>{row.masterResi || '-'}</strong> | {row.customerName || '-'}</div>
-                                                <div>{row.route}</div>
-                                                <div>{isMitraTripPlan(row.plan) ? 'Armada & driver: Dikelola Mitra' : `${row.plan.vehiclePlate || '-'} | ${row.plan.driverName || '-'}`}</div>
-                                                <div>{formatDate(row.plan.date)}</div>
-                                                <div>
-                                                    <Link className="table-action-btn" href={`/orders/${row.orderId}#order-surat-jalan-section`}>
-                                                        <Eye size={14} /> Input SJ
-                                                    </Link>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
 
             <div className="table-container">
                 <div className="table-toolbar">
@@ -427,7 +263,7 @@ export default function TripsPage() {
                             <Combobox
                                 value={conditionFilter}
                                 onChange={(v: string) => setConditionFilter(v as TripConditionFilter)}
-                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
+                                options={[{ value: "driver-approval", label: "Butuh approval driver" }, { value: "has-hold", label: "Ada hold" }, { value: "multi-sj", label: "Multi-SJ" }, { value: "no-sj", label: "Belum ada SJ" }, { value: "unfinished", label: "Belum final" }, { value: "unclosed", label: "Belum ditutup" }, { value: "completed", label: "Selesai" }, { value: "bon-open", label: "Bon belum selesai" }]}
                                 placeholder="Semua Kondisi"
                                 className="form-select"
                             />
@@ -487,7 +323,12 @@ export default function TripsPage() {
                                             {renderTripSuratJalanLinks(item)}
                                             <div className="text-muted text-sm" style={{ marginTop: 4 }}>{renderTripCargoSummary(item)}</div>
                                         </td>
-                                        <td><span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span></td>
+                                        <td>
+                                            <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
+                                            {item.status === 'DELIVERED' && !item.tripClosedByAdminAt && (
+                                                <div style={{ marginTop: 4 }}><span className="badge badge-info"><span className="badge-dot" /> Belum ditutup</span></div>
+                                            )}
+                                        </td>
                                         <td>
                                             {isMitraTrip(item) && !voucher ? (
                                                 <span className="text-muted">Tidak ada (Mitra)</span>
@@ -525,6 +366,7 @@ export default function TripsPage() {
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                         <span className={`badge badge-${statusMeta?.color || 'gray'}`}><span className="badge-dot" /> {statusMeta?.label || item.status}</span>
                                         {isMitraTrip(item) && <span className="badge badge-info">Mitra</span>}
+                                        {item.status === 'DELIVERED' && !item.tripClosedByAdminAt && <span className="badge badge-info"><span className="badge-dot" /> Belum ditutup</span>}
                                     </div>
                                 </div>
                                 <div className="mobile-card-body">
