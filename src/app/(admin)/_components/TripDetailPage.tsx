@@ -3798,13 +3798,22 @@ getNextDeliveryOrderStatuses(document.tripStatus || (tripData?.status || statusM
         return () => window.cancelAnimationFrame(animationFrameId);
     }, [showActualCargoFinalizationModal, activeFinalizationDropKey, restoreActualCargoModalScroll]);
 
+    // Interval refresh otomatis halaman trip (60 detik). Lokasi driver di
+    // sisi server hanya berubah saat HP driver mengirim ping (interval
+    // 15 menit), jadi polling 15 detik hanya mengulang data identik ±60x
+    // dan membebani DB tanpa manfaat. 60 detik tetap terasa live untuk
+    // perubahan status/SJ oleh admin lain, dengan beban 4x lebih ringan.
+    // Polling dilewati saat admin sedang mengedit, ada modal terbuka, atau
+    // tab disembunyikan.
+    const TRIP_DETAIL_REFRESH_INTERVAL_MS = 60000;
+
     useEffect(() => {
         const intervalId = window.setInterval(() => {
             if (editingTaripRef.current || hasOpenModal || document.hidden) {
                 return;
             }
             void loadDO();
-        }, 15000);
+        }, TRIP_DETAIL_REFRESH_INTERVAL_MS);
 
         return () => window.clearInterval(intervalId);
     }, [hasOpenModal, loadDO]);
