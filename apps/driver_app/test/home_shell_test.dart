@@ -2,6 +2,8 @@ import 'package:driver_app/src/app.dart';
 import 'package:driver_app/src/features/tracking/data/tracking_controller.dart';
 import 'package:driver_app/src/features/tracking/domain/models.dart';
 import 'package:driver_app/src/features/tracking/presentation/shell/home_shell.dart';
+import 'package:driver_app/src/features/tracking/presentation/voucher_widgets.dart';
+import 'package:driver_app/src/shared/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -121,13 +123,14 @@ void main() {
     TrackingController controller, {
     required List<DeliveryTrip> trips,
     DeliveryTrip? selectedTrip,
+    List<DriverTripVoucher> vouchers = const [],
   }) {
     controller.syncPortalData(
       trips: trips,
       plannedTrips: const [],
       customerProducts: const [],
       customerRecipients: const [],
-      driverVouchers: const [],
+      driverVouchers: vouchers,
       driverIncidents: const [],
       selectedTrip: selectedTrip,
       loading: false,
@@ -198,6 +201,55 @@ void main() {
     expect(find.textContaining('DO-FIX-0001'), findsWidgets);
     expect(find.text('Lihat Riwayat'), findsOneWidget);
     expect(find.text('Belum ada uang jalan untuk DO-FIX-0001'), findsOneWidget);
+    // Bon trip lain hanya ada di halaman Riwayat, tidak di tab ini.
+    expect(find.textContaining('Bon trip lain'), findsNothing);
+  });
+
+  testWidgets('bon terpilih di tab Uang Jalan punya Lihat rincian', (
+    tester,
+  ) async {
+    final controller = await pumpShell(tester);
+    await tester.tap(destination('Uang Jalan'));
+    await tester.pumpAndSettle();
+
+    publish(
+      controller,
+      trips: [_tripFixture],
+      selectedTrip: _tripFixture,
+      vouchers: [_voucherFixture],
+    );
+    await tester.pump();
+
+    expect(find.text('BON-FIX-0001'), findsOneWidget);
+    expect(find.text('Lihat rincian'), findsOneWidget);
+    expect(find.text('Preview / PDF'), findsOneWidget);
+  });
+
+  testWidgets('kartu bon expandable membuka dan menutup rincian', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: DriverVoucherExpandableCard(
+              voucher: _voucherFixture,
+              onPreview: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Lihat rincian'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tutup rincian'), findsOneWidget);
+
+    await tester.tap(find.text('Tutup rincian'));
+    await tester.pumpAndSettle();
+    expect(find.text('Lihat rincian'), findsOneWidget);
   });
 }
 
@@ -212,4 +264,21 @@ final _tripFixture = DeliveryTrip(
   etdLabel: '08:00',
   statusNote: '',
   allowsDirectCargoInput: false,
+);
+
+final _voucherFixture = DriverTripVoucher(
+  id: 'voucher-1',
+  bonNumber: 'BON-FIX-0001',
+  status: 'ISSUED',
+  issuedDate: '2026-10-01',
+  totalIssuedAmount: 500000,
+  initialCashGiven: 500000,
+  topUpAmount: 0,
+  operationalSpent: 0,
+  operationalBalance: 500000,
+  driverFeeAmount: 0,
+  totalClaimAmount: 0,
+  netSettlementAmount: 0,
+  doNumber: 'DO-FIX-0001',
+  deliveryOrderRef: 'trip-1',
 );

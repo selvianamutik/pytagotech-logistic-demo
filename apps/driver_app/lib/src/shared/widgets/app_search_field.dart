@@ -33,7 +33,9 @@ class AppSearchField extends StatelessWidget {
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             hintText: hintText ?? 'Cari...',
-            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            prefixIcon: const ExcludeSemantics(
+              child: Icon(Icons.search_rounded, size: 20),
+            ),
             suffixIcon: value.text.isEmpty
                 ? null
                 : IconButton(

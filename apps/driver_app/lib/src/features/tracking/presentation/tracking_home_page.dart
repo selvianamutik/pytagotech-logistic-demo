@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../app.dart';
 import '../../../shared/branding.dart';
+import '../../../shared/widgets/app_empty_state.dart';
+import '../../../shared/widgets/app_info_card.dart';
 import '../data/driver_access_service.dart';
 import '../data/delivery_order_service.dart';
 import '../data/driver_tracking_service.dart';
@@ -2290,7 +2292,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                 ),
                 const SizedBox(height: 16),
                 if (!hasBlockingNotice && accessNotice != null) ...[
-                  _ErrorBanner(
+                  AppMessageBanner(
                     icon: Icons.warning_amber_rounded,
                     message: accessNotice.message,
                     isWarning: true,
@@ -2380,7 +2382,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ),
                   const SizedBox(height: 12),
                   if (_incidentReportBlockMessage(_selectedTrip!) != null) ...[
-                    _ErrorBanner(
+                    AppMessageBanner(
                       icon: Icons.report_problem_outlined,
                       message: _incidentReportBlockMessage(_selectedTrip!)!,
                       isWarning: true,
@@ -2413,7 +2415,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                   ],
                   const SizedBox(height: 12),
                   if (_locationError != null) ...[
-                    _ErrorBanner(
+                    AppMessageBanner(
                       icon: Icons.location_off_rounded,
                       message: _locationError!,
                       onRetry: _retryAutoTracking,
@@ -2421,7 +2423,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                     const SizedBox(height: 12),
                   ],
                   if (_pingError != null) ...[
-                    _ErrorBanner(
+                    AppMessageBanner(
                       icon: Icons.cloud_off_rounded,
                       message: _pingError!,
                       isWarning: true,
@@ -2430,7 +2432,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                     const SizedBox(height: 12),
                   ],
                   if (_selectedTrip!.isAwaitingAdminApproval) ...[
-                    _ErrorBanner(
+                    AppMessageBanner(
                       icon: Icons.admin_panel_settings_rounded,
                       message: _selectedTrip!.hasBlockingAdminApproval
                           ? 'Trip ini menunggu approval admin.'
@@ -2440,7 +2442,7 @@ class _TrackingHomePageState extends State<TrackingHomePage>
                     const SizedBox(height: 12),
                   ],
                   if (_selectedTrip!.isTripClosedByAdmin) ...[
-                    const _ErrorBanner(
+                    const AppMessageBanner(
                       icon: Icons.lock_clock_rounded,
                       message:
                           'Trip sudah ditutup admin. Tambah SJ dan edit muatan dikunci sampai trip dibuka kembali.',
@@ -2610,20 +2612,30 @@ class _TrackingHomePageState extends State<TrackingHomePage>
   }
 
   Widget _buildTripPickerEntry(ColorScheme scheme) {
-    if (_loadingTrips) return const _DriverTripListSkeleton();
+    if (_loadingTrips) return const TripListSkeleton();
     if (_loadError != null) {
-      return _ErrorCard(message: _loadError!, onRetry: _loadTrips);
+      return AppMessageBanner(
+        icon: Icons.cloud_off_rounded,
+        message: _loadError!,
+        onRetry: _loadTrips,
+      );
     }
-    if (_trips.isEmpty) return const _EmptyCard();
+    if (_trips.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.inbox_rounded,
+        title: 'Tidak ada DO aktif',
+        message: 'Trip baru akan muncul di sini setelah admin menugaskannya.',
+      );
+    }
 
     final selected = _selectedTrip;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: selected == null
-              ? const Color(0xFFE2E8E4)
+              ? scheme.outline
               : scheme.primary.withValues(alpha: 0.35),
         ),
       ),
@@ -3064,110 +3076,6 @@ class _DriverCard extends StatelessWidget {
   }
 }
 
-class _DriverTripListSkeleton extends StatelessWidget {
-  const _DriverTripListSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: const [
-        _DriverTripSkeletonCard(),
-        SizedBox(height: 10),
-        _DriverTripSkeletonCard(),
-        SizedBox(height: 10),
-        _DriverTripSkeletonCard(compact: true),
-      ],
-    );
-  }
-}
-
-class _DriverTripSkeletonCard extends StatelessWidget {
-  const _DriverTripSkeletonCard({this.compact = false});
-
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                _DriverSkeletonBlock(width: 44, height: 44, radius: 14),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DriverSkeletonBlock(width: 170, height: 16, radius: 8),
-                      SizedBox(height: 8),
-                      _DriverSkeletonBlock(width: 220, height: 12, radius: 8),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 10),
-                _DriverSkeletonBlock(width: 74, height: 28, radius: 999),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const _DriverSkeletonBlock(
-              width: double.infinity,
-              height: 12,
-              radius: 8,
-            ),
-            const SizedBox(height: 8),
-            _DriverSkeletonBlock(
-              width: compact ? 180 : 260,
-              height: 12,
-              radius: 8,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DriverSkeletonBlock extends StatelessWidget {
-  const _DriverSkeletonBlock({
-    required this.width,
-    required this.height,
-    required this.radius,
-  });
-
-  final double width;
-  final double height;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: width,
-      height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          gradient: LinearGradient(
-            colors: [
-              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
-              scheme.surfaceContainerHighest.withValues(alpha: 0.38),
-              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
-            ],
-            stops: const [0.05, 0.48, 0.95],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.count});
   final String title;
@@ -3198,7 +3106,7 @@ class _SectionHeader extends StatelessWidget {
               '$count',
               style: TextStyle(
                 color: scheme.primary,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -3259,7 +3167,7 @@ class _PlannedTripCard extends StatelessWidget {
                     tripPlan.allowsDirectCargoInput ? 'SJ & Barang' : 'SJ',
                     style: TextStyle(
                       color: scheme.primary,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3359,7 +3267,7 @@ class _ManifestSummaryCard extends StatelessWidget {
                     '${shipperRefs.length} SJ',
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: 0.72),
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3521,7 +3429,7 @@ class _ManifestReferenceAccordion extends StatelessWidget {
                     pickupAddress,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: 0.58),
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -3603,7 +3511,7 @@ class _ManifestCargoItemTile extends StatelessWidget {
               item.pickupAddress!.trim(),
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: 0.58),
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -4143,7 +4051,7 @@ class _DetailTile extends StatelessWidget {
                     label,
                     style: TextStyle(
                       color: scheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -4215,7 +4123,7 @@ class _DetailNote extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: scheme.onSurface.withValues(alpha: 0.5),
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -4353,8 +4261,13 @@ class _TrackingCard extends StatelessWidget {
                             '${location!.longitude.toStringAsFixed(6)}',
                             style: TextStyle(
                               fontSize: 12,
-                              color: scheme.onSurface.withValues(alpha: 0.5),
-                              fontFamily: 'monospace',
+                              color: scheme.onSurface.withValues(alpha: 0.6),
+                              // Monospace dipertahankan untuk koordinat agar
+                              // digit sejajar, tapi pakai fontFeatures
+                              // tabular agar tetap dalam family Inter.
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
                             ),
                           ),
                         ),
@@ -4366,53 +4279,6 @@ class _TrackingCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Error banner ───────────────────────────────────────────
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({
-    required this.icon,
-    required this.message,
-    this.onRetry,
-    this.isWarning = false,
-  });
-
-  final IconData icon;
-  final String message;
-  final VoidCallback? onRetry;
-  final bool isWarning;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = isWarning ? const Color(0xFFB45309) : scheme.error;
-    final bgColor = isWarning ? const Color(0xFFFEF3C7) : scheme.errorContainer;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message, style: TextStyle(color: color, fontSize: 13)),
-          ),
-          if (onRetry != null)
-            TextButton(
-              onPressed: onRetry,
-              child: Text(
-                'Coba lagi',
-                style: TextStyle(color: color, fontSize: 13),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -4470,7 +4336,7 @@ class _StatMini extends StatelessWidget {
               color: Theme.of(
                 context,
               ).colorScheme.onSurface.withValues(alpha: 0.4),
-              fontSize: 11,
+              fontSize: 12,
             ),
           ),
           const SizedBox(height: 4),
@@ -4511,89 +4377,10 @@ class _CloseTripButton extends StatelessWidget {
   }
 }
 
-// ── Error / empty states ───────────────────────────────────
-class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.message, required this.onRetry});
-  final String message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  color: scheme.error,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Gagal memuat',
-                  style: TextStyle(
-                    color: scheme.error,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.5),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton(
-              onPressed: () => unawaited(onRetry()),
-              child: const Text('Coba lagi'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          children: [
-            Icon(
-              Icons.inbox_rounded,
-              color: scheme.onSurface.withValues(alpha: 0.2),
-              size: 36,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tidak ada DO aktif',
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.5),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ── Error / empty states: pakai widget shared ────────────────
+// AppMessageBanner (banner error/warning + "Coba lagi") dan AppEmptyState
+// (ikon + judul + pesan + aksi) menggantikan _ErrorCard/_EmptyCard di sini.
+// Lihat lib/src/shared/widgets/app_info_card.dart dan app_empty_state.dart.
 
 // ── Extension ──────────────────────────────────────────────
 extension _IterableX<T> on Iterable<T> {

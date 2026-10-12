@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/theme.dart';
+
 enum MobileFeedbackType { success, info, warning, error }
 
 void showMobileFeedback(
@@ -97,7 +99,7 @@ _MobileFeedbackConfig _mobileFeedbackConfig(
 ) {
   switch (type) {
     case MobileFeedbackType.success:
-      const accent = Color(0xFF159A63);
+      const accent = AppColors.success;
       return _MobileFeedbackConfig(
         defaultTitle: 'Berhasil',
         icon: Icons.check_circle_rounded,
@@ -111,7 +113,7 @@ _MobileFeedbackConfig _mobileFeedbackConfig(
         iconColor: accent,
       );
     case MobileFeedbackType.warning:
-      const accent = Color(0xFFB7791F);
+      const accent = AppColors.warning;
       return _MobileFeedbackConfig(
         defaultTitle: 'Perlu dicek',
         icon: Icons.warning_amber_rounded,

@@ -56,10 +56,13 @@ class VoucherTab extends StatelessWidget {
           ),
         ],
       ),
-      body: _VoucherTabBody(
-        controller: controller,
-        onOpenTrips: onOpenTrips,
-        onOpenHistory: () => _openHistory(context),
+      body: SafeArea(
+        top: false,
+        child: _VoucherTabBody(
+          controller: controller,
+          onOpenTrips: onOpenTrips,
+          onOpenHistory: () => _openHistory(context),
+        ),
       ),
       bottomNavigationBar: null,
       backgroundColor: scheme.surface,
@@ -125,10 +128,9 @@ class _VoucherTabBody extends StatelessWidget {
       );
     }
 
-    final others = controller.visibleDriverVouchers
-        .where((item) => item.id != voucher?.id)
-        .toList(growable: false);
-
+    // Semua bon milik trip lain hanya ada di halaman Riwayat; tab ini
+    // fokus ke bon trip yang dipilih supaya tidak ada dua daftar yang
+    // menampilkan data yang sama.
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
@@ -148,7 +150,10 @@ class _VoucherTabBody extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           ),
           const SizedBox(height: AppSpacing.xs),
-          DriverVoucherCard(
+          // Kartu expandable yang sama seperti di Riwayat: ringkasan bon +
+          // tombol "Lihat rincian" inline + Preview/PDF. Satu komponen untuk
+          // kedua tempat supaya perilakunya tidak divergen lagi.
+          DriverVoucherExpandableCard(
             voucher: voucher,
             onPreview: () => showDriverVoucherPreviewDialog(context, voucher),
           ),
@@ -162,22 +167,6 @@ class _VoucherTabBody extends StatelessWidget {
             label: const Text('Lihat Riwayat'),
           ),
         ),
-        if (others.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            'Bon trip lain (${others.length})',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          for (final item in others)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: DriverVoucherExpandableCard(
-                voucher: item,
-                onPreview: () => showDriverVoucherPreviewDialog(context, item),
-              ),
-            ),
-        ],
       ],
     );
   }

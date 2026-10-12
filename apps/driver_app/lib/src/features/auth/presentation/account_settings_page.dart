@@ -208,7 +208,9 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                         }) => null,
                     decoration: const InputDecoration(
                       hintText: 'Nama akun login',
-                      prefixIcon: Icon(Icons.badge_outlined),
+                      prefixIcon: ExcludeSemantics(
+                        child: Icon(Icons.badge_outlined, size: 20),
+                      ),
                     ),
                     onSubmitted: (_) {
                       if (!_savingName) _saveName();
@@ -436,19 +438,24 @@ class _PasswordField extends StatelessWidget {
           textInputAction: TextInputAction.next,
           decoration: InputDecoration(
             hintText: hint ?? 'Masukkan password',
-            prefixIcon: Icon(
-              Icons.lock_outline_rounded,
-              size: 18,
-              color: scheme.onSurface.withValues(alpha: 0.35),
-            ),
-            suffixIcon: GestureDetector(
-              onTap: onToggleVisibility,
+            prefixIcon: ExcludeSemantics(
               child: Icon(
+                Icons.lock_outline_rounded,
+                size: 20,
+                color: scheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ),
+            suffixIcon: IconButton(
+              tooltip: obscureText
+                  ? 'Tampilkan password'
+                  : 'Sembunyikan password',
+              onPressed: onToggleVisibility,
+              icon: Icon(
                 obscureText
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
-                size: 18,
-                color: scheme.onSurface.withValues(alpha: 0.35),
+                size: 20,
+                color: scheme.onSurface.withValues(alpha: 0.55),
               ),
             ),
           ),
@@ -489,9 +496,9 @@ class _ReadOnlyRow extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: scheme.onSurface.withValues(alpha: 0.5),
+                    color: scheme.onSurface.withValues(alpha: 0.55),
                   ),
                 ),
                 const SizedBox(height: 2),

@@ -25,7 +25,7 @@ class AppInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -34,10 +34,12 @@ class AppInfoCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 16,
-                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ExcludeSemantics(
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
               ],
@@ -46,7 +48,7 @@ class AppInfoCard extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 13.5,
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -85,20 +87,20 @@ class AppMessageBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = isWarning ? const Color(0xFFB45309) : scheme.error;
+    final color = isWarning ? AppColors.warning : scheme.error;
     final background = isWarning
-        ? const Color(0xFFFEF3C7)
+        ? AppColors.warningSoft
         : scheme.errorContainer;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 16),
+          ExcludeSemantics(child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(message, style: TextStyle(color: color, fontSize: 13)),
@@ -106,6 +108,11 @@ class AppMessageBanner extends StatelessWidget {
           if (onRetry != null)
             TextButton(
               onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: color,
+                minimumSize: const Size(0, 44),
+                tapTargetSize: MaterialTapTargetSize.padded,
+              ),
               child: Text(
                 'Coba lagi',
                 style: TextStyle(color: color, fontSize: 13),

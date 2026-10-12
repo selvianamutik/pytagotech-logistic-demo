@@ -31,10 +31,12 @@ class AppEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 38,
-              color: scheme.onSurface.withValues(alpha: 0.28),
+            ExcludeSemantics(
+              child: Icon(
+                icon,
+                size: 40,
+                color: scheme.onSurface.withValues(alpha: 0.28),
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -47,8 +49,9 @@ class AppEmptyState extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.58),
-                fontSize: 12.5,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+                fontSize: 13,
+                height: 1.45,
               ),
             ),
             if (actionLabel != null && onAction != null) ...[

@@ -36,3 +36,19 @@ String formatThousands(num value) {
   }
   return buffer.toString();
 }
+
+/// Format tanggal server (ISO `YYYY-MM-DD`, atau datetime ISO) ke
+/// `DD-MM-YYYY` untuk driver Indonesia.
+///
+/// Sengaja tanpa `intl`: satu format, tidak butuh locale setup. Kalau input
+/// kosong atau tidak bisa diparse, kembalikan '-' agar UI tidak menampilkan
+/// mentah yang membingungkan.
+String formatDdMmYyyy(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return '-';
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) return text;
+  final day = parsed.day.toString().padLeft(2, '0');
+  final month = parsed.month.toString().padLeft(2, '0');
+  return '$day-$month-${parsed.year}';
+}

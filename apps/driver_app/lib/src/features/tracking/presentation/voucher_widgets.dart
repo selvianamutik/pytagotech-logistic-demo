@@ -564,7 +564,7 @@ class DriverVoucherCardContent extends StatelessWidget {
                   style: TextStyle(
                     color: scheme.secondary,
                     fontWeight: FontWeight.w800,
-                    fontSize: 11,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -660,30 +660,40 @@ class _DriverVoucherExpandableCardState
             onPreview: widget.onPreview,
           ),
           Divider(height: 1, color: scheme.outlineVariant),
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _expanded ? 'Tutup rincian' : 'Lihat rincian',
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+          Semantics(
+            button: true,
+            excludeSemantics: true,
+            label: _expanded ? 'Tutup rincian' : 'Lihat rincian',
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ExcludeSemantics(
+                      child: Icon(
+                        _expanded
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        size: 18,
+                        color: scheme.primary,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(
+                      _expanded ? 'Tutup rincian' : 'Lihat rincian',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -819,8 +829,8 @@ class _VoucherInfoGrid extends StatelessWidget {
                         Text(
                           item.label,
                           style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: 0.58),
-                            fontSize: 11,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -840,8 +850,8 @@ class _VoucherInfoGrid extends StatelessWidget {
                           Text(
                             item.caption!,
                             style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.55),
-                              fontSize: 11,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -917,6 +927,7 @@ class DriverVoucherPreviewDialog extends StatelessWidget {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Tutup pratinjau',
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),

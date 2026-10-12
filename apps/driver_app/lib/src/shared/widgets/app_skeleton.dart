@@ -26,7 +26,21 @@ class _AppSkeletonBlockState extends State<AppSkeletonBlock>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Hormati pengaturan "kurangi animasi" di OS: tampilkan blok statis
+    // alih-alih berdenyut. Tidak bisa di initState karena MediaQuery adalah
+    // inherited widget.
+    final disabled = MediaQuery.disableAnimationsOf(context);
+    if (disabled) {
+      _controller.value = 0.5;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {

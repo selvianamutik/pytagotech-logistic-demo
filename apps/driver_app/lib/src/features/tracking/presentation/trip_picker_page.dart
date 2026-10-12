@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/models.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import 'trip_widgets.dart';
 
 /// Jumlah trip yang ditampilkan sekaligus. Diubah lewat [initialLimit].
@@ -124,13 +125,13 @@ class _TripPickerPageState extends State<TripPickerPage> {
             const SizedBox(height: 10),
             Expanded(
               child: widget.trips.isEmpty
-                  ? const _EmptyState(
+                  ? const AppEmptyState(
                       icon: Icons.local_shipping_outlined,
                       title: 'Belum ada trip',
                       message: 'Tidak ada trip yang bisa dipilih saat ini.',
                     )
                   : filtered.isEmpty
-                  ? _EmptyState(
+                  ? AppEmptyState(
                       icon: Icons.filter_alt_off_rounded,
                       title: 'Tidak ada trip yang cocok',
                       message:
@@ -182,10 +183,13 @@ class _TripPickerPageState extends State<TripPickerPage> {
       onChanged: (_) => setState(_resetPaging),
       decoration: InputDecoration(
         hintText: 'Cari no. DO, supir, kendaraan, atau rute',
-        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        prefixIcon: const ExcludeSemantics(
+          child: Icon(Icons.search_rounded, size: 20),
+        ),
         suffixIcon: _searchController.text.isEmpty
             ? null
             : IconButton(
+                tooltip: 'Bersihkan pencarian',
                 icon: const Icon(Icons.clear_rounded, size: 20),
                 onPressed: () => setState(() {
                   _searchController.clear();
@@ -297,65 +301,6 @@ class _LoadMoreFooter extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 38,
-              color: scheme.onSurface.withValues(alpha: 0.28),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.58),
-                fontSize: 12.5,
-              ),
-            ),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: onAction,
-                icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
-                label: Text(actionLabel!),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }
