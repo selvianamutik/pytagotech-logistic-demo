@@ -35,6 +35,8 @@ import type {
     DriverVoucher,
     Expense,
     FreightNota,
+    Incident,
+    IncidentSettlementLine,
     Employee,
     EmployeeAttendanceRecord,
     Payment,
@@ -44,6 +46,11 @@ import type {
     Vehicle,
 } from '@/lib/types';
 import { getDriverVoucherFinancialSummary, getDriverVoucherIssuedAmount, getReceivableNetAmount } from '@/lib/utils';
+import {
+    buildDashboardAttention,
+    type DashboardAttention,
+    type DashboardAttentionTripSource,
+} from '@/lib/dashboard-page-support';
 
 function parseWholeMoneyLike(value: unknown) {
     return Math.max(parseFormattedNumberish(value ?? 0, { maxFractionDigits: 0 }), 0);
@@ -1934,6 +1941,7 @@ export type DashboardSummary = {
     boronganStats: { unpaid: number; totalOutstanding: number };
     voucherStats: { unsettled: number; totalIssued: number };
     fleetStats: { openIncidents: number; maintenanceDue: number };
+    attention: DashboardAttention;
     recentOrders: Array<{ _id: string; masterResi?: string; customerName?: string; status?: string; createdAt?: string }>;
     recentNotas: Array<{
         _id: string;
@@ -1962,14 +1970,17 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
     const canViewInvoices = hasPermission(session, 'invoices', 'view');
     const canViewTripCash = hasPermission(session, 'driverVouchers', 'view');
     const canViewFleet = hasPermission(session, 'incidents', 'view') || hasPermission(session, 'maintenance', 'view');
+    const canViewIncidents = hasPermission(session, 'incidents', 'view');
     const canSeeBorongan = hasPermission(session, 'driverBorongans', 'view');
     const [
         orderStats,
-        doStats,
+        deliveryOrders,
         unpaidNotas,
         borongans,
         vouchers,
         fleetStats,
+        attentionIncidents,
+        draftSettlementLines,
         recentOrders,
         recentNotas,
     ] = await Promise.all([
@@ -1988,12 +1999,12 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
                 ))
             : Promise.resolve({ total: 0, open: 0, partial: 0, complete: 0, onHold: 0 }),
         canViewDeliveryOrders
-            ? listDocumentFieldsByFilter<{ status?: string }>('deliveryOrder', ['status'], {})
-                .then(rows => ({
-                    total: rows.length,
-                    onDelivery: rows.filter(row => row.status === 'ON_DELIVERY').length,
-                }))
-            : Promise.resolve({ total: 0, onDelivery: 0 }),
+            ? listDocumentFieldsByFilter<DashboardAttentionTripSource>('deliveryOrder', [
+                'status', 'tripClosedByAdminAt', 'doNumber', 'masterResi', 'driverName', 'vehiclePlate', 'date',
+                'pendingDriverStatus', 'pendingDriverStatusRequestedAt', 'pendingDriverStatusRequestedByName',
+                'pendingDriverRequests', 'tripEndOdometerKm', 'odometerConfirmedAt',
+            ], {})
+            : Promise.resolve([]),
         canViewInvoices
             ? listDocumentFieldsByFilter<Pick<FreightNota, '_id' | 'status' | 'totalAmount' | 'totalAdjustmentAmount' | 'pph23Enabled' | 'pph23RatePercent' | 'pph23BaseMode' | 'pph23Amount' | 'netAmount'>>(
                 'freightNota',
@@ -2024,6 +2035,15 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
                 maintenanceDue,
             }))
             : Promise.resolve({ openIncidents: 0, maintenanceDue: 0 }),
+        canViewIncidents
+            ? listDocumentFieldsByFilter<Pick<Incident, '_id' | 'incidentNumber' | 'vehiclePlate' | 'driverName' | 'status' | 'dateTime' | 'pendingDriverResolutionRequestedAt' | 'pendingDriverResolutionRequestedByName'>>('incident', [
+                'incidentNumber', 'vehiclePlate', 'driverName', 'status', 'dateTime',
+                'pendingDriverResolutionRequestedAt', 'pendingDriverResolutionRequestedByName',
+            ], { status: ['OPEN', 'IN_PROGRESS', 'RESOLVED'] })
+            : Promise.resolve([]),
+        canViewIncidents
+            ? listDocumentFieldsByFilter<Pick<IncidentSettlementLine, 'incidentRef' | 'status'>>('incidentSettlementLine', ['incidentRef', 'status'], { status: 'DRAFT' })
+            : Promise.resolve([]),
         canViewOrders
             ? listDocuments<DashboardSummary['recentOrders'][number]>('order', {
                 page: 1,
@@ -2117,6 +2137,16 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
     );
     const canSeeFinancialTotals = hasPermission(session, 'reports', 'view');
 
+    const doStats = {
+        total: deliveryOrders.length,
+        onDelivery: deliveryOrders.filter(row => row.status === 'ON_DELIVERY').length,
+    };
+
+    // Trips needing attention: unfinished/unclosed work plus anything awaiting
+    // approval. Approval trips are excluded from the open bucket so the two
+    // trip cards never double-count the same trip.
+    const attention: DashboardAttention = buildDashboardAttention(deliveryOrders, attentionIncidents, draftSettlementLines);
+
     const summary = {
         orderStats,
         doStats,
@@ -2133,6 +2163,7 @@ export async function getDashboardSummary(session: ApiSession): Promise<Dashboar
             totalIssued: canViewTripCash && canSeeFinancialTotals ? voucherIssued : 0,
         },
         fleetStats,
+        attention,
         recentOrders,
         recentNotas: recentNotasWithDerivedStatus,
     };

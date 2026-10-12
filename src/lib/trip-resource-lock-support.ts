@@ -66,10 +66,13 @@ export type TripResourceAssignment = {
 type DeliveryOrderAssignment = DeliveryOrderResourceLock & { tripNumber?: string };
 
 function isOpenDeliveryOrder(order: DeliveryOrderAssignment) {
-    if (!order || order.status === 'CANCELLED' || order.tripClosedByAdminAt) {
+    if (!order || order.tripClosedByAdminAt) {
         return false;
     }
-    return true;
+    // Badges only reflect work still in progress: delivered, cancelled,
+    // and admin-closed trips are intentionally hidden. Unknown future
+    // statuses stay visible so new in-progress work is never hidden.
+    return order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
 }
 
 function pushAssignment(

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../data/delivery_order_service.dart';
 import '../domain/models.dart';
+import '../../../shared/widgets/app_info_card.dart';
 import 'mobile_action_feedback.dart';
 import 'mobile_delivery_form_utils.dart';
 import 'mobile_input_visibility.dart';
@@ -561,10 +562,7 @@ class _DeliveryManifestPageState extends State<DeliveryManifestPage>
           const CustomerProductOption(id: '', customerRef: '', name: ''),
     );
     if (selectedProduct.id.isEmpty) {
-      return currentItem.copyWith(
-        customerProductRef: '',
-        isManualInput: true,
-      );
+      return currentItem.copyWith(customerProductRef: '', isManualInput: true);
     }
 
     final currentQty = currentItem.qtyKoliValue;
@@ -1306,7 +1304,8 @@ class _ManifestItemDraft {
       sourceCargoItemId: item.id,
       customerProductRef: (item.customerProductRef ?? '').trim(),
       description: item.description,
-      isManualInput: (item.customerProductRef ?? '').trim().isEmpty &&
+      isManualInput:
+          (item.customerProductRef ?? '').trim().isEmpty &&
           item.description.trim().isNotEmpty,
       qtyKoli: _formatDraftNumber(item.qtyKoli, fractionDigits: 0),
       weightInputValue: _formatDraftNumber(
@@ -1637,7 +1636,7 @@ class _ManifestGroupEditorCard extends StatelessWidget {
                 label: const Text('Tambah Barang di SJ Ini'),
               ),
             ] else
-              _InfoCard(
+              AppInfoCard(
                 title: 'Barang mengikuti order',
                 message:
                     'Untuk trip ini, driver cukup mengisi nomor SJ. Barang utama tetap mengikuti order/resi yang sudah ditetapkan admin.',
@@ -2085,8 +2084,9 @@ class _CustomerProductPickerSheetState
                           trailing: selectedId.isEmpty
                               ? const Icon(Icons.check_rounded)
                               : null,
-                          onTap: () =>
-                              Navigator.of(context).pop(_manualCustomerProductValue),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).pop(_manualCustomerProductValue),
                         );
                       }
 
@@ -2488,17 +2488,6 @@ class _ManifestItemCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                'Barang',
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
           _CustomerProductSelectorField(
             key: ValueKey('productSelector-${item.id}'),
             value: item.customerProductRef,
@@ -2709,45 +2698,6 @@ class _SyncedTextFormFieldState extends State<_SyncedTextFormField> {
       scrollPadding: mobileInputScrollPadding,
       validator: widget.validator,
       onChanged: widget.onChanged,
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            style: TextStyle(
-              color: scheme.onSurface.withValues(alpha: 0.7),
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

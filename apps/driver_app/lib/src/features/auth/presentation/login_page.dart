@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app.dart';
 import '../../../shared/branding.dart';
+import '../../../shared/widgets/app_info_card.dart';
 import '../data/driver_auth_service.dart';
 
 class LoginPage extends StatefulWidget {
@@ -144,10 +145,14 @@ class _LoginPageState extends State<LoginPage> {
                             textInputAction: TextInputAction.next,
                             decoration: InputDecoration(
                               hintText: 'driver@perusahaan.com',
-                              prefixIcon: Icon(
-                                Icons.alternate_email_rounded,
-                                size: 18,
-                                color: scheme.onSurface.withValues(alpha: 0.35),
+                              prefixIcon: ExcludeSemantics(
+                                child: Icon(
+                                  Icons.alternate_email_rounded,
+                                  size: 20,
+                                  color: scheme.onSurface.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                ),
                               ),
                             ),
                             validator: (value) {
@@ -168,22 +173,32 @@ class _LoginPageState extends State<LoginPage> {
                             textInputAction: TextInputAction.done,
                             decoration: InputDecoration(
                               hintText: 'Masukkan password',
-                              prefixIcon: Icon(
-                                Icons.lock_outline_rounded,
-                                size: 18,
-                                color: scheme.onSurface.withValues(alpha: 0.35),
+                              prefixIcon: ExcludeSemantics(
+                                child: Icon(
+                                  Icons.lock_outline_rounded,
+                                  size: 20,
+                                  color: scheme.onSurface.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                ),
                               ),
-                              suffixIcon: GestureDetector(
-                                onTap: () => setState(
+                              // IconButton (bukan GestureDetector) supaya area
+                              // sentuh 48dp, ada ripple, dan terbaca screen
+                              // reader dengan label yang jelas.
+                              suffixIcon: IconButton(
+                                tooltip: _obscurePassword
+                                    ? 'Tampilkan password'
+                                    : 'Sembunyikan password',
+                                onPressed: () => setState(
                                   () => _obscurePassword = !_obscurePassword,
                                 ),
-                                child: Icon(
+                                icon: Icon(
                                   _obscurePassword
                                       ? Icons.visibility_off_outlined
                                       : Icons.visibility_outlined,
-                                  size: 18,
+                                  size: 20,
                                   color: scheme.onSurface.withValues(
-                                    alpha: 0.35,
+                                    alpha: 0.55,
                                   ),
                                 ),
                               ),
@@ -202,35 +217,9 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           if (_errorMessage != null) ...[
                             const SizedBox(height: 14),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.errorContainer,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.error_outline_rounded,
-                                    color: scheme.error,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: TextStyle(
-                                        color: scheme.error,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            AppMessageBanner(
+                              icon: Icons.error_outline_rounded,
+                              message: _errorMessage!,
                             ),
                           ],
                           SizedBox(height: veryCompact ? 18 : 24),
