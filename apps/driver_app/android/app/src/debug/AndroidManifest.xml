@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Hanya untuk build debug. Diperlukan saat API_BASE_URL menunjuk ke
+         server dev lokal lewat HTTP (mis. http://192.168.x.x:3000) karena
+         Android memblokir cleartext HTTP secara default sejak API 28.
+         Manifest main tidak mengizinkan cleartext, jadi build release
+         tetap mewajibkan HTTPS. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

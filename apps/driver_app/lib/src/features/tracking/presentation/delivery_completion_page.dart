@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../data/delivery_order_service.dart';
 import '../domain/models.dart';
+import '../../../shared/widgets/app_info_card.dart';
 import 'mobile_action_feedback.dart';
 import 'mobile_delivery_form_utils.dart';
 import 'mobile_input_visibility.dart';
@@ -977,7 +978,7 @@ class _DeliveryCompletionPageState extends State<DeliveryCompletionPage>
                     step: _currentStep,
                     children: switch (_currentStep) {
                       _CompletionStep.setup => [
-                        _InfoCard(
+                        AppInfoCard(
                           title: 'Realisasi trip',
                           message: hasMultiTargetDefault
                               ? 'Trip ini punya beberapa target SJ. Driver perlu isi realisasi muatan dan alokasi titik drop dengan benar.'
@@ -1045,7 +1046,7 @@ class _DeliveryCompletionPageState extends State<DeliveryCompletionPage>
                         ),
                       ],
                       _CompletionStep.cargo => [
-                        _InfoCard(
+                        AppInfoCard(
                           title: 'Aktual Barang SJ',
                           message:
                               'Pilih titik drop, lalu tentukan aktual muatan per SJ dan barang di titik tersebut.',
@@ -1082,7 +1083,7 @@ class _DeliveryCompletionPageState extends State<DeliveryCompletionPage>
                           ),
                       ],
                       _CompletionStep.review => [
-                        _InfoCard(
+                        AppInfoCard(
                           title: 'Review & Kirim',
                           message:
                               'Cek ringkasan aktual barang dan titik drop sebelum diajukan ke admin.',
@@ -1300,7 +1301,7 @@ class _CompletionStepChip extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: foreground.withValues(alpha: 0.64),
-                            fontSize: 10.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -3381,44 +3382,6 @@ String _shipperReferenceSubtitle(
     if (pending) 'Menunggu approval admin',
   ].where((value) => value.trim().isNotEmpty && value.trim() != '-');
   return parts.isEmpty ? 'Belum ada tujuan' : parts.join(' | ');
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.65),
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _DropWorkflowCard extends StatelessWidget {

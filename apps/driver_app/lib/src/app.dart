@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'features/auth/data/driver_session_store.dart';
 import 'features/auth/presentation/login_page.dart';
 import 'features/tracking/data/driver_access_service.dart';
-import 'features/tracking/presentation/tracking_home_page.dart';
+import 'features/tracking/presentation/shell/home_shell.dart';
 import 'shared/branding.dart';
 import 'shared/theme.dart';
 
@@ -137,7 +137,10 @@ class _DriverTrackingAppState extends State<DriverTrackingApp> {
           ? const _DriverSessionRestorePage()
           : _session == null
           ? LoginPage(onLogin: _handleLogin)
-          : TrackingHomePage(
+          : HomeShell(
+              // Key ikut driver, bukan token: refresh sesi shouldn't mereset
+              // tab yang sedang dibuka.
+              key: ValueKey(_session!.driverId),
               session: _session!,
               onSessionRefreshed: _handleSessionRefreshed,
               onLogout: _handleLogout,

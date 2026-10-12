@@ -99,3 +99,6 @@ test/playwright/*/error/
 test/playwright/*/last-run.json
 test-results/
 playwright-report/
+
+# Playwright MCP session dumps (console logs, screenshots, snapshots)
+.playwright-mcp/

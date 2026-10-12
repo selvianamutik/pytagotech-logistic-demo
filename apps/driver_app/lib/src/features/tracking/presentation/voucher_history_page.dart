@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/format.dart';
 import '../domain/models.dart';
 import 'voucher_widgets.dart';
 
@@ -152,38 +153,44 @@ class _VoucherHistoryPageState extends State<VoucherHistoryPage> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Riwayat Bon Uang Jalan')),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildFilters(scheme),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Cari no. bon atau no. DO',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 20),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {});
-                        },
-                      ),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildFilters(scheme),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Cari no. bon atau no. DO',
+                  prefixIcon: const ExcludeSemantics(
+                    child: Icon(Icons.search_rounded, size: 20),
+                  ),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Bersihkan pencarian',
+                          icon: const Icon(Icons.clear_rounded, size: 20),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                        ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
-          ),
-          Expanded(child: _buildBody(scheme)),
-        ],
+            Expanded(child: _buildBody(scheme)),
+          ],
+        ),
       ),
     );
   }
@@ -247,6 +254,11 @@ class _VoucherHistoryPageState extends State<VoucherHistoryPage> {
     }
 
     final children = <Widget>[];
+    if (_refreshError != null) {
+      children.add(
+        _StaleRefreshBanner(message: _refreshError!, onRetry: _refresh),
+      );
+    }
     for (final group in orderedGroups) {
       final monthTotal = group.value.fold<double>(
         0,
@@ -263,7 +275,7 @@ class _VoucherHistoryPageState extends State<VoucherHistoryPage> {
         group.value.map(
           (voucher) => Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: DriverVoucherCard(
+            child: DriverVoucherExpandableCard(
               voucher: voucher,
               onPreview: () => showDriverVoucherPreviewDialog(context, voucher),
             ),
@@ -325,6 +337,72 @@ class _VoucherHistoryPageState extends State<VoucherHistoryPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StaleRefreshBanner extends StatelessWidget {
+  const _StaleRefreshBanner({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.error.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.cloud_off_rounded, size: 18, color: scheme.error),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Data di bawah belum termuat terbaru.',
+                  style: TextStyle(
+                    color: scheme.error,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Text(
+              message,
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.62),
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Muat ulang'),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

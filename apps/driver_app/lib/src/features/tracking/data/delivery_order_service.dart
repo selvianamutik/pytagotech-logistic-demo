@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../shared/config.dart';
+import '../../../shared/format.dart';
 import '../domain/models.dart';
 
 class DeliveryOrderService {
@@ -528,7 +529,9 @@ class DeliveryOrderService {
           ? json['customerName'] as String
           : 'Tanpa customer',
       status: mappedStatus,
-      etdLabel: date?.isNotEmpty == true ? 'Tanggal DO $date' : 'Tanggal DO -',
+      // Label tanggal tanpa awalan "Tanggal DO": tile di halaman Trip sudah
+      // berlabel "Tanggal", dan format mengikuti kebiasaan Indonesia.
+      etdLabel: formatDdMmYyyy(date),
       statusNote: defaultTripStatusNote(
         mappedStatus,
         pendingDriverStatus: (json['pendingDriverStatus'] as String?)?.trim(),
