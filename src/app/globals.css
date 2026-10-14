@@ -284,14 +284,108 @@ a:hover {
   margin-bottom: var(--space-2);
 }
 
+.sidebar-group--active {
+  /* grup berisi route aktif tetap terlihat berbeda saat header diciutkan */
+}
+
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: calc(100% - var(--space-2));
+  margin: 0 var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-1) var(--space-4);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.sidebar-group-header:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.sidebar-group-header:hover .sidebar-group-label,
+.sidebar-group-header:hover .sidebar-group-chevron {
+  color: var(--sidebar-text-hover);
+}
+
+.sidebar-group-header:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.sidebar-group-header--active .sidebar-group-label {
+  color: var(--sidebar-text);
+}
+
 .sidebar-group-label {
-  padding: var(--space-3) var(--space-5) var(--space-1);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
   font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--sidebar-group-text);
   white-space: nowrap;
+}
+
+.sidebar-group-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-group-text);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-group-header[aria-expanded="true"] .sidebar-group-chevron {
+  color: var(--sidebar-text-hover);
+}
+
+.sidebar-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  max-height: 1000px;
+  opacity: 1;
+  transition: max-height 0.32s ease, opacity 0.22s ease;
+}
+
+.sidebar-group--collapsed .sidebar-group-items {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Sidebar diciutkan: header disembunyikan, semua ikon item tetap tampil */
+.sidebar.collapsed .sidebar-group-header {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-group-items,
+.sidebar.collapsed .sidebar-group--collapsed .sidebar-group-items {
+  max-height: none;
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-group-items {
+    transition: none;
+  }
 }
 
 .sidebar-item {
