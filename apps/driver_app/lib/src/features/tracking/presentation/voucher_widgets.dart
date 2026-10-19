@@ -124,9 +124,9 @@ Future<Uint8List> _buildDriverVoucherPdf(DriverTripVoucher voucher) async {
           children: [
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'PT Gading Mas Surya',
+                      children: [
+                        pw.Text(
+                          'PT. Logistik Demo',
                   style: pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,

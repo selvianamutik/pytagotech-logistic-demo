@@ -35,12 +35,12 @@ async function listRows<T>(path: string, params: Record<string, string>): Promis
 const PERIOD = '202610';
 const CUSTOMER_ID = 'cust-seed-inv-001';
 const CUSTOMER_NAME = 'PT Negeri Distribusi Test';
-const CUSTOMER_PICKUP = 'Gudang PT Gading Mas Surya - Tulangan, Sidoarjo';
+const CUSTOMER_PICKUP = 'Gudang PT Logistik Demo - Tulangan, Sidoarjo';
 const ISSUER = {
-    issuerCompanyName: 'PT Gading Mas Surya',
-    issuerCompanyEmail: 'gadingmassurya@gmail.com',
-    issuerCompanyPhone: '(031) 8853000',
-    issuerCompanyAddress: 'JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA',
+    issuerCompanyName: 'PT Logistik Demo',
+    issuerCompanyEmail: 'logistikdemo@email.com',
+    issuerCompanyPhone: '08123456789',
+    issuerCompanyAddress: 'JL. LOGISTIK DEMO INDONESIA',
     issuerCompanyLogoUrl: '/logo.png',
 };
 

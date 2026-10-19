@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "PT Gading Mas Surya" "\0"
-            VALUE "FileDescription", "GMS Driver" "\0"
+            VALUE "CompanyName", "PT. Logistik Demo" "\0"
+            VALUE "FileDescription", "Logistik Demo Driver" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "driver_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 PT Gading Mas Surya. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 PT. Logistik Demo. All rights reserved." "\0"
             VALUE "OriginalFilename", "driver_app.exe" "\0"
-            VALUE "ProductName", "GMS Driver" "\0"
+            VALUE "ProductName", "Logistik Demo Driver" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

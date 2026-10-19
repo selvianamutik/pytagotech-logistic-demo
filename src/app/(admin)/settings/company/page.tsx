@@ -215,7 +215,7 @@ export default function CompanyPage() {
                             <label className="form-label">Primary</label>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
                                 {[
-                                    { color: '#0f766e', name: 'GMS Hijau' },
+                                    { color: '#0f766e', name: 'Hijau Teal' },
                                     { color: '#059669', name: 'Hijau' },
                                     { color: '#0891b2', name: 'Cyan' },
                                     { color: '#2563eb', name: 'Biru' },
@@ -242,7 +242,7 @@ export default function CompanyPage() {
                             <label className="form-label">Secondary</label>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
                                 {[
-                                    { color: '#dc2626', name: 'GMS Merah' },
+                                    { color: '#dc2626', name: 'Merah' },
                                     { color: '#b91c1c', name: 'Merah Gelap' },
                                     { color: '#d97706', name: 'Orange' },
                                     { color: '#ca8a04', name: 'Kuning' },

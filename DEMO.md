@@ -1,4 +1,4 @@
-# DEMO PT Gading Mas Surya
+# DEMO PT Logistik Demo
 
 Panduan singkat untuk presentasi demo aplikasi logistik.
 

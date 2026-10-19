@@ -386,7 +386,7 @@ export async function exportToExcel(
 
     const title = options.title || sheetName;
     if (options.showCompanyHeader !== false) {
-        addMergedRow(company?.name || 'PT Gading Mas Surya');
+        addMergedRow(company?.name || 'PT Logistik Demo');
     }
     addMergedRow(title);
     if (options.subtitle) addMergedRow(options.subtitle);
@@ -449,8 +449,8 @@ export async function exportToExcel(
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = company?.name || 'PT Gading Mas Surya';
-    workbook.company = company?.name || 'PT Gading Mas Surya';
+    workbook.creator = company?.name || 'PT Logistik Demo';
+    workbook.company = company?.name || 'PT Logistik Demo';
     workbook.created = new Date();
     workbook.modified = new Date();
     workbook.subject = options.subtitle || sheetName;
@@ -522,8 +522,8 @@ export async function exportEmployeeAttendanceReport(input: {
     const anchorLabel = input.filters.anchorDate ? fmtDate(input.filters.anchorDate) : fmtDate(getBusinessDateValue());
     const recapEmployeeRows = buildEmployeeAttendanceRecapRows(input.records, input.employees || []);
 
-    workbook.creator = company?.name || 'PT Gading Mas Surya';
-    workbook.company = company?.name || 'PT Gading Mas Surya';
+    workbook.creator = company?.name || 'PT Logistik Demo';
+    workbook.company = company?.name || 'PT Logistik Demo';
     workbook.created = new Date();
     workbook.modified = new Date();
     workbook.subject = `Laporan Absensi ${input.summary.periodLabel}`;
@@ -538,7 +538,7 @@ export async function exportEmployeeAttendanceReport(input: {
     ];
 
     summarySheet.mergeCells('A1:D1');
-    summarySheet.getCell('A1').value = company?.name || 'PT Gading Mas Surya';
+    summarySheet.getCell('A1').value = company?.name || 'PT Logistik Demo';
     summarySheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF111827' } };
 
     summarySheet.mergeCells('A2:D2');

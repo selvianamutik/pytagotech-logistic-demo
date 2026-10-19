@@ -10,7 +10,7 @@
     "date": "2026-04-01",
     "noSJ": "SJ-202604-0001",
     "doNumber": "SJ-202604-0001",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Pelabuhan No. 5, Surabaya",
     "barang": "Beras premium 25 kg",
     "collie": 4,
@@ -31,7 +31,7 @@
     "date": "2026-04-01",
     "noSJ": "SJ-202604-0001",
     "doNumber": "SJ-202604-0001",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Pelabuhan No. 5, Surabaya",
     "barang": "Minyak goreng kemasan",
     "collie": 6,
@@ -46,12 +46,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-02T08:00:00.000+00:00",
     "_updatedAt": "2026-04-02T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0001",
     "notaDisplayNumber": "26/IV/3/001",
     "customerRef": "cust-001",
@@ -72,13 +72,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -97,7 +97,7 @@
     "date": "2026-04-04",
     "noSJ": "SJ-202604-0002",
     "doNumber": "SJ-202604-0002",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Industri Gudang No. 21, Sidoarjo",
     "barang": "Gula kemasan 1 kg",
     "collie": 5,
@@ -118,7 +118,7 @@
     "date": "2026-04-04",
     "noSJ": "SJ-202604-0002",
     "doNumber": "SJ-202604-0002",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Industri Gudang No. 21, Sidoarjo",
     "barang": "Beras premium 25 kg",
     "collie": 5,
@@ -133,12 +133,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-05T08:00:00.000+00:00",
     "_updatedAt": "2026-04-05T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0002",
     "notaDisplayNumber": "26/IV/3/002",
     "customerRef": "cust-001",
@@ -159,13 +159,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -198,7 +198,7 @@
     "date": "2026-04-07",
     "noSJ": "SJ-202604-0003",
     "doNumber": "SJ-202604-0003",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Raya Tropodo No. 16, Waru",
     "barang": "Beras premium 25 kg",
     "collie": 8,
@@ -219,7 +219,7 @@
     "date": "2026-04-07",
     "noSJ": "SJ-202604-0003",
     "doNumber": "SJ-202604-0003",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Raya Tropodo No. 16, Waru",
     "barang": "Minyak goreng refill",
     "collie": 4,
@@ -234,12 +234,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-08T08:00:00.000+00:00",
     "_updatedAt": "2026-04-08T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0003",
     "notaDisplayNumber": "26/IV/3/003",
     "customerRef": "cust-001",
@@ -260,13 +260,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -299,7 +299,7 @@
     "date": "2026-04-10",
     "noSJ": "SJ-202604-0004",
     "doNumber": "SJ-202604-0004",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Pelabuhan No. 5, Surabaya",
     "barang": "Beras premium 25 kg",
     "collie": 20,
@@ -314,12 +314,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-11T08:00:00.000+00:00",
     "_updatedAt": "2026-04-11T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0004",
     "notaDisplayNumber": "26/IV/3/004",
     "customerRef": "cust-001",
@@ -340,13 +340,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -370,7 +370,7 @@
     "date": "2026-04-14",
     "noSJ": "SJ-202604-0005",
     "doNumber": "SJ-202604-0005",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Raya Industri Tulangan No. 18, Sidoarjo",
     "barang": "Gula kemasan 1 kg",
     "collie": 10,
@@ -385,12 +385,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-15T08:00:00.000+00:00",
     "_updatedAt": "2026-04-15T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0005",
     "notaDisplayNumber": "26/IV/3/005",
     "customerRef": "cust-001",
@@ -411,13 +411,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -440,7 +440,7 @@
     "date": "2026-04-18",
     "noSJ": "SJ-202604-0006",
     "doNumber": "SJ-202604-0006",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Pelabuhan No. 5, Surabaya",
     "barang": "Beras premium 25 kg",
     "collie": 10,
@@ -461,7 +461,7 @@
     "date": "2026-04-18",
     "noSJ": "SJ-202604-0006",
     "doNumber": "SJ-202604-0006",
-    "dari": "Gudang PT Gading Mas Surya - Tulangan",
+    "dari": "Gudang PT Logistik Demo - Tulangan",
     "tujuan": "Jl. Pelabuhan No. 5, Surabaya",
     "barang": "Minyak goreng kemasan",
     "collie": 5,
@@ -476,12 +476,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-20T08:00:00.000+00:00",
     "_updatedAt": "2026-04-20T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0006",
     "notaDisplayNumber": "26/IV/3/006",
     "customerRef": "cust-001",
@@ -502,13 +502,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -572,12 +572,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-01T08:00:00.000+00:00",
     "_updatedAt": "2026-04-01T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0007",
     "notaDisplayNumber": "26/IV/3/007",
     "customerRef": "cust-002",
@@ -598,13 +598,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -638,12 +638,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-06T08:00:00.000+00:00",
     "_updatedAt": "2026-04-06T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0008",
     "notaDisplayNumber": "26/IV/3/008",
     "customerRef": "cust-002",
@@ -664,13 +664,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -739,12 +739,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-10T08:00:00.000+00:00",
     "_updatedAt": "2026-04-10T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0009",
     "notaDisplayNumber": "26/IV/3/009",
     "customerRef": "cust-002",
@@ -765,13 +765,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -819,12 +819,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-14T08:00:00.000+00:00",
     "_updatedAt": "2026-04-14T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0010",
     "notaDisplayNumber": "26/IV/3/010",
     "customerRef": "cust-002",
@@ -845,13 +845,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -885,12 +885,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-18T08:00:00.000+00:00",
     "_updatedAt": "2026-04-18T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0011",
     "notaDisplayNumber": "26/IV/3/011",
     "customerRef": "cust-002",
@@ -911,13 +911,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -955,12 +955,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-22T08:00:00.000+00:00",
     "_updatedAt": "2026-04-22T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0012",
     "notaDisplayNumber": "26/IV/3/012",
     "customerRef": "cust-002",
@@ -981,13 +981,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1040,12 +1040,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-03T08:00:00.000+00:00",
     "_updatedAt": "2026-04-03T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0013",
     "notaDisplayNumber": "26/IV/3/013",
     "customerRef": "cust-003",
@@ -1066,13 +1066,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1106,12 +1106,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-07T08:00:00.000+00:00",
     "_updatedAt": "2026-04-07T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0014",
     "notaDisplayNumber": "26/IV/3/014",
     "customerRef": "cust-003",
@@ -1132,13 +1132,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1186,12 +1186,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-12T08:00:00.000+00:00",
     "_updatedAt": "2026-04-12T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0015",
     "notaDisplayNumber": "26/IV/3/015",
     "customerRef": "cust-003",
@@ -1212,13 +1212,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1287,12 +1287,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-16T08:00:00.000+00:00",
     "_updatedAt": "2026-04-16T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0016",
     "notaDisplayNumber": "26/IV/3/016",
     "customerRef": "cust-003",
@@ -1313,13 +1313,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1353,12 +1353,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-19T08:00:00.000+00:00",
     "_updatedAt": "2026-04-19T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0017",
     "notaDisplayNumber": "26/IV/3/017",
     "customerRef": "cust-003",
@@ -1379,13 +1379,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1423,12 +1423,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-24T08:00:00.000+00:00",
     "_updatedAt": "2026-04-24T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0018",
     "notaDisplayNumber": "26/IV/3/018",
     "customerRef": "cust-003",
@@ -1449,13 +1449,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1519,12 +1519,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-04T08:00:00.000+00:00",
     "_updatedAt": "2026-04-04T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0019",
     "notaDisplayNumber": "26/IV/3/019",
     "customerRef": "cust-004",
@@ -1545,13 +1545,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1585,12 +1585,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-09T08:00:00.000+00:00",
     "_updatedAt": "2026-04-09T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0020",
     "notaDisplayNumber": "26/IV/3/020",
     "customerRef": "cust-004",
@@ -1611,13 +1611,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1665,12 +1665,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-13T08:00:00.000+00:00",
     "_updatedAt": "2026-04-13T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0021",
     "notaDisplayNumber": "26/IV/3/021",
     "customerRef": "cust-004",
@@ -1691,13 +1691,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1731,12 +1731,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-17T08:00:00.000+00:00",
     "_updatedAt": "2026-04-17T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0022",
     "notaDisplayNumber": "26/IV/3/022",
     "customerRef": "cust-004",
@@ -1757,13 +1757,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1811,12 +1811,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-21T08:00:00.000+00:00",
     "_updatedAt": "2026-04-21T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0023",
     "notaDisplayNumber": "26/IV/3/023",
     "customerRef": "cust-004",
@@ -1837,13 +1837,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }
@@ -1877,12 +1877,12 @@
     "_type": "freightNota",
     "_createdAt": "2026-04-26T08:00:00.000+00:00",
     "_updatedAt": "2026-04-26T08:00:00.000+00:00",
-    "issuerCompanyName": "PT Gading Mas Surya",
-    "issuerCompanyAddress": "JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA",
-    "issuerCompanyPhone": "(031) 8853000",
-    "issuerCompanyEmail": "gadingmassurya@gmail.com",
+    "issuerCompanyName": "PT Logistik Demo",
+    "issuerCompanyAddress": "JL. LOGISTIK DEMO INDONESIA",
+    "issuerCompanyPhone": "08123456789",
+    "issuerCompanyEmail": "logistikdemo@email.com",
     "issuerCompanyLogoUrl": "/logo.png",
-    "issuerCompanySignatureName": "PT Gading Mas Surya",
+    "issuerCompanySignatureName": "PT Logistik Demo",
     "notaNumber": "NOTA-202604-0024",
     "notaDisplayNumber": "26/IV/3/024",
     "customerRef": "cust-004",
@@ -1903,13 +1903,13 @@
     "instructionAccounts": [
       {
         "bankName": "Bank Jatim",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "0201200300400",
         "bankAccountRef": "bank-jatim-001"
       },
       {
         "bankName": "BCA",
-        "accountHolder": "PT Gading Mas Surya",
+        "accountHolder": "PT Logistik Demo",
         "accountNumber": "1234500012",
         "bankAccountRef": "bank-bca-001"
       }

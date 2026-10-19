@@ -55,14 +55,14 @@ export default function LoginPage() {
                     <div className="login-logo login-logo--image">
                         <Image
                             src={DEFAULT_COMPANY_LOGO_URL}
-                            alt="Logo PT Gading Mas Surya"
+                            alt="Logo PT Logistik Demo"
                             width={56}
                             height={56}
                             className="login-logo-image"
                             priority
                         />
                     </div>
-                    <h1 className="login-title">PT Gading Mas Surya</h1>
+                    <h1 className="login-title">PT Logistik Demo</h1>
                     <p className="login-subtitle">Panel Administrasi Internal</p>
                 </div>
 

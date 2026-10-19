@@ -1,3 +1,3 @@
-const gmsCompanyName = 'PT. Gading Mas Surya';
-const gmsDriverAppTitle = 'PT. Gading Mas Surya Driver';
-const gmsLogoAsset = 'assets/images/gms-logo.png';
+const gmsCompanyName = 'PT. Logistik Demo';
+const gmsDriverAppTitle = 'PT. Logistik Demo Driver App';
+const gmsLogoAsset = 'assets/images/logistik-demo-logo.png';

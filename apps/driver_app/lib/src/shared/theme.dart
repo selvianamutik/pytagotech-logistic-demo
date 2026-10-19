@@ -21,12 +21,17 @@ abstract final class AppRadii {
   static const double xl = 20;
 }
 
-/// Warna semantik. Primer merah mengikuti brand GMS (lihat logo); jangan
-/// diganti biru tanpa persetujuan brand. Pakai konstanta ini, bukan hex
-/// hardcode di halaman, supaya satu perubahan menyebar ke seluruh app.
+/// Warna semantik. Primer teal mengikuti brand Logistik Demo (lihat logo).
+/// Jangan pakai merah untuk primer: merah dicadangkan untuk status
+/// error/destruktif supaya peringatan selalu menonjol. Pakai konstanta ini,
+/// bukan hex hardcode di halaman, supaya satu perubahan menyebar ke
+/// seluruh app.
 abstract final class AppColors {
-  /// Merah brand GMS. Kontras putih-di-atasnya ~5.9:1 (lolos 4.5:1).
-  static const Color brand = Color(0xFFB91C1C);
+  /// Teal brand Logistik Demo (dicocokkan ke logo truk). Kontras
+  /// putih-di-atasnya ~5.0:1 (lolos 4.5:1). Satu const ini menggerakkan
+  /// seluruh scheme Material: tombol, chip terpilih, switch, indikator.
+  /// Ganti satu baris ini untuk rebrand ulang.
+  static const Color brand = Color(0xFF0F766E);
 
   /// Tinta teks utama: hitam hangat, bukan hitam murni, supaya selaras
   /// dengan permukaan netral hangat.

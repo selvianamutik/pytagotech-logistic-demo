@@ -393,7 +393,7 @@ export function buildOperationalDueReminderMessage(digest: OperationalDueReminde
         { min: 1, max: 10 }
     ), 1), 10);
     const lines = [
-        `[GMS] Reminder operasional ${formatDateLabel(digest.today)}.`,
+        `[Logistik Demo] Reminder operasional ${formatDateLabel(digest.today)}.`,
         `Cakupan: overdue, hari ini, dan H-${digest.lookaheadDays}; maintenance odometer sisa <= ${digest.odometerLookaheadKm.toLocaleString('id-ID')} km.`,
     ];
 

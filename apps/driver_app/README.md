@@ -1,6 +1,6 @@
-# GMS Driver
+# Logistik Demo Driver
 
-App driver untuk operasional PT Gading Mas Surya.
+App driver untuk operasional PT. Logistik Demo.
 
 ## Android Release Signing
 

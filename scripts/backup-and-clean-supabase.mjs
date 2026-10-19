@@ -32,8 +32,37 @@ const BACKUP_TABLES = [...RELATIONAL_TABLES, ...EXTRA_TABLES];
 const DELETE_TABLES = [...RELATIONAL_RESET_TABLES, ...EXTRA_TABLES];
 const FULL_PRESERVE_TABLES = new Set(['app_users', 'services', 'trip_route_rates']);
 
+// Master data tambahan yang ikut dipertahankan penuh saat flag
+// --preserve-masters dipakai (mis. bersih-bersih DB demo: users,
+// karyawan, customer, kendaraan, dan master lain tetap utuh, hanya data
+// transaksional yang dihapus). Tanpa flag, perilaku default tidak berubah.
+const MASTER_PRESERVE_TABLES = [
+    'company_profiles',
+    'drivers',
+    'customers',
+    'employees',
+    'vehicles',
+    'customer_products',
+    'customer_billing_rates',
+    'customer_recipients',
+    'customer_pickup_locations',
+    'bank_accounts',
+    'chart_of_accounts',
+    'accounting_periods',
+    'suppliers',
+    'warehouse_items',
+    'supplier_item_prices',
+    'expense_categories',
+];
+
 function hasFlag(flag) {
     return process.argv.includes(flag);
+}
+
+if (hasFlag('--preserve-masters')) {
+    for (const table of MASTER_PRESERVE_TABLES) {
+        FULL_PRESERVE_TABLES.add(table);
+    }
 }
 
 function timestampSlug(date = new Date()) {

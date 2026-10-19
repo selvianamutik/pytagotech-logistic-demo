@@ -219,7 +219,7 @@ export function buildDriverIncidentCreatedMessage(params: {
     odometer?: number;
 }) {
     return [
-        '[GMS] Laporan insiden baru dari driver.',
+        '[Logistik Demo] Laporan insiden baru dari driver.',
         `Insiden: ${params.incidentNumber || '-'}`,
         `Driver: ${params.driverName || '-'}`,
         `DO: ${params.doNumber || '-'}`,
@@ -243,8 +243,8 @@ export function buildDriverIncidentResolutionMessage(params: {
     const isCostAddition = params.mode === 'COST_ADDITION';
     return [
         isCostAddition
-            ? '[GMS] Driver menambahkan biaya insiden.'
-            : '[GMS] Driver mengajukan penyelesaian insiden.',
+            ? '[Logistik Demo] Driver menambahkan biaya insiden.'
+            : '[Logistik Demo] Driver mengajukan penyelesaian insiden.',
         `Insiden: ${params.incidentNumber || '-'}`,
         `Driver: ${params.driverName || '-'}`,
         `DO: ${params.doNumber || '-'}`,
@@ -263,7 +263,7 @@ export function buildDriverDeliveryStatusMessage(params: {
     note?: string;
 }) {
     return [
-        '[GMS] Update status SJ/trip dari driver.',
+        '[Logistik Demo] Update status SJ/trip dari driver.',
         `Driver: ${params.driverName || '-'}`,
         `DO: ${params.doNumber || '-'}`,
         `Status: ${getDeliveryStatusLabel(params.status)}`,
@@ -280,7 +280,7 @@ export function buildDriverTripClosureMessage(params: {
     note?: string;
 }) {
     return [
-        '[GMS] Driver mengajukan tutup trip.',
+        '[Logistik Demo] Driver mengajukan tutup trip.',
         `Driver: ${params.driverName || '-'}`,
         `DO: ${params.doNumber || '-'}`,
         formatKm(params.tripEndOdometerKm) ? `Odometer akhir: ${formatKm(params.tripEndOdometerKm)}` : '',
@@ -305,7 +305,7 @@ export function buildIncidentSettlementActionRequiredMessage(params: {
     actionLabel: string;
 }) {
     return [
-        '[GMS] Tindak lanjut biaya insiden.',
+        '[Logistik Demo] Tindak lanjut biaya insiden.',
         `Insiden: ${params.incidentNumber || '-'}`,
         `DO: ${params.doNumber || '-'}`,
         `Unit: ${params.vehiclePlate || '-'}`,

@@ -29,7 +29,7 @@ const stockAdapter = v => ({
 
 const customers = {
     'cust-001': {
-        name: 'PT Pangan Nusantara', prefix: 'SJ', pickup: 'Gudang PT Gading Mas Surya - Tulangan',
+        name: 'PT Pangan Nusantara', prefix: 'SJ', pickup: 'Gudang PT Logistik Demo - Tulangan',
         origin: 'Tulangan', dest: 'Surabaya', phonePref: '08177710',
     },
     'cust-002': {
@@ -43,10 +43,10 @@ const customers = {
 };
 
 const ISSUER = {
-    issuerCompanyName: 'PT Gading Mas Surya',
-    issuerCompanyEmail: 'gadingmassurya@gmail.com',
-    issuerCompanyPhone: '(031) 8853000',
-    issuerCompanyAddress: 'JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA',
+    issuerCompanyName: 'PT Logistik Demo',
+    issuerCompanyEmail: 'logistikdemo@email.com',
+    issuerCompanyPhone: '08123456789',
+    issuerCompanyAddress: 'JL. LOGISTIK DEMO INDONESIA',
     issuerCompanyLogoUrl: '/logo.png',
 };
 

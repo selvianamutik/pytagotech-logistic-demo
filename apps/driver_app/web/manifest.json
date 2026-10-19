@@ -1,11 +1,11 @@
 {
-    "name": "PT. Gading Mas Surya",
-    "short_name": "Gading Mas",
+    "name": "PT. Logistik Demo",
+    "short_name": "Logistik Demo",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Portal driver untuk operasional PT Gading Mas Surya.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#0F766E",
+    "description": "Portal driver untuk operasional PT. Logistik Demo.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

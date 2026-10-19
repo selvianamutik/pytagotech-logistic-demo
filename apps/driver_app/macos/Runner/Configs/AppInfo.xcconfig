@@ -11,4 +11,4 @@ PRODUCT_NAME = driver_app
 PRODUCT_BUNDLE_IDENTIFIER = id.gadingmassurya.driver
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 PT Gading Mas Surya. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 PT. Logistik Demo. All rights reserved.

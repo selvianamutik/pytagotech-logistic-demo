@@ -1,4 +1,4 @@
-# PT Gading Mas Surya - Admin Panel
+# PT Logistik Demo - Admin Panel
 
 Sistem manajemen logistik berbasis web untuk operasional pengiriman, penagihan, kas/bank, armada, dan tracking driver.
 
@@ -65,10 +65,10 @@ Dataset demo saat ini mencakup kondisi:
 - maintenance, insiden, tracking log, mutasi rekening, kas tunai, dan laporan
 
 Profil perusahaan demo:
-- Nama: `PT Gading Mas Surya`
-- Alamat: `JL. KEMANTREN 08 - KEC. TULANGAN, KAB. SIDOARJO - JATIM - INDONESIA`
-- Telepon: `(031) 8853000`
-- Email: `gadingmassurya@gmail.com`
+- Nama: `PT Logistik Demo`
+- Alamat: `JL. LOGISTIK DEMO INDONESIA`
+- Telepon: `08123456789`
+- Email: `logistikdemo@email.com`
 
 Akun demo:
 - owner web: `owner@company.local / owner12345`

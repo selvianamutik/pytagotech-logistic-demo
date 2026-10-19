@@ -256,7 +256,7 @@ async function stripXlsxCommentParts(buffer: ArrayBuffer) {
 
 export async function buildMasterDataImportTemplateWorkbook(config: MasterDataImportTargetConfig, masterOptions?: Record<string, string[]>) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'PT Gading Mas Surya';
+  workbook.creator = 'PT Logistik Demo';
   workbook.created = new Date();
   workbook.modified = new Date();
 

@@ -60,7 +60,7 @@ export function resolveDocumentIssuerProfile(
     }
 
     return {
-        name: resolvedName || 'PT Gading Mas Surya',
+        name: resolvedName || 'PT Logistik Demo',
         address: resolvedAddress || '-',
         phone: resolvedPhone || '-',
         email: resolvedEmail || '-',
@@ -195,7 +195,7 @@ export function openBrandedPrint(opts: {
     } = opts;
     void _targetWindow;
 
-    const companyName = company?.name || 'PT Gading Mas Surya';
+    const companyName = company?.name || 'PT Logistik Demo';
     const companyLogo = resolveCompanyLogoUrl(company);
     const printDate = formatBusinessDate(new Date(), 'id-ID', {
         day: '2-digit',
@@ -341,7 +341,7 @@ export function resolveFreightNotaIssuerProfile(
     const resolvedIssuer = resolveDocumentIssuerProfile(nota, company);
 
     return {
-        name: resolvedIssuer?.name || 'PT Gading Mas Surya',
+        name: resolvedIssuer?.name || 'PT Logistik Demo',
         address: resolvedIssuer?.address || '',
         phone: resolvedIssuer?.phone || '',
         email: resolvedIssuer?.email || '',

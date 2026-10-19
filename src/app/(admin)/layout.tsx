@@ -388,7 +388,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={resolveCompanyLogoUrl(company)} alt="" className="sidebar-logo-img" />
                             <div className="sidebar-logo-text-wrap">
-                                <span className="sidebar-logo-text">{company?.name || 'PT Gading Mas Surya'}</span>
+                                <span className="sidebar-logo-text">{company?.name || 'PT Logistik Demo'}</span>
                                 <span className="sidebar-logo-subtitle">Panel Internal</span>
                             </div>
                         </div>

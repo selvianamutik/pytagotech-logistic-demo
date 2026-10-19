@@ -97,7 +97,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: Image.asset(
                       gmsLogoAsset,
                       fit: BoxFit.contain,
-                      semanticLabel: 'Logo GMS',
+                        semanticLabel: 'Logo PT. Logistik Demo',
                       errorBuilder: (context, error, stackTrace) => Icon(
                         Icons.local_shipping_rounded,
                         color: scheme.primary,

@@ -15,7 +15,7 @@ void main() {
     await tester.pump(const Duration(seconds: 9));
     await tester.pumpAndSettle();
 
-    expect(find.text('PT. Gading Mas Surya'), findsOneWidget);
+    expect(find.text('PT. Logistik Demo'), findsOneWidget);
     expect(find.text('Masuk'), findsOneWidget);
     expect(find.byIcon(Icons.location_off_rounded), findsNothing);
   });
